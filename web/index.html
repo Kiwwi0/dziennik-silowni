@@ -199,6 +199,27 @@ main{padding-block:2px 28px}
 .prow .sn{font-weight:600;font-size:13.5px;color:var(--ink-2)}
 .rests{display:grid;gap:8px}
 .rests > div{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.oc{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);border-radius:var(--r);padding:12px 14px;display:grid;gap:10px}
+.oc p{margin:0;color:var(--ink-2)}
+.oc .row{flex-wrap:wrap}
+.oc-h{display:flex;gap:8px;align-items:center;color:var(--accent)}
+.oc-h b{color:var(--ink);font-size:15px}
+.oc.ok{background:var(--good-soft);border-color:color-mix(in srgb,var(--good) 35%,transparent)}
+.oc.ok .oc-h{color:var(--good)}
+.oc.mine{background:none;border:1px dashed var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 6px 6px 14px}
+.oc-list{margin:0;padding:0;list-style:none;counter-reset:oc;display:grid;gap:2px;background:var(--surface);border-radius:10px;padding:4px 0}
+.oc-list li{counter-increment:oc;display:grid;grid-template-columns:22px minmax(0,1fr) auto;column-gap:8px;align-items:center;padding:7px 10px}
+.oc-list li::before{content:counter(oc) ".";grid-row:span 2;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;align-self:start}
+.oc-list .nm{font-weight:600;line-height:1.25;grid-column:2}
+.oc-list .osub{grid-column:2;font-size:12px;color:var(--muted)}
+.oc-list .mv{grid-column:3;grid-row:1 / span 2;display:inline-flex;align-items:center;gap:1px;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;padding:2px 6px 2px 2px;border-radius:999px}
+.oc-list .mv .i{width:16px;height:16px}
+.oc-list .mv.up{color:var(--good);background:var(--good-soft)}
+.oc-list .mv.dn{color:var(--ink-2);background:var(--surface-2)}
+.oc-list li.moved .nm{color:var(--ink)}
+.oc-list li:not(.moved) .nm{color:var(--ink-2);font-weight:500}
+.oc-why{margin:0;padding-left:18px;display:grid;gap:8px;font-size:13px;color:var(--ink-2)}
+.oc-why b{color:var(--ink)}
 
 /* trening na żywo */
 .live{display:flex;gap:12px;align-items:center;background:var(--ink);color:var(--bg);border-radius:var(--r);padding:12px 14px}
@@ -375,7 +396,7 @@ function flattenPlans(plans){
   const out = [];
   for (const p of Array.isArray(plans) ? plans : []){
     if (!p || typeof p !== 'object') continue;
-    if (Array.isArray(p.items)){ out.push({id:p.id || uid(), name:p.name || '', items:p.items}); continue; }
+    if (Array.isArray(p.items)){ out.push({...p, id:p.id || uid(), name:p.name || '', items:p.items}); continue; }
     const days = Array.isArray(p.days) ? p.days : [];
     if (days.length <= 1) out.push({id:p.id || uid(), name:p.name || (days[0] && days[0].name) || '', items:(days[0] && days[0].items) || []});
     else for (const d of days) out.push({id:d.id || uid(), name:[p.name, d.name].filter(Boolean).join(' – '), items:d.items || []});
@@ -668,6 +689,7 @@ function vPlanEditor(p){
   if (!p.items.length) h += `<p class="muted small" style="margin:12px 0">Brak ćwiczeń w tym planie.</p>`;
   p.items.forEach((it, ii) => { h += vItem(p, it, ii); });
   h += `<button class="btn block" data-act="pickForPlan" data-plan="${p.id}">${svg('plus','i s')}Dodaj ćwiczenia</button></section>
+    ${vOrderHint(p)}
     <div class="row" style="margin-top:8px"><button class="btn sm" data-act="planMove" data-dir="-1" data-plan="${p.id}" ${pi === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej na liście</button><button class="btn sm" data-act="planMove" data-dir="1" data-plan="${p.id}" ${pi === S.plans.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button>
       <span class="spacer"></span><button class="btn danger sm" data-act="planDel" data-plan="${p.id}">${svg('trash','i s')}Usuń plan</button></div>`;
   return `<div class="wrap stack">${h}</div>`;
@@ -710,8 +732,80 @@ function samplePlans(){
   const mk = (exId, n, reps, kg, sec) => ({...newItem(exId), sets:Array.from({length:n}, () => sec ? {sec, kg:null} : {reps, kg})});
   return [
     {id:uid(), name:'FBW A (przykład)', items:[mk('Barbell_Squat',3,8,40), mk('Barbell_Bench_Press_-_Medium_Grip',3,8,40), mk('Bent_Over_Barbell_Row',3,10,30), mk('Seated_Dumbbell_Press',3,10,12), mk('Plank',3,null,null,45)]},
-    {id:uid(), name:'FBW B (przykład)', items:[mk('Barbell_Deadlift',3,5,60), mk('Incline_Dumbbell_Press',3,10,16), mk('Wide-Grip_Lat_Pulldown',3,10,40), mk('Dumbbell_Lunges',3,10,10), mk('Hanging_Leg_Raise',3,12,null)]},
+    {id:uid(), name:'FBW B (przykład)', items:[mk('Barbell_Deadlift',3,5,60), mk('Incline_Dumbbell_Press',3,10,16), mk('Dumbbell_Lunges',3,10,10), mk('Wide-Grip_Lat_Pulldown',3,10,40), mk('Hanging_Leg_Raise',3,12,null)]},
   ];
+}
+
+/* ---------- sugerowana kolejność ćwiczeń ----------
+   Zasady: ćwiczenia dynamiczne i najcięższe wielostawowe na świeżo, potem pozostałe wielostawowe
+   (wolne ciężary przed maszynami), potem izolowane na duże partie, małe partie, brzuch, kondycja, cardio.
+   Ćwiczenia z tej samej grupy zostają w kolejności wybranej przez użytkownika. */
+const ORDER_TIERS = [
+  [0, 'dynamiczne, na świeżo', 'One-Arm_Kettlebell_Swings'],
+  [10, 'ciężkie wielostawowe', 'Barbell_Squat Front_Barbell_Squat Barbell_Deadlift Sumo_Deadlift Trap_Bar_Deadlift Barbell_Bench_Press_-_Medium_Grip Barbell_Incline_Bench_Press_-_Medium_Grip Decline_Barbell_Bench_Press Standing_Military_Press Bent_Over_Barbell_Row Reverse_Grip_Bent-Over_Rows T-Bar_Row_with_Handle'],
+  [20, 'wielostawowe', 'Dumbbell_Bench_Press Incline_Dumbbell_Press Dips_-_Chest_Version Pullups Chin-Up Seated_Dumbbell_Press Arnold_Dumbbell_Press Romanian_Deadlift Stiff-Legged_Dumbbell_Deadlift Good_Morning Barbell_Hip_Thrust Barbell_Glute_Bridge Goblet_Squat Dumbbell_Incline_Row Inverted_Row'],
+  [22, 'wielostawowe, lżejsze', 'Split_Squat_with_Dumbbells Dumbbell_Lunges Barbell_Walking_Lunge Dumbbell_Rear_Lunge Dumbbell_Step_Ups One-Arm_Dumbbell_Row Pushups Bodyweight_Squat Band_Assisted_Pull-Up'],
+  [25, 'wielostawowe na maszynie', 'Machine_Bench_Press Wide-Grip_Lat_Pulldown V-Bar_Pulldown Seated_Cable_Rows Leverage_Iso_Row Machine_Shoulder_Military_Press Leg_Press Hack_Squat Smith_Machine_Squat'],
+  [28, 'wielostawowe na ramiona', 'Close-Grip_Barbell_Bench_Press Dips_-_Triceps_Version'],
+  [30, 'izolowane, duże partie', 'Dumbbell_Flyes Incline_Dumbbell_Flyes Cable_Crossover Butterfly Straight-Arm_Dumbbell_Pullover Straight-Arm_Pulldown Hyperextensions_Back_Extensions Side_Lateral_Raise Standing_Low-Pulley_Deltoid_Raise Front_Dumbbell_Raise Reverse_Flyes Reverse_Machine_Flyes Upright_Barbell_Row Leg_Extensions Lying_Leg_Curls Seated_Leg_Curl Single_Leg_Glute_Bridge One-Legged_Cable_Kickback Thigh_Abductor Thigh_Adductor'],
+  [40, 'izolowane, małe partie', 'Barbell_Curl EZ-Bar_Curl Dumbbell_Alternate_Bicep_Curl Hammer_Curls Incline_Dumbbell_Curl Preacher_Curl Concentration_Curls Standing_Biceps_Cable_Curl Triceps_Pushdown Triceps_Pushdown_-_Rope_Attachment Cable_Rope_Overhead_Triceps_Extension EZ-Bar_Skullcrusher Standing_Dumbbell_Triceps_Extension Tricep_Dumbbell_Kickback Bench_Dips Standing_Calf_Raises Seated_Calf_Raise Calf_Press_On_The_Leg_Press_Machine Barbell_Shrug Dumbbell_Shrug'],
+  [42, 'tylne barki i rotatory', 'Face_Pull Band_Pull_Apart External_Rotation_with_Cable'],
+  [50, 'brzuch', 'Hanging_Leg_Raise Knee_Hip_Raise_On_Parallel_Bars Ab_Roller Cable_Crunch Ab_Crunch_Machine'],
+  [51, 'brzuch', 'Crunches Reverse_Crunch Russian_Twist Dead_Bug Pallof_Press'],
+  [52, 'brzuch, izometria', 'Plank Side_Bridge'],
+  [60, 'kondycja', 'Battling_Ropes Farmers_Walk Mountain_Climbers'],
+  [70, 'cardio', 'Running_Treadmill Bicycling_Stationary Rowing_Stationary Elliptical_Trainer Rope_Jumping'],
+];
+const ORD = new Map(); const ORD_LABEL = new Map();
+for (const [o, label, ids] of ORDER_TIERS){ if (!ORD_LABEL.has(o)) ORD_LABEL.set(o, label); for (const id of ids.split(' ')) ORD.set(id, o); }
+function exOrd(e){
+  if (ORD.has(e.id)) return ORD.get(e.id);
+  // Własne ćwiczenia: zgadujemy po grupie, sprzęcie i nazwie.
+  const n = norm(e.name);
+  if (e.group === 'Cardio') return 70;
+  if (e.group === 'Całe ciało') return 60;
+  if (e.group === 'Brzuch') return e.mode === 'time' ? 52 : 51;
+  if (['Biceps','Triceps','Łydki'].includes(e.group)) return /wyciskanie|pompki|porecz|dips/.test(n) ? 28 : 40;
+  if (/rozpietk|unoszenie|prostowanie|uginanie|wspiecia|odwodzenie|przywodzenie|szrugs|kickback|face ?pull|rotacja|izolow/.test(n)) return 30;
+  if (e.equipment === 'Maszyna' || e.equipment === 'Wyciąg') return 25;
+  if (e.equipment === 'Sztanga' && /przysiad|martwy|wyciskanie|wioslowanie/.test(n)) return 10;
+  return 20;
+}
+const ordLabel = o => ORD_LABEL.get(o) || '';
+const orderSig = p => p.items.map(i => i.id).join(',');
+function suggestOrder(p){
+  const keyed = p.items.map((it, i) => ({it, i, o:exOrd(getEx(it.exId))}));
+  const sorted = [...keyed].sort((a, b) => a.o - b.o || a.i - b.i);
+  return {sorted, changed:sorted.some((x, k) => x.i !== k)};
+}
+function vOrderHint(p){
+  if (p.items.length < 2) return '';
+  const {sorted, changed} = suggestOrder(p);
+  const why = ui.orderWhy ? `<ul class="oc-why">
+      <li><b>Najcięższe wielostawowe na początku.</b> Przysiad, martwy ciąg i wyciskania wymagają najwięcej siły i techniki. Na świeżo podniesiesz więcej i zrobisz to bezpieczniej.</li>
+      <li><b>Wolne ciężary przed maszynami.</b> Sztanga i hantle angażują mięśnie stabilizujące, które męczą się najszybciej. Maszyna prowadzi ruch, więc dobrze sprawdza się później.</li>
+      <li><b>Wielostawowe przed izolowanymi, duże partie przed małymi.</b> Zmęczony biceps osłabi wiosłowanie, a zmęczony triceps wyciskanie. Odwrotnie to nie działa.</li>
+      <li><b>Brzuch pod koniec.</b> Mięśnie brzucha stabilizują tułów w ciężkich ćwiczeniach. Zmęczone zwiększają ryzyko kontuzji kręgosłupa.</li>
+      <li><b>Cardio na końcu.</b> Nie zabiera siły do ćwiczeń z ciężarem. Krótka rozgrzewka (5–10 minut) na początku jest jak najbardziej w porządku.</li>
+    </ul>` : '';
+  const whyBtn = `<button class="btn sm ghost" data-act="orderWhy" aria-expanded="${!!ui.orderWhy}">${ui.orderWhy ? 'Ukryj wyjaśnienie' : 'Dlaczego tak?'}</button>`;
+  if (!changed){
+    const core = sorted.some(x => x.o >= 50 && x.o < 60), cardio = sorted.some(x => x.o >= 60);
+    const tail = core && cardio ? ', brzuch i cardio na końcu' : core ? ', brzuch na końcu' : cardio ? ', kondycja i cardio na końcu' : '';
+    return `<div class="oc ok"><div class="oc-h">${svg('check','i s')}<b>Kolejność jest optymalna</b></div>
+    <p class="small">Od najcięższych ćwiczeń wielostawowych do izolowanych${tail}.</p><div class="row">${whyBtn}</div>${why}</div>`;
+  }
+  if (p.orderOk === orderSig(p)) return `<div class="oc mine"><span class="small muted">Zostawiasz własną kolejność ćwiczeń.</span><button class="btn sm ghost" data-act="orderShow" data-plan="${p.id}">Pokaż sugestię</button></div>`;
+  let list = '';
+  sorted.forEach((x, k) => {
+    const d = x.i - k;
+    const mv = d > 0 ? `<span class="mv up" aria-label="w górę o ${d}">${svg('up','i s')}${d}</span>` : d < 0 ? `<span class="mv dn" aria-label="w dół o ${-d}">${svg('down','i s')}${-d}</span>` : '';
+    list += `<li class="${d ? 'moved' : ''}"><span class="nm">${esc(getEx(x.it.exId).name)}</span><span class="osub">${esc(ordLabel(x.o))}</span>${mv}</li>`;
+  });
+  return `<div class="oc"><div class="oc-h">${svg('<path d="M7 4v16M3.5 16.5 7 20l3.5-3.5M13 6h8M13 11h6M13 16h4"/>','i s')}<b>Sugerowana kolejność</b></div>
+    <p class="small">Tak ułożony trening pozwoli dźwigać więcej przy mniejszym ryzyku kontuzji.</p>
+    <ol class="oc-list">${list}</ol>
+    <div class="row"><button class="btn primary sm" data-act="orderApply" data-plan="${p.id}">Ułóż w tej kolejności</button><button class="btn sm ghost" data-act="orderKeep" data-plan="${p.id}">Zostaw moją</button>${whyBtn}</div>${why}</div>`;
 }
 
 /* ---------- ĆWICZENIA ---------- */
@@ -1273,6 +1367,10 @@ const ACT = {
   psetDel(el){ const {it} = itemRef(el); if (it.sets.length <= 1){ toast('Ćwiczenie musi mieć co najmniej jedną serię.'); return; } it.sets.splice(+el.dataset.i, 1); commit(); },
   restStep(el){ const {it} = itemRef(el); const f = el.dataset.f; it[f] = Math.max(0, Math.min(600, (it[f] ?? 0) + +el.dataset.d)); commit(); },
   itemMove(el){ const {p, it} = itemRef(el); move(p.items, p.items.indexOf(it), +el.dataset.dir); commit(); },
+  orderApply(el){ const p = planById(el.dataset.plan); if (!p) return; p.items = suggestOrder(p).sorted.map(x => x.it); delete p.orderOk; commit(); toast('Ułożono ćwiczenia w sugerowanej kolejności'); },
+  orderKeep(el){ const p = planById(el.dataset.plan); if (!p) return; p.orderOk = orderSig(p); commit(); },
+  orderShow(el){ const p = planById(el.dataset.plan); if (!p) return; delete p.orderOk; commit(); },
+  orderWhy(){ ui.orderWhy = !ui.orderWhy; render(); },
   itemDel(el){ const {p, it} = itemRef(el); confirmBox('Usunąć ćwiczenie z planu?', getEx(it.exId).name, 'Usuń', () => { p.items = p.items.filter(x => x !== it); commit(); }); },
   pickForPlan(el){ openSheet({type:'pick', target:{kind:'plan', plan:el.dataset.plan}, q:'', group:'', sel:[]}); },
   pickToggle(el){ const s = topSheet(); const id = el.dataset.id; s.sel = s.sel.includes(id) ? s.sel.filter(x => x !== id) : [...s.sel, id]; const row = el.closest('.pickrow'); row.classList.toggle('sel'); el.setAttribute('aria-pressed', s.sel.includes(id)); const b = $('#pickAddBtn'); b.disabled = !s.sel.length; b.textContent = 'Dodaj' + (s.sel.length ? ' (' + s.sel.length + ')' : ''); },
