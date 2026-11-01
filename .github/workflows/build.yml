@@ -1,0 +1,76 @@
+name: Zbuduj aplikację na iPhone'a
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wersja Xcode
+        run: xcodebuild -version
+
+      - name: Zainstaluj XcodeGen
+        run: brew install xcodegen
+
+      - name: Wygeneruj projekt Xcode
+        run: xcodegen generate
+
+      - name: Zbuduj aplikację (bez podpisu)
+        run: |
+          set +e
+          xcodebuild \
+            -project DziennikSilowni.xcodeproj \
+            -scheme DziennikSilowni \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1
+          status=$?
+          echo "=== BŁĘDY ==="
+          grep -E "error:|fatal error" build.log | sort -u | head -80
+          echo "=== KONIEC LOGU ==="
+          tail -25 build.log
+          exit $status
+
+      - name: Spakuj plik .ipa
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "Aplikacja: $APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry DziennikSilowni.ipa Payload
+          ls -lh DziennikSilowni.ipa
+
+      - name: Zapisz .ipa jako artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: DziennikSilowni-ipa
+          path: DziennikSilowni.ipa
+
+      - name: Opublikuj wydanie z plikiem .ipa
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" DziennikSilowni.ipa \
+            --title "Dziennik siłowni – wersja ${{ github.run_number }}" \
+            --notes "Plik do instalacji przez Sideloadly. Pobierz DziennikSilowni.ipa poniżej." \
+            --latest
+
+      - name: Zapisz log budowania
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
