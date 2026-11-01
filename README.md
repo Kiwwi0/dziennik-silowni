@@ -8,7 +8,7 @@ kalkulator talerzy oraz historia z wykresami postępów.
 ## Wersja w przeglądarce
 
 Działa na każdym telefonie i komputerze, bez logowania i bez internetu (po pierwszym otwarciu):
-https://sansnom23.github.io/dziennik-silowni/
+https://kiwwi0.github.io/dziennik-silowni/
 
 Każda osoba wybiera swój folder (imię) i jej plany oraz historia zapisują się w bazie
 Firebase (Firestore, projekt `dziennik-silowni`), więc są dostępne z każdego urządzenia.
