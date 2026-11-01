@@ -5,6 +5,15 @@ baza 111 ćwiczeń z opisem techniki i animacją ruchu, plany z dniami treningow
 trening z timerem przerw (z powiadomieniem przy zablokowanym ekranie),
 kalkulator talerzy oraz historia z wykresami postępów.
 
+## Wersja w przeglądarce
+
+Działa na każdym telefonie i komputerze, bez logowania i bez internetu (po pierwszym otwarciu):
+https://sansnom23.github.io/dziennik-silowni/
+
+Dane zapisują się w przeglądarce na danym urządzeniu. Na iPhonie otwórz stronę w Safari
+i wybierz Udostępnij → Do ekranu początkowego. Strona publikuje się automatycznie
+z katalogu `web/` (`.github/workflows/pages.yml`).
+
 ## Jak powstaje plik aplikacji
 
 Każde wypchnięcie zmian na gałąź `main` uruchamia GitHub Actions
