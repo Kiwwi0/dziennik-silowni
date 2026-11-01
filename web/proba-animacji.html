@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Próbka animacji ćwiczeń</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap">
+<style>
+/* Układ: jedna kolumna kart z animacją; każda karta = scena SVG + sterowanie. */
+:root{
+  --bg:#E8EBEE; --surface:#FFFFFF; --surface-2:#F2F4F6; --ink:#13171B; --ink-2:#434C55; --muted:#646D76; --line:#D2D7DC;
+  --accent:#1D4ED8; --accent-ink:#FFFFFF;
+  --fig-near:#2B3138; --fig-far:#8A939C; --skin:#2B3138; --ghost:#9AA3AC; --trail:#1D4ED8;
+  --plate:#3B4148; --plate-hub:#C9CED3; --bench:#B7BEC5; --floor:#C9CFD5; --hl:#D7263D;
+  --f-display:"Big Shoulders Display","Arial Narrow",sans-serif;
+  --f-body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0F1214; --surface:#171B1F; --surface-2:#1F2429; --ink:#ECEFF2; --ink-2:#BCC4CB; --muted:#8C969F; --line:#2B3238;
+  --accent:#7D9DFF; --accent-ink:#0A1024;
+  --fig-near:#E3E7EB; --fig-far:#6D7680; --skin:#E3E7EB; --ghost:#58616A; --trail:#7D9DFF;
+  --plate:#AEB6BE; --plate-hub:#2B3238; --bench:#3D454D; --floor:#343B42; --hl:#FF4D62; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:680px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;display:grid;gap:16px}
+h1{font-family:var(--f-display);font-weight:800;font-size:36px;line-height:.95;text-transform:uppercase;margin:0}
+.lead{margin:0;color:var(--ink-2);max-width:60ch}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px}
+.card h2{font-family:var(--f-display);font-weight:800;font-size:24px;line-height:1;text-transform:uppercase;margin:0}
+.scene{background:var(--surface-2);border-radius:10px;overflow:hidden}
+.scene svg{display:block;width:100%;height:auto}
+.ctrl{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center}
+.ctrl button{min-height:44px;min-width:44px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--f-body)}
+.ctrl button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.ctrl input{width:100%;accent-color:var(--accent)}
+.phase{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.phase b{color:var(--ink)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><h1>Próbka animacji</h1></div>
+  <p class="lead">Na czerwono: części ciała, które pracują najmocniej. Schematyczna postać z boku wykonuje pełny ruch od pozycji startowej do końcowej i z powrotem. Suwakiem zatrzymasz ją w dowolnym miejscu. Szare sylwetki w tle pokazują początek i koniec ruchu, a niebieska linia tor sztangi.</p>
+  <div id="list"></div>
+  <p class="lead">Wróć do <a href="./">Dziennika siłowni</a>.</p>
+</div>
+<script>
+'use strict';
+/* ---------- geometria postaci (jednostki sceny, oś Y w górę) ---------- */
+const L = {torso:50, neck:5, head:9, ua:28, fa:26, thigh:40, shank:38, toe:15, heel:5};
+const rad = d => d * Math.PI / 180;
+const dir = d => [Math.cos(rad(d)), Math.sin(rad(d))];
+const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k];
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpAng = (a, b, t) => { let d = ((b - a + 540) % 360) - 180; return a + d * t; };
+const ease = t => 0.5 - 0.5 * Math.cos(Math.PI * t);
+
+// Dwuczłonowe ramię: z barku do punktu docelowego; bend wybiera stronę łokcia.
+function ik(base, target, l1, l2, bend){
+  const dx = target[0] - base[0], dy = target[1] - base[1];
+  const d = Math.min(l1 + l2 - 0.01, Math.max(Math.abs(l1 - l2) + 0.01, Math.hypot(dx, dy)));
+  const a = Math.atan2(dy, dx);
+  const al = Math.acos((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d));
+  const e = [base[0] + l1 * Math.cos(a + bend * al), base[1] + l1 * Math.sin(a + bend * al)];
+  const w = [base[0] + (dx / Math.hypot(dx, dy) || 0) * d, base[1] + (dy / Math.hypot(dx, dy) || 0) * d];
+  return {elbow:e, wrist:w};
+}
+
+// Poza z klatki kluczowej (kąty w stopniach, kierunek segmentu od stawu bliższego).
+function solve(ex, f){
+  let ankle, knee, hip;
+  if (ex.anchor === 'ankle'){
+    ankle = [0, 0];
+    knee = add(ankle, dir(f.shank), L.shank);
+    hip = add(knee, dir(f.thigh), -L.thigh);
+  } else {
+    hip = ex.hip;
+    knee = add(hip, dir(f.thigh), L.thigh);
+    ankle = add(knee, dir(f.shank), -L.shank);
+  }
+  const shoulder = add(hip, dir(f.torso), L.torso);
+  const neck = add(shoulder, dir(f.torso), L.neck);
+  const head = add(neck, dir(f.torso + (f.headTilt || 0)), L.head);
+  let elbow, wrist;
+  if (f.arm.rel){ elbow = add(shoulder, dir(f.torso + f.arm.rel[0]), L.ua); wrist = add(elbow, dir(f.torso + f.arm.rel[1]), L.fa); }
+  else {
+    let target;
+    if (f.arm.torso){ const [along, perp] = f.arm.torso; target = add(add(hip, dir(f.torso), along), dir(f.torso - 90), perp); }
+    else target = add(shoulder, f.arm.from);
+    ({elbow, wrist} = ik(shoulder, target, L.ua, L.fa, f.arm.bend || 1));
+  }
+  const toe = add(ankle, dir(f.foot || 0), L.toe), heel = add(ankle, dir(f.foot || 0), -L.heel);
+  return {ankle, knee, hip, shoulder, neck, head, elbow, wrist, toe, heel, bar:wrist};
+}
+// Interpolacja dwóch klatek: kąty po najkrótszej drodze, cele dłoni liniowo.
+function blend(a, b, t){
+  const out = {};
+  for (const k of ['shank', 'thigh', 'torso', 'foot', 'headTilt']) out[k] = lerpAng(a[k] || 0, b[k] || 0, t);
+  if (a.arm.rel) out.arm = {rel:[lerpAng(a.arm.rel[0], b.arm.rel[0], t), lerpAng(a.arm.rel[1], b.arm.rel[1], t)]};
+  else {
+    const P = f => f.arm.torso ? null : f.arm.from;
+    if (a.arm.torso && b.arm.torso) out.arm = {torso:[lerp(a.arm.torso[0], b.arm.torso[0], t), lerp(a.arm.torso[1], b.arm.torso[1], t)], bend:a.arm.bend};
+    else if (P(a) && P(b)) out.arm = {from:[lerp(a.arm.from[0], b.arm.from[0], t), lerp(a.arm.from[1], b.arm.from[1], t)], bend:a.arm.bend};
+    else out.arm = {mix:true, a:a.arm, b:b.arm, t, bend:a.arm.bend};
+  }
+  return out;
+}
+function solveBlend(ex, a, b, t){
+  const f = blend(a, b, t);
+  if (!f.arm.mix) return solve(ex, f);
+  // Cel dłoni w jednej klatce względem barku, w drugiej względem tułowia: liczymy oba i mieszamy punkt.
+  const pa = solve(ex, {...f, arm:a.arm}), pb = solve(ex, {...f, arm:b.arm});
+  const target = [lerp(pa.wrist[0], pb.wrist[0], f.arm.t), lerp(pa.wrist[1], pb.wrist[1], f.arm.t)];
+  const base = solve(ex, {...f, arm:{from:[0, 0], bend:f.arm.bend}});
+  const r = ik(base.shoulder, target, L.ua, L.fa, f.arm.bend || 1);
+  return {...base, elbow:r.elbow, wrist:r.wrist, bar:r.wrist};
+}
+
+/* ---------- ćwiczenia w próbce ---------- */
+const EXS = [
+  {id:'squat', name:'Przysiad ze sztangą na plecach', anchor:'ankle', plate:true, hl:['thigh'],
+    phases:['Opuszczanie', 'Wstawanie'],
+    note:'Biodra idą w tył, kolana w kierunku palców, sztanga przez cały czas nad środkiem stopy.',
+    frames:[{shank:90, thigh:-90, torso:88, arm:{rel:[-198, -8]}}, {shank:58, thigh:-2, torso:52, arm:{rel:[-198, -8]}}]},
+  {id:'bench', name:'Wyciskanie sztangi na ławce płaskiej', anchor:'hip', hip:[22, 47], bench:true, plate:true, hl:['torso', 'ua'],
+    phases:['Opuszczanie sztangi', 'Wyciskanie'],
+    note:'Sztanga schodzi do dolnej części klatki i wraca łagodnym łukiem nad barki.',
+    frames:[{torso:180, thigh:-14, shank:102, foot:0, headTilt:-6, arm:{from:[1, 53], bend:-1}},
+            {torso:180, thigh:-14, shank:102, foot:0, headTilt:-6, arm:{from:[19, 11], bend:-1}}]},
+  {id:'row', name:'Wiosłowanie sztangą w opadzie tułowia', anchor:'ankle', plate:true, hl:['torso', 'fa'],
+    phases:['Przyciąganie', 'Opuszczanie'],
+    note:'Tułów nieruchomy w opadzie, łokcie prowadzone blisko ciała, sztanga do dolnej części brzucha.',
+    frames:[{shank:75, thigh:-45, torso:40, arm:{from:[0, -53.5], bend:-1}}, {shank:75, thigh:-45, torso:40, arm:{torso:[22, 10], bend:-1}}]},
+];
+
+/* ---------- rysowanie ---------- */
+const W = 320, H = 214, GROUND = 196;
+function toScreen(ex){ const ox = ex.anchor === 'hip' ? 150 : 150; return p => [ox + p[0] * 1.08, GROUND - p[1] * 1.08]; }
+const pt = p => p[0].toFixed(1) + ',' + p[1].toFixed(1);
+function figure(ex, P, S, ghost){
+  const s = q => S(P[q]);
+  const line = (a, b, w, cls) => `<line x1="${s(a)[0].toFixed(1)}" y1="${s(a)[1].toFixed(1)}" x2="${s(b)[0].toFixed(1)}" y2="${s(b)[1].toFixed(1)}" stroke-width="${w}" class="${cls}" stroke-linecap="round"/>`;
+  const far = ghost ? 'g' : 'far', base = ghost ? 'g' : 'near';
+  const seg = {torso:['hip', 'shoulder'], thigh:['hip', 'knee'], shank:['knee', 'ankle'], ua:['shoulder', 'elbow'], fa:['elbow', 'wrist']};
+  const cl = (a, b) => { if (ghost) return 'g'; for (const k of ex.hl || []) if (seg[k][0] === a && seg[k][1] === b) return 'hl'; return base; };
+  let o = '';
+  // dalsza noga i ręka (przesunięte o kilka jednostek dla głębi)
+  o += `<g transform="translate(5 -2)">` + line('hip', 'knee', 13, far) + line('knee', 'ankle', 10, far) + line('heel', 'toe', 6, far)
+    + line('shoulder', 'elbow', 9, far) + line('elbow', 'wrist', 8, far) + '</g>';
+  o += line('hip', 'shoulder', 22, cl('hip', 'shoulder')) + line('shoulder', 'neck', 9, base);
+  o += `<circle cx="${s('head')[0].toFixed(1)}" cy="${s('head')[1].toFixed(1)}" r="${(L.head * 1.15).toFixed(1)}" class="${ghost ? 'gf' : 'headf'}"/>`;
+  if (!ghost && ex.plate){ const b = s('bar'); o += `<circle cx="${b[0].toFixed(1)}" cy="${b[1].toFixed(1)}" r="21" class="plate"/><circle cx="${b[0].toFixed(1)}" cy="${b[1].toFixed(1)}" r="4.5" class="hub"/>`; }
+  o += line('hip', 'knee', 14, cl('hip', 'knee')) + line('knee', 'ankle', 11, cl('knee', 'ankle')) + line('heel', 'toe', 7, base);
+  o += line('shoulder', 'elbow', 10, cl('shoulder', 'elbow')) + line('elbow', 'wrist', 9, cl('elbow', 'wrist'));
+  return o;
+}
+function sceneSVG(ex, u){
+  const S = toScreen(ex);
+  const P0 = solveBlend(ex, ex.frames[0], ex.frames[1], 0), P1 = solveBlend(ex, ex.frames[0], ex.frames[1], 1);
+  const {t} = phaseOf(u);
+  const P = solveBlend(ex, ex.frames[0], ex.frames[1], ease(t));
+  let trail = [];
+  for (let k = 0; k <= 24; k++) trail.push(pt(S(solveBlend(ex, ex.frames[0], ex.frames[1], ease(k / 24)).bar)));
+  let o = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><style>
+    .near{stroke:var(--fig-near)} .far{stroke:var(--fig-far)} .g{stroke:var(--ghost);opacity:.35}
+    .hl{stroke:var(--hl)} .headf{fill:var(--fig-near)} .gf{fill:var(--ghost);opacity:.35} .plate{fill:var(--plate);opacity:.92} .hub{fill:var(--plate-hub)}
+    .bench{fill:var(--bench)} .floor{stroke:var(--floor)}</style>`;
+  o += `<line x1="0" y1="${GROUND + 1}" x2="${W}" y2="${GROUND + 1}" stroke-width="2" class="floor"/>`;
+  if (ex.bench){ const a = S([-78, 40]), b = S([40, 40]); o += `<rect x="${a[0]}" y="${a[1]}" width="${b[0] - a[0]}" height="9" rx="3" class="bench"/><rect x="${S([-62, 0])[0]}" y="${a[1] + 9}" width="7" height="${GROUND - a[1] - 9}" class="bench"/><rect x="${S([22, 0])[0]}" y="${a[1] + 9}" width="7" height="${GROUND - a[1] - 9}" class="bench"/>`; }
+  o += figure(ex, P0, S, true) + figure(ex, P1, S, true);
+  o += `<polyline points="${trail.join(' ')}" fill="none" stroke="var(--trail)" stroke-width="2" stroke-dasharray="3 4" opacity=".75"/>`;
+  o += figure(ex, P, S, false);
+  return o + '</svg>';
+}
+// Cykl: ruch do pozycji końcowej, krótka pauza, powrót, krótka pauza.
+function phaseOf(u){
+  u = ((u % 1) + 1) % 1;
+  if (u < 0.42) return {t:u / 0.42, k:0};
+  if (u < 0.5) return {t:1, k:0};
+  if (u < 0.92) return {t:1 - (u - 0.5) / 0.42, k:1};
+  return {t:0, k:1};
+}
+
+/* ---------- karty ---------- */
+const list = document.getElementById('list');
+list.style.display = 'grid'; list.style.gap = '16px';
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const cards = EXS.map(ex => {
+  const el = document.createElement('section');
+  el.className = 'card';
+  el.innerHTML = `<h2>${ex.name}</h2><div class="scene" role="img" aria-label="Animacja: ${ex.name}"></div>
+    <div class="ctrl"><button type="button" class="play">${reduce ? 'Odtwórz' : 'Pauza'}</button><input type="range" min="0" max="1000" value="0" aria-label="Moment ruchu"><button type="button" class="slow">Wolniej</button></div>
+    <div class="phase"><span>Faza: <b class="ph"></b></span><span class="pc"></span></div><p style="margin:0;color:var(--ink-2)">${ex.note}</p>`;
+  list.appendChild(el);
+  const st = {ex, el, u:0, playing:!reduce, slow:false};
+  el.querySelector('.play').onclick = () => { st.playing = !st.playing; el.querySelector('.play').textContent = st.playing ? 'Pauza' : 'Odtwórz'; };
+  el.querySelector('.slow').onclick = e => { st.slow = !st.slow; e.target.classList.toggle('on', st.slow); };
+  el.querySelector('input').oninput = e => { st.u = e.target.value / 1000; st.playing = false; el.querySelector('.play').textContent = 'Odtwórz'; draw(st); };
+  draw(st);
+  return st;
+});
+function draw(st){
+  st.el.querySelector('.scene').innerHTML = sceneSVG(st.ex, st.u);
+  const ph = phaseOf(st.u);
+  st.el.querySelector('.ph').textContent = st.ex.phases[ph.k];
+  st.el.querySelector('.pc').textContent = Math.round(ph.t * 100) + '% zakresu';
+  st.el.querySelector('input').value = Math.round((((st.u % 1) + 1) % 1) * 1000);
+}
+let last = performance.now();
+function loop(now){
+  const dt = (now - last) / 1000; last = now;
+  for (const st of cards) if (st.playing){ st.u = (st.u + dt / (st.slow ? 9.6 : 4.8)) % 1; draw(st); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
