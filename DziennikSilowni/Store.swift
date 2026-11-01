@@ -247,6 +247,20 @@ final class Store: ObservableObject {
         )
     }
 
+    func dayBinding(planId: String, dayId: String) -> Binding<PlanDay> {
+        Binding(
+            get: {
+                self.state.plans.first(where: { $0.id == planId })?
+                    .days.first(where: { $0.id == dayId }) ?? PlanDay(id: dayId, name: "")
+            },
+            set: { newValue in
+                guard let p = self.pIndex(planId),
+                      let d = self.state.plans[p].days.firstIndex(where: { $0.id == dayId }) else { return }
+                self.state.plans[p].days[d] = newValue
+            }
+        )
+    }
+
     func itemBinding(_ ref: ItemRef) -> Binding<PlanItem> {
         Binding(
             get: {
@@ -353,6 +367,20 @@ final class Store: ObservableObject {
             set: { newValue in
                 guard var a = self.active, let i = a.ex.firstIndex(where: { $0.id == key }) else { return }
                 a.ex[i] = newValue
+                self.active = a
+            }
+        )
+    }
+
+    func wsetBinding(key: String, setId: String) -> Binding<WSet> {
+        Binding(
+            get: {
+                self.active?.ex.first(where: { $0.id == key })?.sets.first(where: { $0.id == setId }) ?? WSet(id: setId)
+            },
+            set: { newValue in
+                guard var a = self.active, let i = a.ex.firstIndex(where: { $0.id == key }),
+                      let j = a.ex[i].sets.firstIndex(where: { $0.id == setId }) else { return }
+                a.ex[i].sets[j] = newValue
                 self.active = a
             }
         )

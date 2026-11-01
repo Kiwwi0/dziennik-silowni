@@ -64,8 +64,8 @@ struct PlanEditorView: View {
             Section("Nazwa planu") {
                 TextField("np. FBW, Push Pull Legs", text: plan.name)
             }
-            ForEach(plan.days) { $day in
-                DaySection(planId: planId, day: $day,
+            ForEach(plan.wrappedValue.days) { day in
+                DaySection(planId: planId, day: store.dayBinding(planId: planId, dayId: day.id),
                            isFirst: plan.wrappedValue.days.first?.id == day.id,
                            isLast: plan.wrappedValue.days.last?.id == day.id,
                            onAdd: { pickTarget = .day(planId: planId, dayId: day.id) },
@@ -197,15 +197,16 @@ struct ItemEditorView: View {
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                ForEach(item.sets) { $set in
+                ForEach(Array(item.wrappedValue.sets.enumerated()), id: \.element.id) { index, value in
+                    let set = setBinding(item, value.id)
                     HStack(spacing: 10) {
-                        Text("\((item.wrappedValue.sets.firstIndex(where: { $0.id == set.id }) ?? 0) + 1).")
+                        Text("\(index + 1).")
                             .foregroundStyle(.secondary)
                             .frame(width: 44, alignment: .leading)
-                        NumField(placeholder: isTime ? "s" : "powt.", value: isTime ? $set.sec : $set.reps, decimal: false)
+                        NumField(placeholder: isTime ? "s" : "powt.", value: isTime ? set.sec : set.reps, decimal: false)
                             .padding(.vertical, 8)
                             .background(Color.fieldFill, in: RoundedRectangle(cornerRadius: 8))
-                        NumField(placeholder: "–", value: $set.kg)
+                        NumField(placeholder: "–", value: set.kg)
                             .padding(.vertical, 8)
                             .background(Color.fieldFill, in: RoundedRectangle(cornerRadius: 8))
                     }
@@ -253,6 +254,15 @@ struct ItemEditorView: View {
         .navigationTitle("Ćwiczenie w planie")
         .navigationBarTitleDisplayMode(.inline)
         .keyboardDone()
+    }
+
+    private func setBinding(_ item: Binding<PlanItem>, _ setId: String) -> Binding<PlanSet> {
+        Binding(
+            get: { item.wrappedValue.sets.first(where: { $0.id == setId }) ?? PlanSet(id: setId) },
+            set: { newValue in
+                if let i = item.wrappedValue.sets.firstIndex(where: { $0.id == setId }) { item.wrappedValue.sets[i] = newValue }
+            }
+        )
     }
 
     private func modeBinding(_ item: Binding<PlanItem>) -> Binding<String> {

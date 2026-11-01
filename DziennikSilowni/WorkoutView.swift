@@ -97,10 +97,10 @@ struct WorkoutCard: View {
                     .monospacedDigit()
             }
             SetsHeader(isTime: x.wrappedValue.isTime)
-            ForEach(x.sets) { $set in
+            ForEach(Array(x.wrappedValue.sets.enumerated()), id: \.element.id) { index, set in
                 WorkoutSetRow(
-                    number: (x.wrappedValue.sets.firstIndex(where: { $0.id == set.id }) ?? 0) + 1,
-                    set: $set,
+                    number: index + 1,
+                    set: store.wsetBinding(key: key, setId: set.id),
                     isTime: x.wrappedValue.isTime,
                     isRunning: isRunning(set.id),
                     onCheck: { store.toggleSet(key: key, setId: set.id) },
