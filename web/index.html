@@ -24,7 +24,7 @@
 :root{
   --bg:#E8EBEE; --surface:#FFFFFF; --surface-2:#F2F4F6; --ink:#13171B; --ink-2:#434C55; --muted:#646D76; --line:#D2D7DC;
   --accent:#1D4ED8; --accent-ink:#FFFFFF; --accent-soft:#DDE6FB;
-  --good:#15784A; --good-ink:#FFFFFF; --good-soft:#D7EFE2; --bad:#B42318; --bad-soft:#FBE2DE;
+  --good:#15784A; --good-ink:#FFFFFF; --good-soft:#D7EFE2; --bad:#B42318; --bad-soft:#FBE2DE; --warn:#8F5200; --warn-soft:#FCEBCB;
   --tb-bg:#13171B; --tb-ink:#F2F4F6; --tb-muted:#A3ACB5; --tb-line:#3A4148; --tb-warn:#F2C230; --tb-over:#2FA36B; --tb-over-ink:#06150D;
   --plate-25:#C8102E; --plate-20:#1D4ED8; --plate-15:#E5B000; --plate-10:#178A45; --plate-5:#F4F4F1; --plate-s:#3B4148;
   --scrim:rgba(10,14,18,.45);
@@ -36,13 +36,13 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0F1214; --surface:#171B1F; --surface-2:#1F2429; --ink:#ECEFF2; --ink-2:#BCC4CB; --muted:#8C969F; --line:#2B3238;
   --accent:#7D9DFF; --accent-ink:#0A1024; --accent-soft:#1C2847;
-  --good:#4CC386; --good-ink:#06150D; --good-soft:#12301F; --bad:#FF8B7B; --bad-soft:#3A1714;
+  --good:#4CC386; --good-ink:#06150D; --good-soft:#12301F; --bad:#FF8B7B; --bad-soft:#3A1714; --warn:#F2B654; --warn-soft:#382912;
   --tb-bg:#E6EAEE; --tb-ink:#101316; --tb-muted:#56606A; --tb-line:#C3CAD1; --tb-warn:#8A5A00; --tb-over:#4CC386; --tb-over-ink:#06150D;
   --plate-5:#E9E9E4; --plate-s:#59616A; --scrim:rgba(0,0,0,.6); --body:#2A3137; --body-line:#3A434B; --muscle:#3B444C; --hl:#EF2B3C; --hl2:#F49AA0; --bm-muscle:#5A626B; --bm-skin:#7C858E; --wk-low:#2F6B4C; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0F1214; --surface:#171B1F; --surface-2:#1F2429; --ink:#ECEFF2; --ink-2:#BCC4CB; --muted:#8C969F; --line:#2B3238;
   --accent:#7D9DFF; --accent-ink:#0A1024; --accent-soft:#1C2847;
-  --good:#4CC386; --good-ink:#06150D; --good-soft:#12301F; --bad:#FF8B7B; --bad-soft:#3A1714;
+  --good:#4CC386; --good-ink:#06150D; --good-soft:#12301F; --bad:#FF8B7B; --bad-soft:#3A1714; --warn:#F2B654; --warn-soft:#382912;
   --tb-bg:#E6EAEE; --tb-ink:#101316; --tb-muted:#56606A; --tb-line:#C3CAD1; --tb-warn:#8A5A00; --tb-over:#4CC386; --tb-over-ink:#06150D;
   --plate-5:#E9E9E4; --plate-s:#59616A; --scrim:rgba(0,0,0,.6); --body:#2A3137; --body-line:#3A434B; --muscle:#3B444C; --hl:#EF2B3C; --hl2:#F49AA0; --bm-muscle:#5A626B; --bm-skin:#7C858E; --wk-low:#2F6B4C; color-scheme:dark}
 
@@ -272,6 +272,28 @@ main{padding-block:2px 28px}
 .cmp{flex:none;font:700 13px var(--f-body);border-radius:99px;padding:3px 10px;background:var(--surface-2);color:var(--muted)}
 .cmp.up{background:var(--good-soft);color:var(--good)} .cmp.down{background:var(--bad-soft);color:var(--bad)}
 .cov{display:grid;gap:10px}
+.pr{display:grid;gap:10px}
+.pr-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.pr-v{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;border-radius:99px;padding:4px 10px 4px 8px}
+.pr-v.ok{background:var(--good-soft);color:var(--good)} .pr-v.warn{background:var(--warn-soft);color:var(--warn)}
+.pr-meta{display:grid;gap:3px;min-width:0}
+.pr-meta span{font-size:13px;color:var(--ink-2)} .pr-meta small{font-size:12px;color:var(--muted);line-height:1.35}
+.pr-good{margin:0;color:var(--good);font-weight:600}
+.pr-iss{display:grid;gap:6px}
+.pr-i{display:flex;align-items:center;justify-content:space-between;gap:6px 10px;flex-wrap:wrap;background:var(--warn-soft);border-radius:10px;padding:8px 10px}
+.pr-i p{margin:0;font-size:13.5px;color:var(--ink);flex:1 1 180px;min-width:0}
+.pr-i .btn{white-space:normal;text-align:left;height:auto;min-height:36px}
+.pr-sec{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:4px}
+.pr-sec small{font-size:12px;color:var(--muted)}
+.pr-list{display:grid}
+.pr-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 8px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
+.pr-row:first-child{border-top:0}
+.pr-n{font-size:14px;font-weight:600;min-width:0}
+.pr-s{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:56px;text-align:right}
+.pr-row .wk-bar{height:4px}
+.wk-tag.warn{background:var(--warn-soft);color:var(--warn)}
+.dayrow .dv{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+.pv-ok{color:var(--good);font-weight:600} .pv-warn{color:var(--warn);font-weight:600}
 .wk-freq{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .wk-freq .seg button{min-width:36px;padding:0 8px}
 .wk-tgt b{color:var(--ink)}
@@ -2057,7 +2079,7 @@ function vPlans(){
   } else {
     h += `<section class="plan">`;
     for (const p of S.plans){
-      h += `<button class="dayrow plan-link" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div></div>${svg('chev','i s chev')}</button>`;
+      h += `<button class="dayrow plan-link" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div>${planBadge(p)}</div>${svg('chev','i s chev')}</button>`;
     }
     h += `</section><div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div>`;
     h += coverageCard(null);
@@ -2073,6 +2095,7 @@ function vPlanEditor(p){
   p.items.forEach((it, ii) => { h += vItem(p, it, ii); });
   h += `${nextCard(p)}<button class="btn block" data-act="pickForPlan" data-plan="${p.id}">${svg('plus','i s')}Dodaj ćwiczenia</button></section>
     ${vOrderHint(p)}
+    ${planReviewCard(p)}
     ${coverageCard(p)}
     <div class="row" style="margin-top:8px"><button class="btn sm" data-act="planMove" data-dir="-1" data-plan="${p.id}" ${pi === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej na liście</button><button class="btn sm" data-act="planMove" data-dir="1" data-plan="${p.id}" ${pi === S.plans.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button>
       <span class="spacer"></span><button class="btn danger sm" data-act="planDel" data-plan="${p.id}">${svg('trash','i s')}Usuń plan</button></div>`;
@@ -2652,10 +2675,10 @@ function swapCandidates(exId, n = 6){
 
 /* ---------- pokrycie programu: wszystkie plany razem (każdy plan raz w tygodniu) ---------- */
 function planGroupSets(items){
-  const g = WK_GROUPS.map(([name, keys, f]) => ({name, keys, f:f || 1, sets:0}));
+  const g = WK_GROUPS.map(([name, keys, f]) => ({name, keys, f:f || 1, sets:0, prim:0}));
   for (const it of items){
     const m = exMuscles(getEx(it.exId)), P = new Set(wkExpand(m.p)), Q = new Set(wkExpand(m.s)), n = (it.sets || []).length;
-    for (const q of g){ const w = q.keys.some(k => P.has(k)) ? 1 : q.keys.some(k => Q.has(k)) ? .5 : 0; q.sets += w * n; }
+    for (const q of g){ const w = q.keys.some(k => P.has(k)) ? 1 : q.keys.some(k => Q.has(k)) ? .5 : 0; q.sets += w * n; if (w === 1) q.prim += n; }
   }
   return g;
 }
@@ -2665,13 +2688,14 @@ function programGaps(){ return programSets().filter(q => q.sets < q.target).sort
 function coverageCard(p){
   if (typeof BODYMAP === 'undefined' || !S.plans.some(q => q.items.length)) return '';
   const heat = {};
-  if (p){ for (const q of planGroupSets(p.items)){ const c = q.sets >= 3 ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); } }
-  else { for (const q of programSets()){ const c = q.sets >= q.target ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); } }
-  const gaps = programGaps().slice(0, 6);
+  for (const q of programSets()){ const c = q.sets >= q.target ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); }
+  const skip = p && p.items.length ? planReview(p).flagged : new Set();
+  const gaps = programGaps().filter(q => !skip.has(q.name)).slice(0, 6);
+  const freqTxt = (() => { const n = S.plans.filter(q => q.items.length).length, f = programFactor(); return `${n} ${pl(n, 'plan', 'plany', 'planów')} przy ${perWeek()} ${pl(perWeek(), 'treningu', 'treningach', 'treningach')} w tygodniu: każdy plan ${f === 1 ? 'raz' : 'średnio ' + fmtN(Math.round(f * 10) / 10) + ' raza'} w tygodniu.`; })();
   const sug = gaps.map(q => { const e = wkSuggest(q, 1)[0]; return e ? `<div class="cov-row"><span><b>${esc(q.name)}</b> <small>${fmtN(q.sets)} / ${q.target} serii</small></span>${p ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}${esc(e.name)}</button>` : `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`}</div>` : ''; }).join('');
-  return `<section class="card cov"><h3 class="h3" style="margin:0">${p ? 'Mięśnie w tym planie' : 'Twój program: wszystkie plany razem'}</h3>
-    <div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
-    <p class="muted small" style="margin:0">${p ? 'Ciemnozielone: co najmniej 3 serie w tym planie, jasne: mniej.' : (() => { const n = S.plans.filter(q => q.items.length).length, f = programFactor(); return `${n} ${pl(n, 'plan', 'plany', 'planów')} przy ${perWeek()} ${pl(perWeek(), 'treningu', 'treningach', 'treningach')} w tygodniu: każdy plan ${f === 1 ? 'raz' : 'średnio ' + fmtN(Math.round(f * 10) / 10) + ' raza'} w tygodniu.`; })()}</p></div>
+  return `<section class="card cov"><h3 class="h3" style="margin:0">${p ? 'Cały program: tydzień' : 'Twój program: wszystkie plany razem'}</h3>
+    ${p ? `<p class="muted small" style="margin:0">${freqTxt}</p>` : `<div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
+    <p class="muted small" style="margin:0">${freqTxt}</p></div>`}
     ${freqSeg()}
     ${gaps.length ? `<p style="margin:0"><b>Mało pracują w całym programie:</b></p><div class="cov-list">${sug}</div>` : '<p style="margin:0"><b class="wk-ok">Każda partia ma tygodniowy cel w Twoich planach.</b></p>'}</section>`;
 }
@@ -2703,6 +2727,104 @@ function planNext(p, n = 3){
 function nextCard(p){
   const list = planNext(p); if (!list.length) return '';
   return `<div class="next"><span class="lbl">${p.items.length ? 'Propozycje następnych ćwiczeń' : 'Na początek'}</span>${list.map(({e, why}) => `<button class="next-b" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}<span><b>${esc(e.name)}</b><small>${esc(why)}</small></span></button>`).join('')}</div>`;
+}
+
+/* ---------- ocena planu: jakie partie pracują i czy czegoś brakuje ----------
+   Serie na jeden trening, liczone jak na mapie tygodnia (mięsień główny 1, pomocniczy 0,5).
+   Typ planu z grup ćwiczeń: całe ciało (nogi + 2 z: klatka, plecy, barki), góra ciała (klatka, plecy, barki, bez nóg) albo na partie.
+   Wymagane minimum w jednym treningu: 2 serie w planie całego ciała / góry, 3 w planie na partie. Brak w tym planie,
+   który jest w innym planie, nie jest błędem (np. FBW A i FBW B się uzupełniają). Ponad 12 serii na partię = dużo. */
+const EX_FAM = {'Klatka piersiowa':'klatka', 'Plecy':'plecy', 'Barki':'barki', 'Biceps':'biceps', 'Triceps':'triceps', 'Czworogłowe uda':'nogi', 'Dwugłowe uda':'nogi', 'Pośladki i biodra':'nogi', 'Łydki':'nogi', 'Brzuch':'brzuch'};
+const FAM_ORDER = ['klatka', 'plecy', 'barki', 'nogi', 'biceps', 'triceps', 'brzuch'];
+const PR_MAX = 12;
+// [etykieta, grupy (wystarczy jedna z nich), podpowiedzi ćwiczeń]
+const PR_UPPER = [['Klatka', ['Klatka – środek i dół', 'Klatka – góra'], ['Barbell_Bench_Press_-_Medium_Grip', 'Dumbbell_Bench_Press', 'Incline_Dumbbell_Press', 'Pushups']],
+  ['Plecy', ['Najszerszy grzbietu', 'Środek pleców'], ['Bent_Over_Barbell_Row', 'Wide-Grip_Lat_Pulldown', 'Seated_Cable_Rows', 'One-Arm_Dumbbell_Row']],
+  ['Barki', ['Barki – przód', 'Barki – bok', 'Barki – tył'], ['Seated_Dumbbell_Press', 'Standing_Military_Press', 'Side_Lateral_Raise']]];
+const PR_LOWER = [['Przód uda', ['Czworogłowe uda'], ['Barbell_Squat', 'Leg_Press', 'Goblet_Squat', 'Dumbbell_Lunges']],
+  ['Tył uda i pośladki', ['Dwugłowe uda', 'Pośladki'], ['Romanian_Deadlift', 'Barbell_Hip_Thrust', 'Lying_Leg_Curls', 'Barbell_Deadlift']]];
+const PULL_K = ['lats', 'teres', 'trapsM', 'trapsL', 'deltP', 'infra'], PUSH_K = ['chestU', 'chestL', 'deltA'];
+const serii = n => Number.isInteger(n) ? pl(n, 'seria', 'serie', 'serii') : 'serii';
+function planTime(p){
+  // praca ~40 s na serię (albo czas serii), przerwy z planu, ~30 s na przejście między ćwiczeniami
+  let s = 0; const last = p.items.length - 1;
+  p.items.forEach((it, i) => { const n = (it.sets || []).length; if (!n) return;
+    s += it.mode === 'time' ? it.sets.reduce((a, x) => a + (+x.sec || 30), 0) : n * 40;
+    if (!it.ssNext) s += (+it.rest || 0) * (n - 1) + (i < last ? (+it.restAfter || 0) : 0);
+    s += 30; });
+  return Math.max(5, Math.round(s / 300) * 5);
+}
+const fmtMin = m => m < 60 ? m + ' min' : Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + m % 60 + ' min' : '');
+function planReview(p){
+  const g = planGroupSets(p.items), by = Object.fromEntries(g.map(q => [q.name, q]));
+  const fams = new Set(p.items.map(it => EX_FAM[getEx(it.exId).group]).filter(Boolean));
+  const up = ['klatka', 'plecy', 'barki'].filter(f => fams.has(f)).length;
+  const type = !fams.size ? 'inne' : fams.has('nogi') && up >= 2 ? 'fbw' : !fams.has('nogi') && up >= 3 ? 'gora' : 'partie';
+  const min = type === 'partie' ? 3 : 2;
+  const label = {fbw:'Całe ciało (FBW)', gora:'Góra ciała', inne:'Bez ćwiczeń siłowych', partie:'Na partie: ' + FAM_ORDER.filter(f => fams.has(f)).join(', ')}[type];
+  const need = type === 'fbw' ? [...PR_UPPER, ...PR_LOWER] : type === 'gora' ? PR_UPPER
+    : type === 'partie' ? [...g.filter(q => q.f === 1 && !['Łydki', 'Dwugłowe uda', 'Pośladki'].includes(q.name) && fams.has(WK_FAMILY[q.name])).map(q => [q.name, [q.name]]), ...(fams.has('nogi') ? [PR_LOWER[1]] : [])] : [];
+  const have = new Set(p.items.map(i => i.exId));
+  const pick = (names, ids) => { const id = (ids || []).find(x => EXMAP.has(x) && !have.has(x)); return id ? getEx(id) : wkSuggest(by[names[0]], 8).find(e => !have.has(e.id)); };
+  const others = S.plans.filter(o => o !== p && o.items.length).map(o => ({o, s:Object.fromEntries(planGroupSets(o.items).map(q => [q.name, q]))}));
+  const issues = [], covered = [], short = new Set(), flagged = new Set();
+  // partia zaliczona: co najmniej min serii i choć jedno ćwiczenie, w którym jest mięśniem głównym,
+  // albo sporo pracy pomocniczej (min + 2), np. pośladki w przysiadzie i martwym ciągu
+  const okIn = (gs, names) => { const s = Math.max(...names.map(n => gs[n].sets)); return s >= min + 2 || (s >= min && names.some(n => gs[n].prim > 0)); };
+  const coveredNames = new Set(), notes = [];
+  for (const [lbl, names, ids] of need){
+    if (okIn(by, names)) continue;
+    const s = Math.max(...names.map(n => by[n].sets)), pr = names.some(n => by[n].prim > 0);
+    names.forEach(n => short.add(n));
+    const alt = others.find(x => okIn(x.s, names));
+    if (alt){ covered.push({lbl, plan:alt.o.name || 'Plan bez nazwy'}); names.forEach(n => coveredNames.add(n)); continue; }
+    names.forEach(n => flagged.add(n));
+    const e = pick(names, ids);
+    issues.push({k:s ? 'malo' : 'brak', sh:(s ? 'mało: ' : 'brakuje: ') + lbl.toLowerCase(), add:e && e.id,
+      text:!s ? `Brakuje: <b>${esc(lbl)}</b>` : !pr ? `Mało: <b>${esc(lbl)}</b> – pracuje tylko pomocniczo (${fmtN(s)} ${serii(s)}), brak ćwiczenia głównie na tę partię` : `Mało: <b>${esc(lbl)}</b> – ${fmtN(s)} ${serii(s)}, w jednym treningu warto min. ${min}`});
+  }
+  for (const q of g) if (q.sets > PR_MAX) notes.push(`Dużo: ${q.name.toLowerCase()} – ${fmtN(q.sets)} serii w jednym treningu (z pomocniczymi). Powyżej ok. ${PR_MAX} kolejne serie dają coraz mniej. Przy treningu tej partii raz w tygodniu to częste, ale możesz przenieść jedno ćwiczenie na inny dzień.`);
+  if (type === 'fbw' || type === 'gora'){
+    let push = 0, pull = 0;
+    for (const it of p.items){ const P = wkExpand(exMuscles(getEx(it.exId)).p), n = (it.sets || []).length; if (P.some(k => PUSH_K.includes(k))) push += n; else if (P.some(k => PULL_K.includes(k))) pull += n; }
+    if (push - pull >= 4 && push > pull * 1.5){ const e = pick(['Środek pleców'], PR_UPPER[1][2]); issues.push({k:'push', sh:'więcej pchania niż ciągnięcia', text:`Więcej pchania (${push} ${serii(push)}) niż ciągnięcia (${pull}). Dla równowagi barków dołóż ćwiczenie na plecy.`, add:e && e.id}); }
+  }
+  const total = p.items.reduce((a, it) => a + (it.sets || []).length, 0), time = planTime(p);
+  if (type !== 'inne' && total < 8) notes.push(`Krótki trening: ${total} ${serii(total)}. W porządku jako dodatek, jako główny trening to mało.`);
+  if (total > 30) notes.push(`Długi trening: ${total} serii, ok. ${fmtMin(time)}. Pod koniec siły będzie już mniej.`);
+  const rows = g.filter(q => q.sets > 0).sort((a, b) => b.sets - a.sets).map(q => ({...q,
+    st:q.sets > PR_MAX ? 'duzo' : !q.prim ? 'pom' : short.has(q.name) && q.sets < min ? 'malo' : 'ok'}));
+  const none = type === 'inne' ? [] : g.filter(q => !q.sets && !flagged.has(q.name) && !coveredNames.has(q.name)).map(q => q.name);
+  return {type, label, min, issues, covered, notes, rows, none, total, time, flagged, ok:type !== 'inne' && !issues.length};
+}
+function planBadge(p){
+  if (!p.items.length) return '';
+  const r = planReview(p); if (r.type === 'inne') return `<span class="dv">${esc(r.label)}</span>`;
+  const why = r.issues.length ? r.issues[0].sh : '';
+  return `<span class="dv">${esc(r.label)} · <b class="${r.ok ? 'pv-ok' : 'pv-warn'}">${r.ok ? '✓ dobry plan' : esc(why) + (r.issues.length > 1 ? ' i ' + (r.issues.length - 1) + ' więcej' : '')}</b></span>`;
+}
+function planReviewCard(p){
+  if (!p.items.length) return '';
+  const r = planReview(p), heat = {};
+  for (const q of r.rows){ const c = q.st === 'ok' ? 'h-ok' : 'h-low'; q.keys.forEach(k => heat[k] = c); }
+  const tag = {ok:'<span class="wk-tag ok">dobrze</span>', malo:'<span class="wk-tag warn">mało</span>', duzo:'<span class="wk-tag warn">dużo</span>', pom:'<span class="wk-tag">pomocniczo</span>'};
+  const mx = Math.max(8, ...r.rows.map(q => q.sets));
+  const pom = r.rows.filter(q => q.st === 'pom');
+  const rows = r.rows.filter(q => q.st !== 'pom').map(q => `<div class="pr-row"><span class="pr-n">${esc(q.name)}</span>${tag[q.st]}<span class="pr-s">${fmtN(q.sets)} ${serii(q.sets)}</span><span class="wk-bar"><i class="${q.st === 'ok' ? 'ok' : ''}" style="width:${Math.round(Math.min(1, q.sets / mx) * 100)}%"></i></span></div>`).join('');
+  const verdict = r.type === 'inne' ? '' : `<span class="pr-v ${r.ok ? 'ok' : 'warn'}">${svg(r.ok ? 'check' : 'info', 'i s')}${r.ok ? 'Dobry plan' : 'Do poprawy'}</span>`;
+  const cov = r.covered.length ? ' (część w innym planie).' : '.';
+  const goodTxt = {fbw:'Klatka, plecy, barki, przód i tył uda mają swoje ćwiczenia' + cov, gora:'Klatka, plecy i barki mają swoje ćwiczenia' + cov, partie:`Każda część trenowanych partii ma swoje ćwiczenie i co najmniej ${r.min} serie` + cov}[r.type];
+  return `<section class="card pr"><div class="pr-h"><h3 class="h3" style="margin:0">Ocena planu</h3>${verdict}</div>
+    <div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
+      <div class="pr-meta"><b>${esc(r.label)}</b><span>${p.items.length} ${pl(p.items.length, 'ćwiczenie', 'ćwiczenia', 'ćwiczeń')} · ${r.total} ${serii(r.total)} · ok. ${fmtMin(r.time)}</span><small>Ciemnozielone: partie, które dobrze pracują. Jasne: mało albo tylko pomocniczo (liczby to serie).</small></div></div>
+    ${r.issues.length ? `<div class="pr-iss">${r.issues.map(i => `<div class="pr-i ${i.k}"><p>${i.text}</p>${i.add ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(i.add)}">${svg('plus','i s')}${esc(getEx(i.add).name)}</button>` : ''}</div>`).join('')}</div>` : r.type === 'inne' ? '' : `<p class="pr-good">${esc(goodTxt)}</p>`}
+    ${r.covered.length ? `<p class="small muted" style="margin:0">W innym planie: ${r.covered.map(c => `${esc(c.lbl.toLowerCase())} (${esc(c.plan)})`).join(', ')}.</p>` : ''}
+    ${r.notes.map(n => `<p class="small" style="margin:0">${esc(n)}</p>`).join('')}
+    <div class="pr-sec"><b>Partie w tym planie</b><small>serie w jednym treningu</small></div>
+    <div class="pr-list">${rows || '<p class="small muted" style="margin:0">Żadna partia nie pracuje tu jako główna.</p>'}</div>
+    ${pom.length ? `<p class="small" style="margin:0"><b>Pomocniczo:</b> <span class="muted">${pom.map(q => `${esc(q.name.toLowerCase())} ${fmtN(q.sets)}`).join(' · ')}</span></p>` : ''}
+    ${r.none.length ? `<p class="small muted" style="margin:0"><b>Nie pracują:</b> ${esc(r.none.join(', ').toLowerCase())}.</p>` : ''}
+    <p class="note" style="margin:0">Mięsień główny w ćwiczeniu to 1 seria, pomocniczy pół. Partia jest zaliczona, gdy ma co najmniej ${r.min} serie i ćwiczenie, w którym pracuje jako główna (albo ${r.min + 2} serie pomocniczo). „Dużo” to ponad ${PR_MAX} serii na partię w jednym treningu.</p></section>`;
 }
 function vHistory(){
   let h = `<div class="seg" role="group" aria-label="Widok historii"><button data-act="hist" data-v="treningi" aria-pressed="${ui.hist === 'treningi'}">Treningi</button><button data-act="hist" data-v="tydzien" aria-pressed="${ui.hist === 'tydzien'}">Tydzień</button><button data-act="hist" data-v="postepy" aria-pressed="${ui.hist === 'postepy'}">Postępy</button></div>`;
