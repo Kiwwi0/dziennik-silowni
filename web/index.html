@@ -279,9 +279,6 @@ main{padding-block:2px 28px}
 .prog span{flex:1;min-width:0}
 .prog .btn{flex:none}
 .wnote{min-height:0;font-size:14px;resize:vertical}
-.rir{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;padding:2px 0 4px 26px;font-size:12.5px;color:var(--muted)}
-.rir button{flex:1 1 0;min-width:0;max-width:44px;min-height:36px;padding:0;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:700 14px var(--f-body);cursor:pointer}
-.rir button.x{flex:0 0 32px;border-color:transparent;background:transparent;color:var(--muted)}
 .srow input{min-height:44px;width:100%;text-align:center;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;padding:4px}
 .srow input::placeholder{font-weight:500;font-size:13px;color:var(--muted)}
 .srow.done input{background:var(--good-soft);border-color:transparent}
@@ -1663,7 +1660,7 @@ const EX = JSON.parse(document.getElementById('exdata').textContent);
 const EXMAP = new Map(EX.map(e => [e.id, e]));
 const GROUPS = ['Klatka piersiowa','Plecy','Barki','Biceps','Triceps','Czworogłowe uda','Dwugłowe uda','Pośladki i biodra','Łydki','Brzuch','Całe ciało','Cardio'];
 const EQUIPS = ['Sztanga','Sztanga łamana','Hantle','Kettlebell','Wyciąg','Maszyna','Masa ciała','Guma','Inne'];
-const DEF_SETTINGS = {restSet:90, restEx:120, autoRest:true, sound:true, bar:20, rir:true};
+const DEF_SETTINGS = {restSet:90, restEx:120, autoRest:true, sound:true, bar:20};
 const TABS = [
   {id:'trening', label:'Trening', title:'Trening', icon:'<path d="M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11"/>'},
   {id:'plany', label:'Plany', title:'Plany', icon:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2H9zM9 10h6M9 14h6M9 18h3.5"/>'},
@@ -2637,7 +2634,7 @@ const SHEETS = {
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(x)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${(x.ex || []).length}</div></div></div>`;
     for (const e of x.ex || []){
       h += `<div class="stack" style="gap:6px"><div class="row" style="flex-wrap:nowrap">${thumb(e.exId)}<b style="flex:1;min-width:0">${esc(getEx(e.exId).missing ? e.name : getEx(e.exId).name)}</b></div>
-        <div class="set-list">${(e.sets || []).map(t => `<span>${e.mode === 'time' ? fmtN(t.sec) + ' s' + (t.kg ? ' · ' + fmtN(t.kg) + ' kg' : '') : (t.kg ? fmtN(t.kg) + ' kg × ' : '') + (t.reps ?? 0) + (t.rir != null ? ` <small>· zapas ${t.rir >= 4 ? '4+' : t.rir}</small>` : '')}</span>`).join('')}</div>${e.note ? `<p class="note" style="margin:0">„${esc(e.note)}”</p>` : ''}</div>`;
+        <div class="set-list">${(e.sets || []).map(t => `<span>${e.mode === 'time' ? fmtN(t.sec) + ' s' + (t.kg ? ' · ' + fmtN(t.kg) + ' kg' : '') : (t.kg ? fmtN(t.kg) + ' kg × ' : '') + (t.reps ?? 0)}</span>`).join('')}</div>${e.note ? `<p class="note" style="margin:0">„${esc(e.note)}”</p>` : ''}</div>`;
     }
     return h + `<div class="row"><button class="btn sm danger" data-act="sessDel" data-id="${esc(x.id)}">${svg('trash','i s')}Usuń trening</button></div>`;
   },
@@ -2647,7 +2644,6 @@ const SHEETS = {
     return sheetHead('Ustawienia') + `<h3 class="h3">Przerwy (dla nowych ćwiczeń)</h3>${stp('restSet', 'Między seriami')}${stp('restEx', 'Po ćwiczeniu')}
       <label class="toggle"><input type="checkbox" id="st-auto" data-bind="setting" data-f="autoRest" ${st.autoRest ? 'checked' : ''}>Uruchamiaj przerwę automatycznie po odhaczeniu serii</label>
       <label class="toggle"><input type="checkbox" id="st-sound" data-bind="setting" data-f="sound" ${st.sound ? 'checked' : ''}>Sygnał dźwiękowy na koniec przerwy</label>
-      <label class="toggle"><input type="checkbox" id="st-rir" data-bind="setting" data-f="rir" ${st.rir ? 'checked' : ''}>Po serii pytaj, ile powtórzeń zostało w zapasie</label>
       <div class="field"><label class="lbl" for="st-bar">Gryf do kalkulatora talerzy</label><select class="input" id="st-bar" data-bind="setting" data-f="bar">${[20, 15, 10].map(v => `<option value="${v}" ${+st.bar === v ? 'selected' : ''}>${v} kg</option>`).join('')}</select></div>
       <h3 class="h3">Zapis danych</h3>
       <p class="note">${store.mode === 'fire' ? `Plany i historia folderu „${esc(FOLDER ? FOLDER.name : '')}” zapisują się w internecie. Otworzysz je na każdym urządzeniu, wybierając ten sam folder.` : store.mode === 'cloud' ? 'Plany i historia zapisują się na twoim koncie claude.ai, więc widzisz je na telefonie i na komputerze.' : 'Plany i historia zapisują się w tej przeglądarce, na tym urządzeniu. Nie czyść danych witryny i co jakiś czas zrób kopię zapasową poniżej.'}</p>
@@ -2753,13 +2749,11 @@ function wCard(x, i, cur){
     else if (t) btn = running ? `<button class="chk run" data-act="stopWork" aria-label="Zatrzymaj serię">${svg('stop')}</button>` : `<button class="chk" data-act="startWork" data-i="${i}" data-j="${j}" aria-label="Start serii ${j + 1}">${svg('play')}</button>`;
     else btn = `<button class="chk" data-act="toggleSet" data-i="${i}" data-j="${j}" aria-pressed="false" aria-label="Odhacz serię ${j + 1}">${svg('check')}</button>`;
     const pv = last && last.sets[j], prevTxt = pv ? (last.mode === 'time' ? fmtN(pv.sec) + ' s' : (pv.kg ? fmtN(pv.kg) + '×' : '') + (pv.reps ?? 0)) : '';
-    const sub = s.done && s.rir != null ? `zapas ${s.rir >= 4 ? '4+' : s.rir}` : prevTxt ? 'ost. ' + prevTxt : '';
+    const sub = prevTxt ? 'ost. ' + prevTxt : '';
     h += `<div class="srow ${s.done ? 'done' : ''}"><span class="n">${j + 1}</span><span class="tgt"><span>${esc(tgtText(x, s))}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
       <input id="w-${x.key}-${j}-kg" inputmode="decimal" data-bind="wset" data-i="${i}" data-j="${j}" data-f="kg" value="${esc(fmtN(s.kg))}" placeholder="–" aria-label="Seria ${j + 1}: ciężar w kg">
       <input id="w-${x.key}-${j}-${f}" inputmode="numeric" data-bind="wset" data-i="${i}" data-j="${j}" data-f="${f}" value="${esc(s[f] ?? '')}" placeholder="${t ? 's' : 'powt.'}" aria-label="Seria ${j + 1}: ${t ? 'czas w sekundach' : 'powtórzenia'}">
       ${btn}</div>`;
-    if (S.settings.rir && !t && s.done && s.rir == null && ui.rirAsk === x.key + ':' + j)
-      h += `<div class="rir" role="group" aria-label="Ile powtórzeń zostało w zapasie po serii ${j + 1}"><span>Zapas:</span>${[0, 1, 2, 3, 4].map(v => `<button data-act="wRir" data-i="${i}" data-j="${j}" data-v="${v}">${v === 4 ? '4+' : v}</button>`).join('')}<button class="x" data-act="wRir" data-i="${i}" data-j="${j}" data-v="" aria-label="Pomiń">×</button></div>`;
   });
   h += `</div>${platesHTML(i)}<div class="wex-f"><button class="btn sm" data-act="wAddSet" data-i="${i}">${svg('plus','i s')}Seria</button><button class="btn sm" data-act="wDelSet" data-i="${i}" ${x.sets.length > 1 ? '' : 'disabled'}>Usuń serię</button>
     <span class="stepper">Przerwa<button class="iconbtn sm" data-act="wRest" data-i="${i}" data-d="-15" aria-label="Krótsza przerwa">−</button><b>${fmtRest(x.rest)}</b><button class="iconbtn sm" data-act="wRest" data-i="${i}" data-d="15" aria-label="Dłuższa przerwa">+</button></span></div></article>`;
@@ -2867,7 +2861,7 @@ function newWorkoutEx(exId){
 }
 function buildSession(){
   const ex = ACTIVE.ex.map(x => ({exId:x.exId, name:getEx(x.exId).name, mode:x.mode, ...(x.wnote ? {note:x.wnote} : {}),
-    sets:x.sets.filter(s => s.done).map(s => x.mode === 'time' ? {sec:s.sec ?? 0, kg:s.kg ?? null} : {reps:s.reps ?? 0, kg:s.kg ?? null, ...(s.rir != null ? {rir:s.rir} : {})})})).filter(x => x.sets.length);
+    sets:x.sets.filter(s => s.done).map(s => x.mode === 'time' ? {sec:s.sec ?? 0, kg:s.kg ?? null} : {reps:s.reps ?? 0, kg:s.kg ?? null})})).filter(x => x.sets.length);
   return {id:ACTIVE.id, date:new Date(ACTIVE.startedAt).toISOString(), dur:Math.round((Date.now() - ACTIVE.startedAt) / 1000),
     planId:ACTIVE.planId || null, planName:ACTIVE.planName || '', dayId:ACTIVE.dayId || null, dayName:ACTIVE.dayName || 'Trening', ex};
 }
@@ -3026,9 +3020,8 @@ const ACT = {
     s.done = !s.done;
     if (s.done){
       if (x.mode !== 'time' && s.reps == null && s.tReps != null) s.reps = s.tReps;
-      ui.rirAsk = x.mode !== 'time' ? x.key + ':' + j : null;
       afterSetDone(i);
-    } else { delete s.rir; if (ACTIVE.timer && ACTIVE.timer.kind === 'rest' && ACTIVE.timer.focus === i) ACTIVE.timer = null; }
+    } else if (ACTIVE.timer && ACTIVE.timer.kind === 'rest' && ACTIVE.timer.focus === i) ACTIVE.timer = null;
     saveActive(); renderWorkout();
   },
   startWork(el){
@@ -3043,7 +3036,6 @@ const ACT = {
   },
   wProg(el){ const x = ACTIVE.ex[+el.dataset.i], kg = +el.dataset.kg; x.sets.forEach(s => { if (!s.done) s.kg = kg; }); saveActive(); renderWorkout(); toast('Ustawiono ' + fmtN(kg) + ' kg w pozostałych seriach.'); },
   wNoteOpen(el){ const x = ACTIVE.ex[+el.dataset.i]; if (x.wnote == null) x.wnote = ''; ui.wNote = x.key; ui.wMenu = null; saveActive(); renderWorkout(); const ta = $(`#wex-${x.key} .wnote`); if (ta) ta.focus(); },
-  wRir(el){ const s = ACTIVE.ex[+el.dataset.i].sets[+el.dataset.j]; if (el.dataset.v !== '') s.rir = +el.dataset.v; ui.rirAsk = null; saveActive(); renderWorkout(); },
   wAddSet(el){ const x = ACTIVE.ex[+el.dataset.i]; const l = x.sets[x.sets.length - 1] || {}; x.sets.push({tReps:l.tReps ?? null, tKg:l.tKg ?? null, tSec:l.tSec ?? null, reps:l.reps ?? null, kg:l.kg ?? null, sec:l.sec ?? null, done:false}); saveActive(); renderWorkout(); },
   wDelSet(el){ const x = ACTIVE.ex[+el.dataset.i]; if (x.sets.length <= 1) return; let k = -1; for (let n = x.sets.length - 1; n >= 0; n--) if (!x.sets[n].done){ k = n; break; } x.sets.splice(k < 0 ? x.sets.length - 1 : k, 1); saveActive(); renderWorkout(); },
   wRest(el){ const x = ACTIVE.ex[+el.dataset.i]; x.rest = Math.max(0, Math.min(600, x.rest + +el.dataset.d)); saveActive(); renderWorkout(); },
