@@ -272,11 +272,22 @@ main{padding-block:2px 28px}
 .cmp{flex:none;font:700 13px var(--f-body);border-radius:99px;padding:3px 10px;background:var(--surface-2);color:var(--muted)}
 .cmp.up{background:var(--good-soft);color:var(--good)} .cmp.down{background:var(--bad-soft);color:var(--bad)}
 .cov{display:grid;gap:10px}
+.wk-freq{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.wk-freq .seg button{min-width:36px;padding:0 8px}
+.wk-tgt b{color:var(--ink)}
+.next{display:grid;gap:6px;padding:10px 0 4px}
+.next .lbl{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.next-b{display:flex;align-items:center;gap:10px;text-align:left;border:1px dashed var(--line);background:var(--surface-2);border-radius:10px;padding:8px 10px;color:var(--ink);cursor:pointer;font:inherit}
+.next-b>span{display:grid;min-width:0}
+.next-b b{font-size:14px;font-weight:600}
+.next-b small{font-size:12px;color:var(--muted)}
+.next-b .i{flex:none;color:var(--accent)}
 .cov-top{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center}
 .cov-list{display:grid;gap:6px}
 .cov-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .cov-row small{color:var(--muted);font-variant-numeric:tabular-nums}
-.cov-row .btn{max-width:100%}
+.cov-row .btn{max-width:100%;min-width:0;white-space:normal;text-align:left;height:auto;min-height:34px;line-height:1.25;padding-top:6px;padding-bottom:6px}
+.cov-row .wk-ex{max-width:100%;white-space:normal;text-align:left}
 .tpl{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:8px;background:var(--surface)}
 .tpl-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tpl-days{display:grid;gap:6px;font-size:13px;color:var(--muted)}
@@ -1709,7 +1720,7 @@ const EX = JSON.parse(document.getElementById('exdata').textContent);
 const EXMAP = new Map(EX.map(e => [e.id, e]));
 const GROUPS = ['Klatka piersiowa','Plecy','Barki','Biceps','Triceps','Czworogłowe uda','Dwugłowe uda','Pośladki i biodra','Łydki','Brzuch','Całe ciało','Cardio'];
 const EQUIPS = ['Sztanga','Sztanga łamana','Hantle','Kettlebell','Wyciąg','Maszyna','Masa ciała','Guma','Inne'];
-const DEF_SETTINGS = {restSet:90, restEx:120, autoRest:true, sound:true, bar:20, weekSets:10};
+const DEF_SETTINGS = {restSet:90, restEx:120, autoRest:true, sound:true, bar:20, perWeek:3};
 const TABS = [
   {id:'trening', label:'Trening', title:'Trening', icon:'<path d="M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11"/>'},
   {id:'plany', label:'Plany', title:'Plany', icon:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2H9zM9 10h6M9 14h6M9 18h3.5"/>'},
@@ -2060,7 +2071,7 @@ function vPlanEditor(p){
     <section class="day">`;
   if (!p.items.length) h += `<p class="muted small" style="margin:12px 0">Brak ćwiczeń w tym planie.</p>`;
   p.items.forEach((it, ii) => { h += vItem(p, it, ii); });
-  h += `<button class="btn block" data-act="pickForPlan" data-plan="${p.id}">${svg('plus','i s')}Dodaj ćwiczenia</button></section>
+  h += `${nextCard(p)}<button class="btn block" data-act="pickForPlan" data-plan="${p.id}">${svg('plus','i s')}Dodaj ćwiczenia</button></section>
     ${vOrderHint(p)}
     ${coverageCard(p)}
     <div class="row" style="margin-top:8px"><button class="btn sm" data-act="planMove" data-dir="-1" data-plan="${p.id}" ${pi === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej na liście</button><button class="btn sm" data-act="planMove" data-dir="1" data-plan="${p.id}" ${pi === S.plans.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button>
@@ -2553,6 +2564,13 @@ function calendarCard(){
 
 /* ---------- mapa tygodnia: co poćwiczyć, co odpuścić ----------
    Serie z ostatnich 7 dni: mięsień główny = 1 seria, pomocniczy = 0,5. Mięsień, który dostał ≥3 serie w ostatnich 48 h, odpoczywa. */
+// cel serii tygodniowo na partię zależnie od liczby treningów w tygodniu
+const WK_TARGET = {1:4, 2:6, 3:9, 4:12, 5:14, 6:16};
+const perWeek = () => Math.min(6, Math.max(1, +S.settings.perWeek || 3));
+const wkTarget = () => WK_TARGET[perWeek()];
+function freqSeg(){
+  return `<div class="wk-freq"><span>Treningów w tygodniu:</span><div class="seg" role="group" aria-label="Treningów w tygodniu">${[1, 2, 3, 4, 5, 6].map(v => `<button data-act="setFreq" data-v="${v}" aria-pressed="${perWeek() === v}">${v}</button>`).join('')}</div><span class="wk-tgt">cel: <b>${wkTarget()}</b> serii na partię</span></div>`;
+}
 const WK_GROUPS = [
   ['Klatka – góra', ['chestU']], ['Klatka – środek i dół', ['chestL']],
   ['Barki – przód', ['deltA']], ['Barki – bok', ['deltL']], ['Barki – tył', ['deltP']],
@@ -2564,7 +2582,7 @@ const WK_GROUPS = [
 ];
 const wkExpand = list => list.flatMap(k => (typeof MUSCLE_GROUPS !== 'undefined' && MUSCLE_GROUPS[k]) || [k]);
 function weekStats(){
-  const now = Date.now(), T = +S.settings.weekSets || 10;
+  const now = Date.now(), T = wkTarget();
   const g = WK_GROUPS.map(([name, keys, f]) => ({name, keys, target:Math.round(T * (f || 1)), sets:0, recent:0, lastAt:0}));
   for (const s of SESS){
     const t = new Date(s.date).getTime(), age = (now - t) / 36e5; if (age > 24 * 7) continue;
@@ -2594,7 +2612,7 @@ function weekCard(){
   const names = l => l.map(q => q.name).join(', ');
   return `<section class="card wk-card"><div class="wk-top"><h2 class="sec-h" style="margin:0">Mięśnie · 7 dni</h2><button class="btn sm" data-act="wkMore">Szczegóły</button></div>
     <div class="wk-row"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, wkHeat(g))}</figure>
-    <div class="wk-txt">${rest.length ? `<p><b class="wk-rec">Odpuść dziś:</b> ${esc(names(rest))}</p>` : ''}${todo.length ? `<p><b class="wk-todo">Możesz poćwiczyć:</b> ${esc(names(todo.slice(0, 5)))}${todo.length > 5 ? ` i ${todo.length - 5} więcej` : ''}</p>` : '<p><b class="wk-ok">Wszystkie partie mają cel tygodnia.</b></p>'}</div></div></section>`;
+    <div class="wk-txt"><p class="muted small">Cel: ${wkTarget()} serii na partię (${perWeek()} ${pl(perWeek(), 'trening', 'treningi', 'treningów')} w tygodniu)</p>${rest.length ? `<p><b class="wk-rec">Odpuść dziś:</b> ${esc(names(rest))}</p>` : ''}${todo.length ? `<p><b class="wk-todo">Możesz poćwiczyć:</b> ${esc(names(todo.slice(0, 5)))}${todo.length > 5 ? ` i ${todo.length - 5} więcej` : ''}</p>` : '<p><b class="wk-ok">Wszystkie partie mają cel tygodnia.</b></p>'}</div></div></section>`;
 }
 function vWeek(){
   const g = weekStats();
@@ -2613,8 +2631,8 @@ function vWeek(){
         <span class="bm3d-bar"><button class="btn sm" data-act="bmView" data-v="front">Przód</button><button class="btn sm" data-act="bmView" data-v="right">Bok</button><button class="btn sm" data-act="bmView" data-v="back">Tył</button></span>
         <span class="bm3d-hint">Przesuń palcem w bok, żeby obrócić · dwa palce przybliżają</span></span>
       <span class="bm-flat"${d3 ? ' hidden' : ''}>${flat}</span>${wkLegend}</figure>`;
-  return `${fig}
-    <p class="note" style="margin:0">Liczę serie z ostatnich 7 dni: mięsień główny w ćwiczeniu to 1 seria, pomocniczy pół. Cel (${+S.settings.weekSets || 10} serii) zmienisz w Ustawieniach. Partia, która w ostatnich 48 godzinach dostała co najmniej 3 serie, jeszcze odpoczywa.</p>
+  return `${freqSeg()}${fig}
+    <p class="note" style="margin:0">Liczę serie z ostatnich 7 dni: mięsień główny w ćwiczeniu to 1 seria, pomocniczy pół. Cel zależy od liczby treningów w tygodniu. Partia, która w ostatnich 48 godzinach dostała co najmniej 3 serie, jeszcze odpoczywa.</p>
     <div class="wk-list">${rows}</div>`;
 }
 
@@ -2641,21 +2659,50 @@ function planGroupSets(items){
   }
   return g;
 }
-function programGaps(){
-  const T = +S.settings.weekSets || 10;
-  return planGroupSets(S.plans.flatMap(p => p.items)).map(q => ({...q, target:Math.round(T * q.f)})).filter(q => q.sets < q.target).sort((a, b) => a.sets / a.target - b.sets / b.target);
-}
+function programFactor(){ const n = S.plans.filter(p => p.items.length).length; return n ? perWeek() / n : 1; }
+function programSets(){ const f = programFactor(); return planGroupSets(S.plans.flatMap(p => p.items)).map(q => ({...q, sets:Math.round(q.sets * f * 2) / 2, target:Math.round(wkTarget() * q.f)})); }
+function programGaps(){ return programSets().filter(q => q.sets < q.target).sort((a, b) => a.sets / a.target - b.sets / b.target); }
 function coverageCard(p){
   if (typeof BODYMAP === 'undefined' || !S.plans.some(q => q.items.length)) return '';
   const heat = {};
   if (p){ for (const q of planGroupSets(p.items)){ const c = q.sets >= 3 ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); } }
-  else { const T = +S.settings.weekSets || 10; for (const q of planGroupSets(S.plans.flatMap(x => x.items))){ const c = q.sets >= Math.round(T * (q.f || 1)) ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); } }
+  else { for (const q of programSets()){ const c = q.sets >= q.target ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); } }
   const gaps = programGaps().slice(0, 6);
   const sug = gaps.map(q => { const e = wkSuggest(q, 1)[0]; return e ? `<div class="cov-row"><span><b>${esc(q.name)}</b> <small>${fmtN(q.sets)} / ${q.target} serii</small></span>${p ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}${esc(e.name)}</button>` : `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`}</div>` : ''; }).join('');
   return `<section class="card cov"><h3 class="h3" style="margin:0">${p ? 'Mięśnie w tym planie' : 'Twój program: wszystkie plany razem'}</h3>
     <div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
-    <p class="muted small" style="margin:0">${p ? 'Ciemnozielone: co najmniej 3 serie w tym planie, jasne: mniej.' : 'Przy założeniu, że każdy plan robisz raz w tygodniu.'} Cel: ${+S.settings.weekSets || 10} serii tygodniowo na partię (zmienisz w Ustawieniach).</p></div>
+    <p class="muted small" style="margin:0">${p ? 'Ciemnozielone: co najmniej 3 serie w tym planie, jasne: mniej.' : (() => { const n = S.plans.filter(q => q.items.length).length, f = programFactor(); return `${n} ${pl(n, 'plan', 'plany', 'planów')} przy ${perWeek()} ${pl(perWeek(), 'treningu', 'treningach', 'treningach')} w tygodniu: każdy plan ${f === 1 ? 'raz' : 'średnio ' + fmtN(Math.round(f * 10) / 10) + ' raza'} w tygodniu.`; })()}</p></div>
+    ${freqSeg()}
     ${gaps.length ? `<p style="margin:0"><b>Mało pracują w całym programie:</b></p><div class="cov-list">${sug}</div>` : '<p style="margin:0"><b class="wk-ok">Każda partia ma tygodniowy cel w Twoich planach.</b></p>'}</section>`;
+}
+
+/* ---------- podpowiedź kolejnych ćwiczeń przy układaniu planu ----------
+   Plan na partie (np. klatka + triceps): brakujące części tych samych partii (góra klatki, głowa długa tricepsa…).
+   Plan całego ciała (4+ obszary): najsłabiej pokryte partie całego ciała. Pusty plan: podstawowe wielostawowe. */
+const WK_FAMILY = {'Klatka – góra':'klatka', 'Klatka – środek i dół':'klatka', 'Barki – przód':'barki', 'Barki – bok':'barki', 'Barki – tył':'barki',
+  'Najszerszy grzbietu':'plecy', 'Środek pleców':'plecy', 'Kaptury':'plecy', 'Prostowniki grzbietu':'plecy', 'Biceps':'biceps', 'Triceps':'triceps', 'Przedramiona':'biceps',
+  'Brzuch':'brzuch', 'Czworogłowe uda':'nogi', 'Dwugłowe uda':'nogi', 'Pośladki':'nogi', 'Przywodziciele':'nogi', 'Łydki':'nogi'};
+function planNext(p, n = 3){
+  const have = new Set(p.items.map(i => i.exId));
+  if (!p.items.length) return ['Barbell_Squat', 'Barbell_Bench_Press_-_Medium_Grip', 'Bent_Over_Barbell_Row'].map(id => ({e:getEx(id), why:'podstawa planu'}));
+  const g = planGroupSets(p.items);
+  const prim = new Set(); for (const it of p.items){ const P = new Set(wkExpand(exMuscles(getEx(it.exId)).p)); for (const q of g) if (q.keys.some(k => P.has(k))) prim.add(WK_FAMILY[q.name]); }
+  const fbw = prim.size >= 4;
+  let cand = g.filter(q => (fbw || prim.has(WK_FAMILY[q.name])) && q.f === 1);
+  if (!cand.length) cand = g.filter(q => prim.has(WK_FAMILY[q.name]));
+  cand.sort((a, b) => a.sets - b.sets);
+  const out = [];
+  for (const q of cand){
+    if (q.sets >= (fbw ? 3 : 4)) break;
+    const e = wkSuggest(q, 8).find(x => !have.has(x.id) && !out.some(o => o.e.id === x.id));
+    if (e) out.push({e, why:'na: ' + q.name.toLowerCase()});
+    if (out.length >= n) break;
+  }
+  return out;
+}
+function nextCard(p){
+  const list = planNext(p); if (!list.length) return '';
+  return `<div class="next"><span class="lbl">${p.items.length ? 'Propozycje następnych ćwiczeń' : 'Na początek'}</span>${list.map(({e, why}) => `<button class="next-b" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}<span><b>${esc(e.name)}</b><small>${esc(why)}</small></span></button>`).join('')}</div>`;
 }
 function vHistory(){
   let h = `<div class="seg" role="group" aria-label="Widok historii"><button data-act="hist" data-v="treningi" aria-pressed="${ui.hist === 'treningi'}">Treningi</button><button data-act="hist" data-v="tydzien" aria-pressed="${ui.hist === 'tydzien'}">Tydzień</button><button data-act="hist" data-v="postepy" aria-pressed="${ui.hist === 'postepy'}">Postępy</button></div>`;
@@ -2856,7 +2903,7 @@ const SHEETS = {
     return sheetHead('Ustawienia') + `<h3 class="h3">Przerwy (dla nowych ćwiczeń)</h3>${stp('restSet', 'Między seriami')}${stp('restEx', 'Po ćwiczeniu')}
       <label class="toggle"><input type="checkbox" id="st-auto" data-bind="setting" data-f="autoRest" ${st.autoRest ? 'checked' : ''}>Uruchamiaj przerwę automatycznie po odhaczeniu serii</label>
       <label class="toggle"><input type="checkbox" id="st-sound" data-bind="setting" data-f="sound" ${st.sound ? 'checked' : ''}>Sygnał dźwiękowy na koniec przerwy</label>
-      <div class="field"><label class="lbl" for="st-wk">Cel serii tygodniowo na partię (mapa tygodnia)</label><select class="input" id="st-wk" data-bind="setting" data-f="weekSets">${[[6, 'utrzymanie'], [10, 'ogólna forma'], [15, 'budowa mięśni'], [20, 'dużo, zaawansowani']].map(([v, l]) => `<option value="${v}" ${+st.weekSets === v ? 'selected' : ''}>${v} serii · ${l}</option>`).join('')}</select></div>
+      <div class="field"><label class="lbl" for="st-pw">Treningów w tygodniu (cel serii na mapie mięśni)</label><select class="input" id="st-pw" data-bind="setting" data-f="perWeek">${[1, 2, 3, 4, 5, 6].map(v => `<option value="${v}" ${perWeek() === v ? 'selected' : ''}>${v} · cel ${WK_TARGET[v]} serii na partię</option>`).join('')}</select></div>
       <div class="field"><label class="lbl" for="st-bar">Gryf do kalkulatora talerzy</label><select class="input" id="st-bar" data-bind="setting" data-f="bar">${[20, 15, 10].map(v => `<option value="${v}" ${+st.bar === v ? 'selected' : ''}>${v} kg</option>`).join('')}</select></div>
       <h3 class="h3">Zapis danych</h3>
       <p class="note">${store.mode === 'fire' ? `Plany i historia folderu „${esc(FOLDER ? FOLDER.name : '')}” zapisują się w internecie. Otworzysz je na każdym urządzeniu, wybierając ten sam folder.` : store.mode === 'cloud' ? 'Plany i historia zapisują się na twoim koncie claude.ai, więc widzisz je na telefonie i na komputerze.' : 'Plany i historia zapisują się w tej przeglądarce, na tym urządzeniu. Nie czyść danych witryny i co jakiś czas zrób kopię zapasową poniżej.'}</p>
@@ -3186,6 +3233,7 @@ const ACT = {
   psetDel(el){ const {it} = itemRef(el); if (it.sets.length <= 1){ toast('Ćwiczenie musi mieć co najmniej jedną serię.'); return; } it.sets.splice(+el.dataset.i, 1); commit(); },
   restStep(el){ const {it} = itemRef(el); const f = el.dataset.f; it[f] = Math.max(0, Math.min(600, (it[f] ?? 0) + +el.dataset.d)); commit(); },
   itemMove(el){ const {p, it} = itemRef(el); const i = p.items.indexOf(it); ssUnlink(p.items, i); move(p.items, i, +el.dataset.dir); commit(); },
+  setFreq(el){ S.settings.perWeek = +el.dataset.v; persist(); render(); },
   covAdd(el){ const p = planById(el.dataset.plan); if (!p) return; p.items.push(newItem(el.dataset.id)); commit(); toast('Dodano do planu: ' + getEx(el.dataset.id).name); },
   itemSS(el){ const {p, it} = itemRef(el); it.ssNext = !it.ssNext; commit(); },
   orderApply(el){ const p = planById(el.dataset.plan); if (!p) return; p.items = suggestOrder(p).sorted.map(x => x.it); p.items.forEach(x => x.ssNext = false); delete p.orderOk; commit(); toast('Ułożono ćwiczenia w sugerowanej kolejności'); },
