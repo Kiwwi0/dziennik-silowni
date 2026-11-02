@@ -42,8 +42,7 @@ a{color:var(--accent)}
 <body>
 <div class="wrap">
   <div><span class="brand">Dziennik siłowni · próbka</span><h1>Filmy z YouTube w aplikacji</h1></div>
-  <p class="lead">Film odtwarza się tutaj, bez dźwięku i w pętli, tylko fragment z samym ćwiczeniem. Suwakiem przewijasz ruch, przyciskami zwalniasz tempo. Dźwięk włączysz przyciskiem, a pełny film otworzysz na YouTube.</p>
-  <p class="lead" style="font-size:13px;color:var(--muted)">Dwie serie do porównania: <b>Atlas Ćwiczeń SFD</b> (pierwsze cztery) i <b>Atlas ćwiczeń Michała Wrzoska</b> (ostatnie trzy). Wszystkie po polsku.</p>
+  <p class="lead">Filmy z serii <b>Atlas ćwiczeń – Michał Wrzosek</b> (Olimp), po polsku. Odtwarzają się tutaj, bez dźwięku i w pętli. Suwakiem przewijasz ruch, przyciskami zwalniasz tempo. Dźwięk włączysz przyciskiem, a pełny film otworzysz na YouTube.</p>
   <div class="list" id="list"></div>
   <p class="lead">To próbka. Wróć do <a href="./">Dziennika siłowni</a>.</p>
 </div>
@@ -51,13 +50,13 @@ a{color:var(--accent)}
 'use strict';
 // s, e: początek i koniec fragmentu z samym ćwiczeniem (sekundy); e = 0 → do końca filmu
 const CLIPS = [
-  {v:'9n4lgCrxr0I', name:'Wyciskanie sztangi na ławce płaskiej', src:'Atlas Ćwiczeń SFD', s:0, e:0},
-  {v:'hgsvs9ns3CM', name:'Przysiad ze sztangą na plecach', src:'Atlas Ćwiczeń SFD', s:0, e:0},
-  {v:'415ZedAmmGg', name:'Uginanie ramion ze sztangą stojąc', src:'Atlas Ćwiczeń SFD', s:0, e:0},
-  {v:'egeO6WJR8zI', name:'Unoszenie hantli bokiem', src:'Atlas Ćwiczeń SFD · wersja siedząc', s:0, e:0},
-  {v:'_WP24aEFjFU', name:'Martwy ciąg klasyczny', src:'Atlas ćwiczeń · Michał Wrzosek', s:0, e:0},
-  {v:'8igLvt5GZNc', name:'Ściąganie drążka wyciągu górnego nachwytem', src:'Atlas ćwiczeń · Michał Wrzosek', s:0, e:0},
-  {v:'hLtA-VuZMus', name:'Pompki na poręczach', src:'Atlas ćwiczeń · Michał Wrzosek', s:0, e:0},
+  {v:'TXdnlwrBaT4', name:'Wyciskanie sztangi na ławce płaskiej', s:0, e:0},
+  {v:'0wChHrrc4rg', name:'Przysiad ze sztangą na plecach', s:0, e:0},
+  {v:'_WP24aEFjFU', name:'Martwy ciąg klasyczny', s:0, e:0},
+  {v:'8igLvt5GZNc', name:'Ściąganie drążka wyciągu górnego nachwytem', s:0, e:0},
+  {v:'dxC3S2ixd64', name:'Unoszenie hantli bokiem', s:0, e:0},
+  {v:'pgI_g0ZGrXg', name:'Uginanie ramion na wyciągu dolnym', s:0, e:0},
+  {v:'hLtA-VuZMus', name:'Pompki na poręczach', s:0, e:0},
 ];
 const YT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#FF0033" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12c0 1.6.2 3.2.5 4.8a3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1c.3-1.6.5-3.2.5-4.8s-.2-3.2-.5-4.8Z"/><path fill="#fff" d="M9.75 15.5 15.5 12 9.75 8.5v7Z"/></svg>';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -68,7 +67,7 @@ let apiReady = false;
 function buildCard(c, i){
   const el = document.createElement('section'); el.className = 'card';
   const watch = `https://www.youtube.com/watch?v=${c.v}${c.s ? '&t=' + Math.floor(c.s) + 's' : ''}`;
-  el.innerHTML = `<h2>${c.name}</h2><p class="note">${c.src}</p>
+  el.innerHTML = `<h2>${c.name}</h2>
     <div class="vid"><div class="ph" style="background-image:url(https://i.ytimg.com/vi/${c.v}/hqdefault.jpg)"></div><div id="yt${i}"></div><div class="shield" title="Odtwórz / zatrzymaj"></div></div>
     <div class="ctl"><button class="play" aria-label="Odtwórz" disabled>▶</button><input type="range" min="0" max="1000" step="1" value="0" aria-label="Moment ruchu" disabled><span class="time">0,0 s</span></div>
     <div class="row"><span class="lbl">Tempo:</span><button data-r="0.25">¼×</button><button data-r="0.5">½×</button><button data-r="1" aria-pressed="true">1×</button><span class="sp"></span><button class="snd" aria-pressed="false">Dźwięk</button><a class="btn yt" href="${watch}" target="_blank" rel="noopener">${YT_ICON}YouTube</a></div>`;
