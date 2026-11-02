@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Próbka filmów YouTube</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap">
+<style>
+:root{--bg:#E8EBEE;--surface:#FFFFFF;--surface-2:#F2F4F6;--ink:#13171B;--ink-2:#434C55;--muted:#646D76;--line:#D2D7DC;--accent:#1D4ED8;
+  --f-display:"Big Shoulders Display","Arial Narrow",sans-serif;--f-body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+@media (prefers-color-scheme: dark){:root{--bg:#0F1214;--surface:#171B1F;--surface-2:#1F2429;--ink:#ECEFF2;--ink-2:#BCC4CB;--muted:#8C969F;--line:#2B3238;--accent:#7D9DFF;color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:720px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:grid;gap:16px}
+.brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--f-display);font-weight:800;font-size:34px;line-height:.95;text-transform:uppercase;margin:2px 0 0}
+h2{font-family:var(--f-display);font-weight:800;font-size:22px;line-height:1;text-transform:uppercase;margin:0;padding:12px 14px 0}
+.lead{margin:0;color:var(--ink-2)}
+.list{display:grid;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:grid;gap:8px;padding-bottom:12px}
+.note{margin:0;padding:0 14px;font-size:13px;color:var(--muted)}
+.vid{position:relative;width:100%;aspect-ratio:16/9;background:#000;overflow:hidden}
+.vid iframe,.vid .ph{position:absolute;inset:0;width:100%;height:100%;border:0}
+.vid .ph{background:#000 center/cover no-repeat}
+.vid .shield{position:absolute;inset:0;background:transparent;cursor:pointer}
+.vid .msg{position:absolute;inset:auto 0 0 0;padding:10px 12px;background:rgba(0,0,0,.72);color:#fff;font-size:13px}
+.ctl{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:0 12px}
+input[type=range]{width:100%;accent-color:var(--accent);height:34px;margin:0}
+button,.btn{min-height:40px;min-width:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--f-body);display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;cursor:pointer}
+button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:disabled{opacity:.45}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 12px}
+.row .sp{flex:1}
+.lbl{font-size:13px;color:var(--muted)}
+.time{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+a{color:var(--accent)}
+.yt svg{width:18px;height:18px;flex:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><span class="brand">Dziennik siłowni · próbka</span><h1>Filmy z YouTube w aplikacji</h1></div>
+  <p class="lead">Film odtwarza się tutaj, bez dźwięku i w pętli, tylko fragment z samym ćwiczeniem. Suwakiem przewijasz ruch, przyciskami zwalniasz tempo. Dźwięk włączysz przyciskiem, a pełny film otworzysz na YouTube.</p>
+  <p class="lead" style="font-size:13px;color:var(--muted)">Dwie serie do porównania: <b>Atlas Ćwiczeń SFD</b> (pierwsze cztery) i <b>Atlas ćwiczeń Michała Wrzoska</b> (ostatnie trzy). Wszystkie po polsku.</p>
+  <div class="list" id="list"></div>
+  <p class="lead">To próbka. Wróć do <a href="./">Dziennika siłowni</a>.</p>
+</div>
+<script>
+'use strict';
+// s, e: początek i koniec fragmentu z samym ćwiczeniem (sekundy); e = 0 → do końca filmu
+const CLIPS = [
+  {v:'9n4lgCrxr0I', name:'Wyciskanie sztangi na ławce płaskiej', src:'Atlas Ćwiczeń SFD', s:0, e:0},
+  {v:'hgsvs9ns3CM', name:'Przysiad ze sztangą na plecach', src:'Atlas Ćwiczeń SFD', s:0, e:0},
+  {v:'415ZedAmmGg', name:'Uginanie ramion ze sztangą stojąc', src:'Atlas Ćwiczeń SFD', s:0, e:0},
+  {v:'egeO6WJR8zI', name:'Unoszenie hantli bokiem', src:'Atlas Ćwiczeń SFD · wersja siedząc', s:0, e:0},
+  {v:'_WP24aEFjFU', name:'Martwy ciąg klasyczny', src:'Atlas ćwiczeń · Michał Wrzosek', s:0, e:0},
+  {v:'8igLvt5GZNc', name:'Ściąganie drążka wyciągu górnego nachwytem', src:'Atlas ćwiczeń · Michał Wrzosek', s:0, e:0},
+  {v:'hLtA-VuZMus', name:'Pompki na poręczach', src:'Atlas ćwiczeń · Michał Wrzosek', s:0, e:0},
+];
+const YT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#FF0033" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12c0 1.6.2 3.2.5 4.8a3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1c.3-1.6.5-3.2.5-4.8s-.2-3.2-.5-4.8Z"/><path fill="#fff" d="M9.75 15.5 15.5 12 9.75 8.5v7Z"/></svg>';
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fmt = t => (Math.max(0, t)).toFixed(1).replace('.', ',') + ' s';
+const cards = [];
+let apiReady = false;
+
+function buildCard(c, i){
+  const el = document.createElement('section'); el.className = 'card';
+  const watch = `https://www.youtube.com/watch?v=${c.v}${c.s ? '&t=' + Math.floor(c.s) + 's' : ''}`;
+  el.innerHTML = `<h2>${c.name}</h2><p class="note">${c.src}</p>
+    <div class="vid"><div class="ph" style="background-image:url(https://i.ytimg.com/vi/${c.v}/hqdefault.jpg)"></div><div id="yt${i}"></div><div class="shield" title="Odtwórz / zatrzymaj"></div></div>
+    <div class="ctl"><button class="play" aria-label="Odtwórz" disabled>▶</button><input type="range" min="0" max="1000" step="1" value="0" aria-label="Moment ruchu" disabled><span class="time">0,0 s</span></div>
+    <div class="row"><span class="lbl">Tempo:</span><button data-r="0.25">¼×</button><button data-r="0.5">½×</button><button data-r="1" aria-pressed="true">1×</button><span class="sp"></span><button class="snd" aria-pressed="false">Dźwięk</button><a class="btn yt" href="${watch}" target="_blank" rel="noopener">${YT_ICON}YouTube</a></div>`;
+  return {c, i, el, p:null, ready:false, dur:0, want:false, dragging:false,
+    vid: el.querySelector('.vid'), ph: el.querySelector('.ph'), shield: el.querySelector('.shield'),
+    b: el.querySelector('.play'), r: el.querySelector('input'), t: el.querySelector('.time'), snd: el.querySelector('.snd'), watch};
+}
+
+function seg(k){ const s = k.c.s || 0, e = (k.c.e && k.c.e > s) ? Math.min(k.c.e, k.dur || k.c.e) : (k.dur || 0); return [s, e]; }
+
+function mount(k){
+  if (k.p || !apiReady) return;
+  k.p = new YT.Player('yt' + k.i, {
+    host: 'https://www.youtube-nocookie.com',
+    videoId: k.c.v,
+    playerVars: {start: Math.floor(k.c.s || 0), autoplay: 0, mute: 1, controls: 0, playsinline: 1, rel: 0, iv_load_policy: 3, disablekb: 1, fs: 0, origin: location.origin},
+    events: {
+      onReady: () => {
+        k.ready = true; k.dur = k.p.getDuration() || 0;
+        k.p.mute(); k.b.disabled = false; k.r.disabled = false;
+        if (k.want && !reduced) k.p.playVideo();
+      },
+      onStateChange: ev => {
+        const S = YT.PlayerState;
+        if (ev.data === S.PLAYING){ k.ph.hidden = true; if (!k.dur) k.dur = k.p.getDuration() || 0; }
+        if (ev.data === S.ENDED){ k.p.seekTo(seg(k)[0], true); k.p.playVideo(); }
+        const on = ev.data === S.PLAYING || ev.data === S.BUFFERING;
+        k.b.textContent = on ? '❚❚' : '▶'; k.b.setAttribute('aria-label', on ? 'Zatrzymaj' : 'Odtwórz');
+      },
+      onError: ev => {
+        k.ready = false; k.b.disabled = true; k.r.disabled = true;
+        const why = (ev.data === 101 || ev.data === 150) ? 'Autor tego filmu nie pozwala odtwarzać go poza YouTube.' : 'Nie udało się wczytać filmu.';
+        k.vid.innerHTML = `<a href="${k.watch}" target="_blank" rel="noopener" class="ph" style="background-image:url(https://i.ytimg.com/vi/${k.c.v}/hqdefault.jpg)"></a><div class="msg">${why} Dotknij, żeby otworzyć na YouTube.</div>`;
+      },
+    },
+  });
+}
+
+function wire(k){
+  const toggle = () => { if (!k.ready) return; const st = k.p.getPlayerState(); (st === 1 || st === 3) ? k.p.pauseVideo() : k.p.playVideo(); };
+  k.b.onclick = toggle; k.shield.onclick = toggle;
+  const seekTo = (final) => {
+    if (!k.ready) return;
+    const [s, e] = seg(k); if (!(e > s)) return;
+    const t = s + (e - s) * k.r.value / 1000;
+    k.p.seekTo(t, final); k.t.textContent = fmt(t - s);
+  };
+  k.r.addEventListener('pointerdown', () => { k.dragging = true; if (k.ready) k.p.pauseVideo(); });
+  k.r.addEventListener('input', () => { k.dragging = true; if (k.ready) k.p.pauseVideo(); seekTo(false); });
+  k.r.addEventListener('change', () => { seekTo(true); k.dragging = false; });
+  k.el.querySelectorAll('[data-r]').forEach(x => x.onclick = () => {
+    if (!k.ready) return;
+    k.p.setPlaybackRate(+x.dataset.r);
+    k.el.querySelectorAll('[data-r]').forEach(y => y.setAttribute('aria-pressed', y === x));
+  });
+  k.snd.onclick = () => {
+    if (!k.ready) return;
+    const on = k.snd.getAttribute('aria-pressed') !== 'true';
+    on ? k.p.unMute() : k.p.mute();
+    k.snd.setAttribute('aria-pressed', on);
+    if (on) k.p.playVideo();
+  };
+}
+
+// pętla fragmentu + suwak nadąża za filmem
+function tick(){
+  for (const k of cards){
+    if (!k.ready || k.dragging) continue;
+    const t = k.p.getCurrentTime ? k.p.getCurrentTime() : 0;
+    const [s, e] = seg(k);
+    if (e > s){
+      if (k.p.getPlayerState() === 1 && (t >= e - 0.08 || t < s - 0.5)) k.p.seekTo(s, true);
+      k.r.value = Math.round(Math.min(1, Math.max(0, (t - s) / (e - s))) * 1000);
+      k.t.textContent = fmt(t - s);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+const list = document.getElementById('list');
+CLIPS.forEach((c, i) => { const k = buildCard(c, i); cards.push(k); list.appendChild(k.el); wire(k); });
+
+const io = new IntersectionObserver(es => es.forEach(en => {
+  const k = cards.find(x => x.el === en.target); if (!k) return;
+  k.want = en.isIntersecting;
+  if (en.isIntersecting){ mount(k); if (k.ready && !reduced) k.p.playVideo(); }
+  else if (k.ready) k.p.pauseVideo();
+}), {threshold: 0.5});
+
+window.onYouTubeIframeAPIReady = () => { apiReady = true; cards.forEach(k => io.observe(k.el)); requestAnimationFrame(tick); };
+const tag = document.createElement('script'); tag.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(tag);
+</script>
+</body>
+</html>
