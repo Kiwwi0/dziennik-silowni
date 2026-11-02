@@ -1,5 +1,5 @@
 // Pozwala korzystać z aplikacji bez internetu (np. na siłowni).
-const VERSION = 'dziennik-e305a10cf7';
+const VERSION = 'dziennik-ce55a72847';
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const IMAGES = [];
 
@@ -30,7 +30,7 @@ self.addEventListener('fetch', (event) => {
       event.respondWith((async () => {
         try {
           const res = await fetch(req);
-          if (res.ok) { const cache = await caches.open(VERSION); cache.put('./index.html', res.clone()); }
+          if (res.ok && /\/(index\.html)?$/.test(url.pathname)) { const cache = await caches.open(VERSION); cache.put('./index.html', res.clone()); }
           return res;
         } catch (e) {
           return (await caches.match('./index.html')) || Response.error();

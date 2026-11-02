@@ -863,7 +863,9 @@ return {
     const label = ph.hold && ph.k === 0 && ex.phHold ? ex.phHold : (ex.ph || [])[ex.cyc ? 0 : ph.k] || '';
     return {label, pct:Math.round(ph.t * 100), cyc:!!ex.cyc}; },
   dur:id => (DEFS.get(id) || {}).dur || 4.8,
-  _def:def, _solve:p => solve(expand(p)), _B:B, _v:{add, sub, mul, unit, lerpA, cos, sin, len, cross, dot},
+  _def:def, _solve:p => solve(expand(p)), _B:B,
+  _ex:id => DEFS.get(id), _kit:makeKit, _ease:ease, _phase:(id, u) => phaseOf(DEFS.get(id), u),
+  _P:(id, t) => { const ex = DEFS.get(id); return solve(compile(ex).pose(t)); }, _v:{add, sub, mul, unit, lerpA, cos, sin, len, cross, dot},
 };
 })();
 
@@ -1173,7 +1175,7 @@ def('Tricep_Dumbbell_Kickback', {
 const BACKBAR = {ik:[-5, 3, 32], rel:'u', pole:[-0.5, -1, 0.4], prel:'u'};
 def('Barbell_Squat', {
   hl:['thigh', 'glute'], view:{yaw:22}, ph:SQ, trail:'bar',
-  f:[{...STAND, torso:86, arms:BACKBAR}, {torso:48, legs:{a:4, a2:-122, b:10}}], props:(P, t, K) => K.barbell(P)});
+  f:[{...STAND, torso:86, legs:{a:-90, a2:-90, b:6, fb:16}, arms:BACKBAR}, {torso:48, legs:{a:4, a2:-122, b:16, fb:16}}], props:(P, t, K) => K.barbell(P)});
 def('Front_Barbell_Squat', {
   hl:['thigh', 'glute'], view:{yaw:22}, ph:SQ, trail:'bar',
   f:[{...STAND, torso:88, arms:{ik:[10, 3, 20], rel:'u', pole:[1, 0.1, 0.35], prel:'u'}}, {torso:68, legs:{a:5, a2:-118, b:12}}], props:(P, t, K) => K.barbell(P)});
