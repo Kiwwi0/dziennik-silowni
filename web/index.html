@@ -255,6 +255,10 @@ main{padding-block:2px 28px}
 .wex.alldone .wex-h .nm{color:var(--muted)}
 .last{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .cal{display:grid;gap:8px}
+.tpl{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:8px;background:var(--surface)}
+.tpl-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tpl-days{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.tpl-days b{color:var(--ink);font-weight:600;margin-right:6px}
 .bodymap.wk .m.h-rec{fill:var(--hl)} .bodymap.wk .m.h-ok{fill:var(--good)} .bodymap.wk .m.h-low{fill:var(--wk-low)}
 .wk-card{display:grid;gap:10px}
 .wk-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -1967,7 +1971,7 @@ function vHome(){
   } else if (!S.plans.length){
     h += `<div class="empty"><h2>Zacznij od planu</h2>
       <p>Plan to lista ćwiczeń z seriami, powtórzeniami i ciężarem, np. „Plan A” i „Plan B”. Potem tutaj uruchamiasz trening z timerem przerw.</p>
-      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Utwórz plan</button><button class="btn" data-act="loadSample">Wczytaj przykładowe plany</button></div></div>`;
+      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Utwórz plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div></div>`;
   } else {
     if (SESS.length) h += weekCard();
     h += `<h2 class="sec-h">Wybierz plan</h2><section class="plan">`;
@@ -2012,13 +2016,13 @@ function vPlans(){
   let h = '';
   if (!S.plans.length){
     h += `<div class="empty"><h2>Brak planów</h2><p>Utwórz własny plan albo wczytaj dwa przykładowe plany całego ciała (FBW A i FBW B) i dopasuj je do siebie.</p>
-      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="loadSample">Wczytaj przykładowe plany</button></div></div>`;
+      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div></div>`;
   } else {
     h += `<section class="plan">`;
     for (const p of S.plans){
       h += `<button class="dayrow plan-link" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div></div>${svg('chev','i s chev')}</button>`;
     }
-    h += `</section><div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="loadSample">Dodaj przykładowe plany</button></div>`;
+    h += `</section><div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div>`;
   }
   return `<div class="wrap stack">${h}</div>`;
 }
@@ -2068,6 +2072,37 @@ function newItem(exId){
   const ex = getEx(exId); const t = ex.mode === 'time';
   return {id:uid(), exId, mode:t ? 'time' : 'reps', rest:S.settings.restSet, restAfter:S.settings.restEx, note:'',
     sets:Array.from({length:3}, () => t ? {sec:30, kg:null} : {reps:10, kg:null})};
+}
+
+/* ---------- gotowe plany ----------
+   [id ćwiczenia, serie, powtórzenia] albo [id, serie, null, sekundy]. Ciężary puste – wpisujesz swoje. */
+const TEMPLATES = [
+  {g:'FBW (całe ciało)', id:'fbw2', name:'FBW · 2 dni w tygodniu', desc:'Dwa treningi całego ciała na zmianę: A i B. Dobry start i przy małej ilości czasu.', days:[
+    ['FBW A', [['Barbell_Squat',4,8], ['Barbell_Bench_Press_-_Medium_Grip',4,8], ['Bent_Over_Barbell_Row',4,8], ['Seated_Dumbbell_Press',3,10], ['Barbell_Curl',3,10], ['Plank',3,null,45]]],
+    ['FBW B', [['Barbell_Deadlift',3,5], ['Incline_Dumbbell_Press',3,10], ['Wide-Grip_Lat_Pulldown',3,10], ['Dumbbell_Lunges',3,10], ['Side_Lateral_Raise',3,12], ['Triceps_Pushdown',3,12], ['Hanging_Leg_Raise',3,12]]]]},
+  {g:'FBW (całe ciało)', id:'fbw3', name:'FBW · 3 dni w tygodniu', desc:'Trzy różne treningi całego ciała: A, B, C, np. pon / śr / pt.', days:[
+    ['FBW A', [['Barbell_Squat',4,8], ['Barbell_Bench_Press_-_Medium_Grip',4,8], ['Bent_Over_Barbell_Row',4,8], ['Side_Lateral_Raise',3,12], ['Triceps_Pushdown',3,12], ['Plank',3,null,45]]],
+    ['FBW B', [['Romanian_Deadlift',4,8], ['Standing_Military_Press',4,8], ['Wide-Grip_Lat_Pulldown',4,10], ['Dumbbell_Lunges',3,10], ['Face_Pull',3,15], ['Barbell_Curl',3,10]]],
+    ['FBW C', [['Leg_Press',4,10], ['Incline_Dumbbell_Press',4,10], ['Seated_Cable_Rows',4,10], ['Barbell_Hip_Thrust',3,10], ['Hammer_Curls',3,12], ['Hanging_Leg_Raise',3,12], ['Standing_Calf_Raises',3,15]]]]},
+  {g:'Na partie', id:'split3', name:'Partie · 3 dni', desc:'Klatka z tricepsem, plecy z bicepsem, nogi z barkami.', days:[
+    ['Klatka i triceps', [['Barbell_Bench_Press_-_Medium_Grip',4,8], ['Incline_Dumbbell_Press',3,10], ['Cable_Crossover',3,12], ['Dips_-_Triceps_Version',3,10], ['Triceps_Pushdown_-_Rope_Attachment',3,12], ['Cable_Rope_Overhead_Triceps_Extension',3,12]]],
+    ['Plecy i biceps', [['Wide-Grip_Lat_Pulldown',4,10], ['Bent_Over_Barbell_Row',4,8], ['Seated_Cable_Rows',3,10], ['Face_Pull',3,15], ['Barbell_Curl',3,10], ['Hammer_Curls',3,12]]],
+    ['Nogi i barki', [['Barbell_Squat',4,8], ['Romanian_Deadlift',3,10], ['Leg_Extensions',3,12], ['Lying_Leg_Curls',3,12], ['Standing_Military_Press',3,8], ['Side_Lateral_Raise',3,12], ['Standing_Calf_Raises',3,15]]]]},
+  {g:'Na partie', id:'split4', name:'Partie · 4 dni', desc:'Klatka z tricepsem, plecy z bicepsem, nogi, barki z brzuchem.', days:[
+    ['Klatka i triceps', [['Barbell_Bench_Press_-_Medium_Grip',4,8], ['Incline_Dumbbell_Press',3,10], ['Cable_Crossover',3,12], ['Dips_-_Triceps_Version',3,10], ['Triceps_Pushdown_-_Rope_Attachment',3,12], ['Cable_Rope_Overhead_Triceps_Extension',3,12]]],
+    ['Plecy i biceps', [['Wide-Grip_Lat_Pulldown',4,10], ['Bent_Over_Barbell_Row',4,8], ['Seated_Cable_Rows',3,10], ['Hyperextensions_Back_Extensions',3,12], ['Barbell_Curl',3,10], ['Hammer_Curls',3,12]]],
+    ['Nogi', [['Barbell_Squat',4,8], ['Romanian_Deadlift',3,10], ['Leg_Press',3,12], ['Leg_Extensions',3,12], ['Lying_Leg_Curls',3,12], ['Standing_Calf_Raises',4,15]]],
+    ['Barki i brzuch', [['Standing_Military_Press',4,8], ['Side_Lateral_Raise',4,12], ['Reverse_Flyes',3,15], ['Barbell_Shrug',3,12], ['Hanging_Leg_Raise',3,12], ['Cable_Crunch',3,15], ['Plank',3,null,45]]]]},
+  {g:'Na partie', id:'split5', name:'Partie · 5 dni', desc:'Każdy dzień jedna partia: klatka, plecy, nogi, barki, ręce.', days:[
+    ['Klatka', [['Barbell_Bench_Press_-_Medium_Grip',4,8], ['Incline_Dumbbell_Press',3,10], ['Dumbbell_Flyes',3,12], ['Cable_Crossover',3,12], ['Dips_-_Chest_Version',3,10]]],
+    ['Plecy', [['Pullups',4,8], ['Bent_Over_Barbell_Row',4,8], ['One-Arm_Dumbbell_Row',3,10], ['Seated_Cable_Rows',3,10], ['Hyperextensions_Back_Extensions',3,12]]],
+    ['Nogi', [['Barbell_Squat',4,8], ['Romanian_Deadlift',3,10], ['Leg_Press',3,12], ['Leg_Extensions',3,12], ['Lying_Leg_Curls',3,12], ['Standing_Calf_Raises',4,15]]],
+    ['Barki', [['Standing_Military_Press',4,8], ['Seated_Dumbbell_Press',3,10], ['Side_Lateral_Raise',4,12], ['Reverse_Flyes',3,15], ['Face_Pull',3,15], ['Barbell_Shrug',3,12]]],
+    ['Ręce', [['Barbell_Curl',3,10], ['Close-Grip_Barbell_Bench_Press',3,8], ['Incline_Dumbbell_Curl',3,12], ['EZ-Bar_Skullcrusher',3,10], ['Hammer_Curls',3,12], ['Triceps_Pushdown_-_Rope_Attachment',3,12]]]]},
+];
+function templatePlans(t){
+  return t.days.map(([day, items]) => ({id:uid(), name:(t.id.startsWith('fbw') ? day : t.name.replace(' · ', ' ') + ' · ' + day),
+    items:items.filter(([id]) => EXMAP.has(id)).map(([id, n, reps, sec]) => ({...newItem(id), mode:sec ? 'time' : 'reps', sets:Array.from({length:n}, () => sec ? {sec, kg:null} : {reps, kg:null})}))}));
 }
 function samplePlans(){
   const mk = (exId, n, reps, kg, sec) => ({...newItem(exId), sets:Array.from({length:n}, () => sec ? {sec, kg:null} : {reps, kg})});
@@ -2684,6 +2719,16 @@ const SHEETS = {
     if (!s.noAdd) h += `<div class="sheet-f"><button class="btn primary" data-act="exAddToPlan" data-id="${esc(e.id)}">${svg('plus','i s')}Dodaj do planu</button></div>`;
     return h;
   },
+  templates(){
+    let h = sheetHead('Gotowe plany') + `<p class="muted" style="margin:0">Wybierz zestaw. Dodam go do Twoich planów, a ciężary i ćwiczenia zmienisz potem w edycji planu.</p>`;
+    let g = '';
+    for (const t of TEMPLATES){
+      if (t.g !== g){ g = t.g; h += `<h3 class="h3">${esc(g)}</h3>`; }
+      h += `<div class="tpl"><div class="tpl-h"><b>${esc(t.name)}</b><button class="btn sm primary" data-act="tplAdd" data-id="${t.id}">${svg('plus','i s')}Dodaj</button></div><p class="muted small" style="margin:0">${esc(t.desc)}</p>
+        <div class="tpl-days">${t.days.map(([d, items]) => `<div><b>${esc(d)}</b><span>${items.filter(([id]) => EXMAP.has(id)).map(([id]) => esc(getEx(id).name)).join(' · ')}</span></div>`).join('')}</div></div>`;
+    }
+    return h;
+  },
   addToPlan(s){
     const e = getEx(s.id);
     let h = sheetHead('Dodaj do planu') + `<p class="muted" style="margin:0">${esc(e.name)} trafi na koniec wybranego planu z 3 seriami. Szczegóły zmienisz w edycji planu.</p>`;
@@ -2997,6 +3042,9 @@ const ACT = {
   confirmOk(){ const s = topSheet(); sheets.pop(); s.run(); renderSheet(); },
   /* plany */
   newPlan(){ const p = {id:uid(), name:nextPlanName(), items:[]}; S.plans.push(p); ui.planId = p.id; ui.openItem = null; location.hash = 'plany'; commit(); setTimeout(() => $('#pn-' + p.id)?.select(), 50); },
+  openTemplates(){ openSheet({type:'templates'}); },
+  tplAdd(el){ const t = TEMPLATES.find(q => q.id === el.dataset.id); if (!t) return; const ps = templatePlans(t); S.plans.push(...ps); commit(); sheets.length = 0; renderSheet(); ui.planId = null;
+    if (location.hash !== '#trening') location.hash = 'trening'; else render(); scrollTo(0, 0); toast(`Dodano ${ps.length} ${pl(ps.length, 'plan', 'plany', 'planów')}: ${t.name}. Wpisz swoje ciężary w edycji planu.`); },
   loadSample(){ S.plans.push(...samplePlans()); commit(); toast('Dodano plany „FBW A” i „FBW B”. Dopasuj ciężary w edycji planu.'); },
   planMove(el){ const p = planById(el.dataset.plan); move(S.plans, S.plans.indexOf(p), +el.dataset.dir); commit(); },
   editPlan(el){ ui.planId = el.dataset.plan; ui.openItem = null; if (ui.tab !== 'plany') location.hash = 'plany'; else render(); scrollTo(0, 0); },
