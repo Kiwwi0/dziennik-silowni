@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Manekin 3D – próbka</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap">
+<style>
+:root{--bg:#E8EBEE;--surface:#FFFFFF;--surface-2:#F2F4F6;--ink:#13171B;--ink-2:#434C55;--muted:#646D76;--line:#D2D7DC;--accent:#1D4ED8;
+  --hl:#E11D2E;--hl2:#F49AA0;--bm-muscle:#3E444B;--bm-skin:#B9C0C7;
+  --f-display:"Big Shoulders Display","Arial Narrow",sans-serif;--f-body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+@media (prefers-color-scheme: dark){:root{--bg:#0F1214;--surface:#171B1F;--surface-2:#1F2429;--ink:#ECEFF2;--ink-2:#BCC4CB;--muted:#8C969F;--line:#2B3238;--accent:#7D9DFF;
+  --hl:#EF2B3C;--hl2:#F49AA0;--bm-muscle:#59616A;--bm-skin:#8B949D;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:760px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:grid;gap:14px}
+.brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--f-display);font-weight:800;font-size:34px;line-height:.95;text-transform:uppercase;margin:2px 0 0}
+h2{font-family:var(--f-display);font-weight:800;font-size:24px;line-height:1;text-transform:uppercase;margin:0}
+.lead{margin:0;color:var(--ink-2)}
+select{min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 15px var(--f-body);padding:0 12px;width:100%}
+.stage{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.view3d{width:100%;height:min(72vh,620px);min-height:420px;cursor:grab}
+.view3d:active{cursor:grabbing}
+.load{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:14px;pointer-events:none}
+.bar{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:10px;border-top:1px solid var(--line)}
+.bar button{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--f-body);cursor:pointer}
+.bar button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.hint{position:absolute;left:0;right:0;top:10px;text-align:center;font-size:12.5px;color:var(--muted);pointer-events:none}
+.legend{display:flex;gap:14px;justify-content:center;font-size:12.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.muscles{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:14px;margin:0}
+.muscles dt{color:var(--muted)} .muscles dd{margin:0;font-weight:600}
+.note{font-size:12px;color:var(--muted);margin:0}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><span class="brand">Dziennik siłowni · próbka</span><h1>Manekin 3D do obracania</h1></div>
+  <p class="lead">Przeciągnij palcem, żeby obrócić. Dwa palce albo kółko myszy przybliżają. Dwuklik wraca do widoku z przodu.</p>
+  <select id="ex" aria-label="Ćwiczenie"></select>
+  <div class="stage">
+    <div class="view3d" id="v"></div>
+    <div class="hint" id="hint">Przeciągnij, żeby obrócić</div>
+    <div class="load" id="load">Wczytuję model…</div>
+    <div class="bar"><button data-v="front">Przód</button><button data-v="right">Bok</button><button data-v="back">Tył</button><button id="spin" aria-pressed="true">Obracaj sam</button></div>
+  </div>
+  <div class="legend"><span><i style="background:var(--hl)"></i>główne</span><span><i style="background:var(--hl2)"></i>pomocnicze</span></div>
+  <dl class="muscles" id="list"></dl>
+  <p class="note">Model anatomiczny: BodyParts3D, © The Database Center for Life Science, licencja CC BY-SA 2.1 Japan.</p>
+  <p class="lead">To próbka. Wróć do <a href="./">Dziennika siłowni</a>.</p>
+</div>
+<script>
+/* Szczegółowe mięśnie: nazwy, grupy i to, które pracują w każdym ćwiczeniu (p = główne, s = pomocnicze). */
+const MUSCLE_NAMES = {
+  chestU:'klatka – część górna', chestL:'klatka – część środkowa i dolna',
+  deltA:'przedni akton barku', deltL:'boczny akton barku', deltP:'tylny akton barku',
+  biceps:'biceps', triLong:'triceps – głowa długa', triLat:'triceps – głowa boczna', triMed:'triceps – głowa przyśrodkowa',
+  brachialis:'ramienny', brachiorad:'ramienno-promieniowy', flexors:'zginacze przedramienia', extensors:'prostowniki przedramienia',
+  abs:'prosty brzucha', obliques:'skośne brzucha', serratus:'zębaty przedni',
+  trapsU:'kaptury – część górna', trapsM:'kaptury – część środkowa', trapsL:'kaptury – część dolna',
+  lats:'najszerszy grzbietu', teres:'obły większy', infra:'podgrzebieniowy', erectors:'prostowniki grzbietu',
+  gluteMax:'pośladkowy wielki', gluteMed:'pośladkowy średni',
+  quadRF:'prosty uda', quadVL:'obszerny boczny uda', quadVM:'obszerny przyśrodkowy uda', adductors:'przywodziciele',
+  hamLat:'dwugłowy uda', hamMed:'półścięgnisty i półbłoniasty',
+  gastro:'brzuchaty łydki', soleus:'płaszczkowaty', tibialis:'piszczelowy przedni', neck:'szyja',
+};
+const MUSCLE_GROUPS = {
+  delts:['deltA','deltL','deltP'], chest:['chestU','chestL'], triceps:['triLong','triLat','triMed'],
+  quads:['quadRF','quadVL','quadVM'], hams:['hamLat','hamMed'], calves:['gastro','soleus'], traps:['trapsU','trapsM','trapsL'],
+  glutes:['gluteMax','gluteMed'], forearm:['brachiorad','flexors','extensors'], core:['abs','obliques'],
+};
+const MUSCLE_GROUP_NAMES = {delts:'barki (3 aktony)', chest:'klatka (cała)', triceps:'triceps (3 głowy)', quads:'czworogłowy uda (3 mięśnie)',
+  hams:'tył uda (dwugłowy, półścięgnisty i półbłoniasty)', calves:'łydki (brzuchaty i płaszczkowaty)', traps:'kaptury (całe)', glutes:'pośladki',
+  forearm:'przedramiona', core:'brzuch'};
+// ogólne nazwy (ćwiczenia własne) → szczegółowe
+const MUSCLE_COARSE = {'klatka piersiowa':['chest'], 'barki':['delts'], 'biceps':['biceps'], 'triceps':['triceps'], 'przedramiona':['forearm'],
+  'brzuch':['abs','obliques'], 'czworogłowe uda':['quads'], 'przywodziciele':['adductors'], 'odwodziciele':['gluteMed'], 'pośladki':['glutes'],
+  'dwugłowe uda':['hams'], 'łydki':['calves'], 'najszerszy grzbietu':['lats','teres'], 'środek pleców':['trapsM','infra','teres'],
+  'prostowniki grzbietu':['erectors'], 'kaptury':['trapsU'], 'szyja':['neck']};
+const MUSCLE_EX = {
+  // klatka
+  'Barbell_Bench_Press_-_Medium_Grip':{p:['chestL'], s:['chestU','deltA','triceps']},
+  'Barbell_Incline_Bench_Press_-_Medium_Grip':{p:['chestU'], s:['chestL','deltA','triceps']},
+  Decline_Barbell_Bench_Press:{p:['chestL'], s:['triceps','deltA']},
+  Dumbbell_Bench_Press:{p:['chestL'], s:['chestU','deltA','triceps']},
+  Incline_Dumbbell_Press:{p:['chestU'], s:['chestL','deltA','triceps']},
+  Dumbbell_Flyes:{p:['chestL'], s:['chestU','deltA']},
+  Incline_Dumbbell_Flyes:{p:['chestU'], s:['chestL','deltA']},
+  Cable_Crossover:{p:['chestL'], s:['chestU','deltA']},
+  Butterfly:{p:['chestL'], s:['chestU','deltA']},
+  Machine_Bench_Press:{p:['chestL'], s:['chestU','deltA','triceps']},
+  Pushups:{p:['chestL'], s:['chestU','deltA','triceps','serratus','abs']},
+  'Dips_-_Chest_Version':{p:['chestL'], s:['triceps','deltA']},
+  'Straight-Arm_Dumbbell_Pullover':{p:['chestL','lats'], s:['triLong','teres','serratus']},
+  // plecy
+  Pullups:{p:['lats'], s:['teres','trapsM','trapsL','biceps','brachialis','brachiorad']},
+  'Chin-Up':{p:['lats','biceps'], s:['brachialis','teres','trapsL','brachiorad']},
+  'Band_Assisted_Pull-Up':{p:['lats'], s:['teres','trapsL','biceps']},
+  'Wide-Grip_Lat_Pulldown':{p:['lats'], s:['teres','trapsL','biceps','brachiorad','deltP']},
+  'V-Bar_Pulldown':{p:['lats'], s:['teres','trapsM','biceps','brachiorad']},
+  'Straight-Arm_Pulldown':{p:['lats'], s:['teres','triLong','abs']},
+  Bent_Over_Barbell_Row:{p:['lats','trapsM'], s:['trapsL','teres','infra','deltP','biceps','brachiorad','erectors']},
+  'Reverse_Grip_Bent-Over_Rows':{p:['lats'], s:['trapsM','teres','deltP','biceps','erectors']},
+  'One-Arm_Dumbbell_Row':{p:['lats'], s:['teres','trapsM','deltP','biceps']},
+  Seated_Cable_Rows:{p:['lats','trapsM'], s:['teres','deltP','biceps','brachiorad','erectors']},
+  'T-Bar_Row_with_Handle':{p:['lats','trapsM'], s:['teres','deltP','biceps','erectors']},
+  Leverage_Iso_Row:{p:['lats','trapsM'], s:['teres','deltP','biceps']},
+  Inverted_Row:{p:['trapsM','lats'], s:['deltP','teres','biceps','abs']},
+  Dumbbell_Incline_Row:{p:['trapsM','lats'], s:['deltP','infra','teres','biceps']},
+  Barbell_Deadlift:{p:['erectors','gluteMax','hams'], s:['quads','adductors','trapsU','trapsM','lats','flexors']},
+  Sumo_Deadlift:{p:['gluteMax','quads','adductors'], s:['hams','erectors','trapsU','flexors']},
+  Trap_Bar_Deadlift:{p:['quads','gluteMax'], s:['hams','erectors','trapsU','flexors']},
+  Hyperextensions_Back_Extensions:{p:['erectors'], s:['gluteMax','hams']},
+  Barbell_Shrug:{p:['trapsU'], s:['trapsM','flexors']},
+  Dumbbell_Shrug:{p:['trapsU'], s:['trapsM','flexors']},
+  // barki
+  Standing_Military_Press:{p:['deltA'], s:['deltL','triceps','trapsU','chestU']},
+  Seated_Dumbbell_Press:{p:['deltA'], s:['deltL','triceps','trapsU']},
+  Arnold_Dumbbell_Press:{p:['deltA','deltL'], s:['triceps','trapsU','chestU']},
+  Machine_Shoulder_Military_Press:{p:['deltA'], s:['deltL','triceps']},
+  Side_Lateral_Raise:{p:['deltL'], s:['deltA','trapsU']},
+  'Standing_Low-Pulley_Deltoid_Raise':{p:['deltL'], s:['deltA','trapsU']},
+  Front_Dumbbell_Raise:{p:['deltA'], s:['chestU','deltL','serratus']},
+  Reverse_Flyes:{p:['deltP'], s:['trapsM','infra','teres']},
+  Reverse_Machine_Flyes:{p:['deltP'], s:['trapsM','infra']},
+  Face_Pull:{p:['deltP'], s:['trapsM','trapsL','infra']},
+  Upright_Barbell_Row:{p:['deltL','trapsU'], s:['deltA','biceps','brachiorad']},
+  Band_Pull_Apart:{p:['deltP'], s:['trapsM','infra']},
+  External_Rotation_with_Cable:{p:['infra'], s:['deltP']},
+  // biceps
+  Barbell_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors','deltA']},
+  'EZ-Bar_Curl':{p:['biceps'], s:['brachialis','brachiorad','flexors']},
+  Dumbbell_Alternate_Bicep_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors']},
+  Hammer_Curls:{p:['brachialis','brachiorad'], s:['biceps','flexors']},
+  Incline_Dumbbell_Curl:{p:['biceps'], s:['brachialis','brachiorad']},
+  Preacher_Curl:{p:['biceps','brachialis'], s:['brachiorad']},
+  Concentration_Curls:{p:['biceps'], s:['brachialis','brachiorad']},
+  Standing_Biceps_Cable_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors']},
+  // triceps
+  Triceps_Pushdown:{p:['triLat','triMed'], s:['triLong']},
+  'Triceps_Pushdown_-_Rope_Attachment':{p:['triLat','triMed'], s:['triLong']},
+  Cable_Rope_Overhead_Triceps_Extension:{p:['triLong'], s:['triLat','triMed']},
+  'EZ-Bar_Skullcrusher':{p:['triLong','triLat'], s:['triMed']},
+  Standing_Dumbbell_Triceps_Extension:{p:['triLong'], s:['triLat','triMed']},
+  'Close-Grip_Barbell_Bench_Press':{p:['triceps'], s:['chestL','chestU','deltA']},
+  'Dips_-_Triceps_Version':{p:['triceps'], s:['chestL','deltA']},
+  Bench_Dips:{p:['triceps'], s:['deltA','chestL']},
+  Tricep_Dumbbell_Kickback:{p:['triLat','triLong'], s:['triMed','deltP']},
+  // przód uda
+  Barbell_Squat:{p:['quads'], s:['gluteMax','adductors','hams','erectors','soleus']},
+  Front_Barbell_Squat:{p:['quads'], s:['gluteMax','adductors','erectors','abs','trapsU']},
+  Goblet_Squat:{p:['quads'], s:['gluteMax','adductors','abs','erectors']},
+  Bodyweight_Squat:{p:['quads'], s:['gluteMax','adductors','hams']},
+  Leg_Press:{p:['quads'], s:['gluteMax','adductors','hams']},
+  Hack_Squat:{p:['quads'], s:['gluteMax','adductors']},
+  Smith_Machine_Squat:{p:['quads'], s:['gluteMax','adductors','hams']},
+  Split_Squat_with_Dumbbells:{p:['quads','gluteMax'], s:['gluteMed','adductors','hams']},
+  Dumbbell_Lunges:{p:['quads','gluteMax'], s:['gluteMed','adductors','hams','soleus']},
+  Barbell_Walking_Lunge:{p:['quads','gluteMax'], s:['gluteMed','adductors','hams','erectors']},
+  Dumbbell_Rear_Lunge:{p:['gluteMax','quads'], s:['hams','gluteMed','adductors']},
+  Dumbbell_Step_Ups:{p:['quads','gluteMax'], s:['gluteMed','hams','gastro']},
+  Leg_Extensions:{p:['quads'], s:[]},
+  // tył uda
+  Romanian_Deadlift:{p:['hams'], s:['gluteMax','erectors','adductors','flexors']},
+  'Stiff-Legged_Dumbbell_Deadlift':{p:['hams'], s:['gluteMax','erectors','flexors']},
+  Lying_Leg_Curls:{p:['hams'], s:['gastro']},
+  Seated_Leg_Curl:{p:['hams'], s:['gastro']},
+  Good_Morning:{p:['hams','erectors'], s:['gluteMax','adductors']},
+  // pośladki
+  Barbell_Hip_Thrust:{p:['gluteMax'], s:['hams','gluteMed','adductors','erectors']},
+  Barbell_Glute_Bridge:{p:['gluteMax'], s:['hams','gluteMed']},
+  Single_Leg_Glute_Bridge:{p:['gluteMax'], s:['gluteMed','hams']},
+  'One-Legged_Cable_Kickback':{p:['gluteMax'], s:['hams','gluteMed']},
+  Thigh_Abductor:{p:['gluteMed'], s:['gluteMax']},
+  Thigh_Adductor:{p:['adductors'], s:[]},
+  // łydki
+  Standing_Calf_Raises:{p:['gastro'], s:['soleus']},
+  Seated_Calf_Raise:{p:['soleus'], s:['gastro']},
+  Calf_Press_On_The_Leg_Press_Machine:{p:['gastro'], s:['soleus']},
+  // brzuch
+  Plank:{p:['abs'], s:['obliques','serratus','deltA','gluteMax']},
+  Side_Bridge:{p:['obliques'], s:['abs','gluteMed']},
+  Crunches:{p:['abs'], s:['obliques']},
+  Cable_Crunch:{p:['abs'], s:['obliques']},
+  Ab_Crunch_Machine:{p:['abs'], s:['obliques']},
+  Hanging_Leg_Raise:{p:['abs'], s:['obliques','quadRF','flexors']},
+  Knee_Hip_Raise_On_Parallel_Bars:{p:['abs'], s:['obliques','quadRF']},
+  Reverse_Crunch:{p:['abs'], s:['obliques']},
+  Russian_Twist:{p:['obliques'], s:['abs']},
+  Ab_Roller:{p:['abs'], s:['obliques','lats','serratus','deltA','triLong']},
+  Dead_Bug:{p:['abs'], s:['obliques','quadRF']},
+  Pallof_Press:{p:['obliques'], s:['abs','gluteMed']},
+  Mountain_Climbers:{p:['abs'], s:['obliques','quadRF','deltA']},
+  // całe ciało i cardio
+  'One-Arm_Kettlebell_Swings':{p:['gluteMax','hams'], s:['erectors','quads','deltA','abs','flexors']},
+  Farmers_Walk:{p:['flexors','trapsU'], s:['obliques','abs','erectors','gastro']},
+  Battling_Ropes:{p:['deltA','deltL'], s:['abs','obliques','biceps','flexors']},
+  Running_Treadmill:{p:['quads','gastro'], s:['hams','gluteMax','soleus']},
+  Bicycling_Stationary:{p:['quads'], s:['gluteMax','hams','gastro']},
+  Rowing_Stationary:{p:['quads','lats'], s:['gluteMax','hams','trapsM','biceps','erectors','deltP']},
+  Elliptical_Trainer:{p:['quads','gluteMax'], s:['hams','gastro']},
+  Rope_Jumping:{p:['gastro','soleus'], s:['quads','flexors']},
+};
+
+window.__M = {MUSCLE_EX, MUSCLE_GROUPS, MUSCLE_NAMES, MUSCLE_GROUP_NAMES};
+window.__EXS = [["Standing_Military_Press", "Wyciskanie sztangi nad głowę stojąc (OHP)"], ["Side_Lateral_Raise", "Unoszenie hantli bokiem"], ["Reverse_Flyes", "Odwrotne rozpiętki z hantlami w opadzie"], ["Barbell_Bench_Press_-_Medium_Grip", "Wyciskanie sztangi na ławce płaskiej"], ["Barbell_Incline_Bench_Press_-_Medium_Grip", "Wyciskanie sztangi na ławce skośnej"], ["Triceps_Pushdown", "Prostowanie ramion na wyciągu górnym (drążek)"], ["Cable_Rope_Overhead_Triceps_Extension", "Prostowanie ramion nad głową z liną"], ["Barbell_Curl", "Uginanie ramion ze sztangą stojąc"], ["Hammer_Curls", "Uginanie ramion z hantlami chwytem młotkowym"], ["Pullups", "Podciąganie na drążku nachwytem"], ["Bent_Over_Barbell_Row", "Wiosłowanie sztangą w opadzie tułowia"], ["Face_Pull", "Przyciąganie liny do twarzy (face pull)"], ["Barbell_Shrug", "Szrugsy ze sztangą"], ["Barbell_Squat", "Przysiad ze sztangą na plecach"], ["Romanian_Deadlift", "Rumuński martwy ciąg"], ["Barbell_Deadlift", "Martwy ciąg klasyczny"], ["Barbell_Hip_Thrust", "Wypychanie bioder ze sztangą (hip thrust)"], ["Thigh_Abductor", "Odwodzenie nóg na maszynie"], ["Seated_Calf_Raise", "Wspięcia na palce siedząc"], ["Russian_Twist", "Skręty tułowia w siadzie (russian twist)"]];
+</script>
+<script type="module">
+import {mount} from './miesnie3d.js';
+const {MUSCLE_EX, MUSCLE_GROUPS, MUSCLE_NAMES, MUSCLE_GROUP_NAMES} = window.__M, EXS = window.__EXS;
+const name = k => MUSCLE_GROUP_NAMES[k] || MUSCLE_NAMES[k] || k;
+const sel = document.getElementById('ex');
+EXS.forEach(([id, n]) => { const o = document.createElement('option'); o.value = id; o.textContent = n; sel.appendChild(o); });
+const v = mount(document.getElementById('v'), {groups:MUSCLE_GROUPS, onReady:() => document.getElementById('load').remove(),
+  onError:() => { document.getElementById('load').textContent = 'Nie udało się wczytać modelu.'; }});
+window.__v = v;
+const show = id => {
+  const m = MUSCLE_EX[id]; v.set(m);
+  document.getElementById('list').innerHTML = `<dt>Główne</dt><dd>${m.p.map(name).join(', ')}</dd>${m.s.length ? `<dt>Pomocnicze</dt><dd>${m.s.map(name).join(', ')}</dd>` : ''}`;
+};
+sel.onchange = () => show(sel.value);
+show(EXS[0][0]);
+const spin = document.getElementById('spin');
+document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { v.view(b.dataset.v); spin.setAttribute('aria-pressed', 'false'); });
+spin.onclick = () => { const on = spin.getAttribute('aria-pressed') !== 'true'; spin.setAttribute('aria-pressed', on); v.spin(on); };
+document.getElementById('v').addEventListener('pointerdown', () => { spin.setAttribute('aria-pressed', 'false'); document.getElementById('hint').style.opacity = 0; });
+</script>
+</body>
+</html>

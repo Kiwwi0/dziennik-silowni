@@ -1,0 +1,8 @@
+miesnie.glb – model mięśni i kości przygotowany z danych BodyParts3D
+(uproszczona siatka, części połączone według mięśni, głowa i szyja wygładzone).
+
+BodyParts3D, (c) The Database Center for Life Science licensed under CC Attribution-Share Alike 2.1 Japan.
+https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html
+https://creativecommons.org/licenses/by-sa/2.1/jp/deed.en
+
+Ten plik (jako utwór zależny) jest udostępniany na tej samej licencji CC BY-SA 2.1 JP.
