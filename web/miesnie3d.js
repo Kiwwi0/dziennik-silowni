@@ -25,7 +25,7 @@ export function mount(host, opt = {}){
   const mat = (name, color, rough = 0.55, em = 0) => mats[name] = new THREE.MeshStandardMaterial({color, roughness:rough, metalness:0, emissive:color, emissiveIntensity:em, side:THREE.DoubleSide});
   const pal = () => ({muscle:css('--bm-muscle') || '#3E444B', skin:css('--bm-skin') || '#B9C0C7', p1:css('--hl') || '#E11D2E', p2:css('--hl2') || '#F49AA0'});
   let C = pal();
-  mat('m', C.muscle, 0.5); mat('p1', C.p1, 0.42, 0.18); mat('p2', C.p2, 0.5, 0.06); mat('skin', C.skin, 0.62); mat('bone', '#8E959C', 0.75); mat('core', '#2C3136', 0.85); mat('dbg', '#00FF66', 0.5);
+  mat('m', C.muscle, 0.5); mat('p1', C.p1, 0.42, 0.18); mat('p2', C.p2, 0.5, 0.06); mat('skin', C.skin, 0.62); mat('bone', C.muscle, 0.6); mat('core', C.muscle, 0.6); mat('dbg', '#00FF66', 0.5);
   const meshes = [];
   let state = {P:new Set(), S:new Set()};
   const apply = () => {
@@ -64,7 +64,7 @@ export function mount(host, opt = {}){
   const ro = new ResizeObserver(() => { renderer.setSize(W(), H()); camera.aspect = W() / H(); camera.updateProjectionMatrix(); render(); });
   ro.observe(host);
   const mq = matchMedia('(prefers-color-scheme: dark)');
-  const theme = () => { C = pal(); mats.m.color.set(C.muscle); mats.skin.color.set(C.skin); mats.p1.color.set(C.p1); mats.p1.emissive.set(C.p1); mats.p2.color.set(C.p2); mats.p2.emissive.set(C.p2); render(); };
+  const theme = () => { C = pal(); mats.m.color.set(C.muscle); mats.core.color.set(C.muscle); mats.bone.color.set(C.muscle); mats.skin.color.set(C.skin); mats.p1.color.set(C.p1); mats.p1.emissive.set(C.p1); mats.p2.color.set(C.p2); mats.p2.emissive.set(C.p2); render(); };
   mq.addEventListener('change', theme);
 
   new GLTFLoader().load(opt.url || 'models/miesnie.glb', g => {
@@ -83,6 +83,7 @@ export function mount(host, opt = {}){
       const P = new Set(ex(m.p)); state = {P, S:new Set(ex(m.s).filter(k => !P.has(k)))}; apply();
     },
     view(name){ auto = false; yaw = {front:0, back:Math.PI, left:-Math.PI / 2, right:Math.PI / 2}[name] ?? 0; pitch = 0.08; render(); },
+    cam(y, p, d, ty){ auto = false; yaw = y; pitch = p; dist = d; target.y = ty; render(); },
     spin(on){ auto = on; if (on && !raf) raf = requestAnimationFrame(tick); },
     dispose(){ cancelAnimationFrame(raf); ro.disconnect(); mq.removeEventListener('change', theme); renderer.dispose(); el.remove(); },
   };

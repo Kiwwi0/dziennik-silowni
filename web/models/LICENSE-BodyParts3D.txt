@@ -1,5 +1,6 @@
 miesnie.glb – model mięśni i kości przygotowany z danych BodyParts3D
-(uproszczona siatka, części połączone według mięśni, głowa i szyja wygładzone).
+(siatki uproszczone narzędziem meshoptimizer, części połączone według mięśni; głowa, szyja, dłonie i stopy oraz ciemny rdzeń
+wypełniający przerwy między mięśniami odtworzone z powierzchni skóry).
 
 BodyParts3D, (c) The Database Center for Life Science licensed under CC Attribution-Share Alike 2.1 Japan.
 https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html
