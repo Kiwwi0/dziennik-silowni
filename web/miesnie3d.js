@@ -4,6 +4,8 @@ import * as THREE from './lib/three.module.min.js';
 import {GLTFLoader} from './lib/GLTFLoader.js';
 
 const DBG = new URLSearchParams(location.search).get('dbg');
+const MODELS = {};
+const loadModel = url => MODELS[url] || (MODELS[url] = new Promise((res, rej) => new GLTFLoader().load(url, res, undefined, e => { delete MODELS[url]; rej(e); })));
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 export function mount(host, opt = {}){
   const W = () => host.clientWidth, H = () => host.clientHeight;
@@ -12,7 +14,7 @@ export function mount(host, opt = {}){
   renderer.setSize(W(), H());
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.appendChild(renderer.domElement);
-  renderer.domElement.style.touchAction = 'none';
+  renderer.domElement.style.touchAction = opt.touch || 'none';
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(24, W() / H(), 0.4, 9);   // wąski zakres głębi = brak migotania
   scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2f35, 1.25));
@@ -39,7 +41,7 @@ export function mount(host, opt = {}){
     render();
   };
   // obrót: przeciąganie (yaw + lekkie pochylenie), przybliżanie: kółko / dwa palce
-  let yaw = 0, pitch = 0.08, dist = 4.3, target = new THREE.Vector3(0, 0.86, 0), auto = true, raf = 0;
+  let yaw = 0, pitch = 0.08, dist = opt.dist || 4.3, target = new THREE.Vector3(0, 0.86, 0), auto = opt.spin !== false, raf = 0;
   const place = () => {
     camera.position.set(target.x + dist * Math.sin(yaw) * Math.cos(pitch), target.y + dist * Math.sin(pitch), target.z + dist * Math.cos(yaw) * Math.cos(pitch));
     camera.lookAt(target);
@@ -55,7 +57,7 @@ export function mount(host, opt = {}){
     if (ptrs.size === 2){ const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) zoomTo(dist0 * pinch0 / d); return; }
     if (!last) return;
     const dx = e.clientX - last.x, dy = e.clientY - last.y; last = {x:e.clientX, y:e.clientY};
-    yaw -= dx * 0.011; pitch = Math.max(-0.6, Math.min(0.9, pitch + dy * 0.006)); render();
+    yaw -= dx * 0.011; if (e.pointerType !== 'touch' || !opt.touch) pitch = Math.max(-0.6, Math.min(0.9, pitch + dy * 0.006)); render();
   });
   const up = e => { ptrs.delete(e.pointerId); last = ptrs.size === 1 ? {...[...ptrs.values()][0]} : null; if (ptrs.size < 2) pinch0 = 0; };
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
@@ -70,14 +72,16 @@ export function mount(host, opt = {}){
   const theme = () => { C = pal(); mats.m.color.set(C.muscle); mats.core.color.set(C.muscle); mats.bone.color.set(C.muscle); mats.skin.color.set(C.skin); mats.p1.color.set(C.p1); mats.p1.emissive.set(C.p1); mats.p2.color.set(C.p2); mats.p2.emissive.set(C.p2); render(); };
   mq.addEventListener('change', theme);
 
-  new GLTFLoader().load(opt.url || 'models/miesnie.glb', g => {
-    g.scene.traverse(o => { if (o.isMesh){ o.userData.key = (o.parent && o.parent.userData && o.parent.userData.key) || o.userData.key || (o.name || '').split('#')[0]; meshes.push(o); } });
-    g.scene.traverse(o => { if (o.isMesh && !o.userData.key && o.parent) o.userData.key = o.parent.name.split('#')[0]; });
-    pivot.add(g.scene);
+  let dead = false;
+  loadModel(opt.url || 'models/miesnie.glb').then(g => {
+    if (dead) return;
+    const sc = g.scene.clone(true);
+    sc.traverse(o => { if (o.isMesh){ o.userData.key = o.userData.key || (o.name || '').split('#')[0]; meshes.push(o); } });
+    pivot.add(sc);
     apply();
-    if (!reduce) raf = requestAnimationFrame(tick); else render();
+    if (opt.spin !== false && !reduce) raf = requestAnimationFrame(tick); else render();
     opt.onReady && opt.onReady();
-  }, undefined, err => { opt.onError && opt.onError(err); });
+  }).catch(err => { if (!dead) opt.onError && opt.onError(err); });
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   render();
   return {
@@ -88,6 +92,6 @@ export function mount(host, opt = {}){
     view(name){ auto = false; yaw = {front:0, back:Math.PI, left:-Math.PI / 2, right:Math.PI / 2}[name] ?? 0; pitch = 0.08; render(); },
     cam(y, p, d, ty){ auto = false; yaw = y; pitch = p; dist = d; target.y = ty; render(); },
     spin(on){ auto = on; if (on && !raf) raf = requestAnimationFrame(tick); },
-    dispose(){ cancelAnimationFrame(raf); ro.disconnect(); mq.removeEventListener('change', theme); renderer.dispose(); el.remove(); },
+    dispose(){ dead = true; cancelAnimationFrame(raf); ro.disconnect(); mq.removeEventListener('change', theme); renderer.dispose(); renderer.forceContextLoss(); el.remove(); },
   };
 }

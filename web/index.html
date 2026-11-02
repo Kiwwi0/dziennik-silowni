@@ -166,6 +166,16 @@ main{padding-block:2px 28px}
 .muscles{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:14px}
 .muscles dt{color:var(--muted)} .muscles dd{margin:0;font-weight:600}
 .bodymap{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 8px 8px}
+.bodymap.bm-has3d{display:grid;gap:8px}
+.bm-seg{display:inline-flex;justify-self:center;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;background:var(--surface-2)}
+.bm-seg button{min-height:32px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--ink-2);font:600 13px var(--f-body);cursor:pointer}
+.bm-seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.bm3d{position:relative;display:grid;gap:6px}
+.bm3d-host{display:block;height:min(58vh,440px);min-height:340px;cursor:grab}
+.bm3d-host canvas{display:block}
+.bm3d-msg{position:absolute;left:0;right:0;top:45%;text-align:center;font-size:13px;color:var(--muted);pointer-events:none}
+.bm3d-bar{display:flex;gap:6px;justify-content:center}
+.bm3d-hint{font-size:12px;color:var(--muted);text-align:center}
 .bm-figs{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:400px;margin:0 auto}
 .bm-fig{display:grid;gap:2px;justify-items:center}
 .bm-fig svg{display:block;width:100%;height:auto}
@@ -406,6 +416,7 @@ main{padding-block:2px 28px}
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script>window.M3D = {"js": "./miesnie3d.js?v=5b4b07a897", "glb": "./models/miesnie.glb?v=7e6a48b49a"};</script>
 <script>/* Animacje ćwiczeń: schematyczna postać w 3D rzutowana na płaszczyznę i rysowana jako SVG.
    Każde ćwiczenie = klatki kluczowe (kąty segmentów albo punkty docelowe dłoni/stóp) + sprzęt.
    API: ANIM.has(id), ANIM.svg(id, u, opt), ANIM.info(id, u), ANIM.dur(id), ANIM.thumb(id). */
@@ -1446,7 +1457,7 @@ const MUSCLE_NAMES = {
   chestU:'klatka – część górna', chestL:'klatka – część środkowa i dolna',
   deltA:'przedni akton barku', deltL:'boczny akton barku', deltP:'tylny akton barku',
   biceps:'biceps', triLong:'triceps – głowa długa', triLat:'triceps – głowa boczna', triMed:'triceps – głowa przyśrodkowa',
-  brachiorad:'ramienno-promieniowy', flexors:'zginacze przedramienia', extensors:'prostowniki przedramienia',
+  brachialis:'ramienny', brachiorad:'ramienno-promieniowy', flexors:'zginacze przedramienia', extensors:'prostowniki przedramienia',
   abs:'prosty brzucha', obliques:'skośne brzucha', serratus:'zębaty przedni',
   trapsU:'kaptury – część górna', trapsM:'kaptury – część środkowa', trapsL:'kaptury – część dolna',
   lats:'najszerszy grzbietu', teres:'obły większy', infra:'podgrzebieniowy', erectors:'prostowniki grzbietu',
@@ -1484,8 +1495,8 @@ const MUSCLE_EX = {
   'Dips_-_Chest_Version':{p:['chestL'], s:['triceps','deltA']},
   'Straight-Arm_Dumbbell_Pullover':{p:['chestL','lats'], s:['triLong','teres','serratus']},
   // plecy
-  Pullups:{p:['lats'], s:['teres','trapsM','trapsL','biceps','brachiorad']},
-  'Chin-Up':{p:['lats','biceps'], s:['teres','trapsL','brachiorad']},
+  Pullups:{p:['lats'], s:['teres','trapsM','trapsL','biceps','brachialis','brachiorad']},
+  'Chin-Up':{p:['lats','biceps'], s:['brachialis','teres','trapsL','brachiorad']},
   'Band_Assisted_Pull-Up':{p:['lats'], s:['teres','trapsL','biceps']},
   'Wide-Grip_Lat_Pulldown':{p:['lats'], s:['teres','trapsL','biceps','brachiorad','deltP']},
   'V-Bar_Pulldown':{p:['lats'], s:['teres','trapsM','biceps','brachiorad']},
@@ -1519,14 +1530,14 @@ const MUSCLE_EX = {
   Band_Pull_Apart:{p:['deltP'], s:['trapsM','infra']},
   External_Rotation_with_Cable:{p:['infra'], s:['deltP']},
   // biceps
-  Barbell_Curl:{p:['biceps'], s:['brachiorad','flexors','deltA']},
-  'EZ-Bar_Curl':{p:['biceps'], s:['brachiorad','flexors']},
-  Dumbbell_Alternate_Bicep_Curl:{p:['biceps'], s:['brachiorad','flexors']},
-  Hammer_Curls:{p:['brachiorad','biceps'], s:['flexors']},
-  Incline_Dumbbell_Curl:{p:['biceps'], s:['brachiorad']},
-  Preacher_Curl:{p:['biceps'], s:['brachiorad']},
-  Concentration_Curls:{p:['biceps'], s:['brachiorad']},
-  Standing_Biceps_Cable_Curl:{p:['biceps'], s:['brachiorad','flexors']},
+  Barbell_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors','deltA']},
+  'EZ-Bar_Curl':{p:['biceps'], s:['brachialis','brachiorad','flexors']},
+  Dumbbell_Alternate_Bicep_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors']},
+  Hammer_Curls:{p:['brachialis','brachiorad'], s:['biceps','flexors']},
+  Incline_Dumbbell_Curl:{p:['biceps'], s:['brachialis','brachiorad']},
+  Preacher_Curl:{p:['biceps','brachialis'], s:['brachiorad']},
+  Concentration_Curls:{p:['biceps'], s:['brachialis','brachiorad']},
+  Standing_Biceps_Cable_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors']},
   // triceps
   Triceps_Pushdown:{p:['triLat','triMed'], s:['triLong']},
   'Triceps_Pushdown_-_Rope_Attachment':{p:['triLat','triMed'], s:['triLong']},
@@ -2339,13 +2350,47 @@ function exMuscles(e){
   const conv = list => [...new Set(list.flatMap(m => (typeof MUSCLE_COARSE !== 'undefined' && MUSCLE_COARSE[m]) || []))];
   return {p:conv(primary), s:conv(secondary)};
 }
+// Manekin 3D (obracany) jest dostępny w wersji webowej: window.M3D = {js, glb}. W innym razie płaski manekin.
+const has3D = (() => { try { return !!(window.M3D && document.createElement('canvas').getContext('webgl')); } catch (e) { return false; } })();
+let bmPref = (() => { try { return localStorage.getItem('bmMode') || '3d'; } catch (e) { return '3d'; } })();
 function bodyMap(e){
   if (typeof BODYMAP === 'undefined') return '';
   const m = exMuscles(e);
   if (!m.p.length && !m.s.length) return '';
   const label = [m.p.length ? 'główne: ' + m.p.map(muscleName).join(', ') : '', m.s.length ? 'pomocnicze: ' + m.s.map(muscleName).join(', ') : ''].filter(Boolean).join('; ');
-  return `<figure class="bodymap" style="margin:0" role="img" aria-label="Pracujące mięśnie, ${esc(label)}">${bodyMapFigs(m)}
-    <figcaption class="legend"><span><i style="background:var(--hl)"></i>główne</span>${m.s.length ? '<span><i style="background:var(--hl2)"></i>pomocnicze</span>' : ''}</figcaption></figure>`;
+  const legend = `<figcaption class="legend"><span><i style="background:var(--hl)"></i>główne</span>${m.s.length ? '<span><i style="background:var(--hl2)"></i>pomocnicze</span>' : ''}</figcaption>`;
+  if (!has3D) return `<figure class="bodymap" style="margin:0" role="img" aria-label="Pracujące mięśnie, ${esc(label)}">${bodyMapFigs(m)}${legend}</figure>`;
+  const d3 = bmPref !== '2d';
+  return `<figure class="bodymap bm-has3d" style="margin:0" aria-label="Pracujące mięśnie, ${esc(label)}" data-ex="${esc(e.id)}">
+    <span class="bm-seg" role="group" aria-label="Widok manekina"><button data-act="bmMode" data-m="3d" aria-pressed="${d3}">3D</button><button data-act="bmMode" data-m="2d" aria-pressed="${!d3}">Płaski</button></span>
+    <span class="bm3d"${d3 ? '' : ' hidden'}><span class="bm3d-host"></span><span class="bm3d-msg">Wczytuję model 3D…</span>
+      <span class="bm3d-bar"><button class="btn sm" data-act="bmView" data-v="front">Przód</button><button class="btn sm" data-act="bmView" data-v="right">Bok</button><button class="btn sm" data-act="bmView" data-v="back">Tył</button></span>
+      <span class="bm3d-hint">Przesuń palcem w bok, żeby obrócić · dwa palce przybliżają</span></span>
+    <span class="bm-flat"${d3 ? ' hidden' : ''}>${bodyMapFigs(m)}</span>
+    ${legend}</figure>`;
+}
+// jeden obracany manekin naraz (w otwartej karcie)
+const BM3 = {v:null, host:null, mod:null};
+function bm3dStop(){ if (BM3.v) try { BM3.v.dispose(); } catch (e) {} BM3.v = null; BM3.host = null; }
+function bm3dMount(){
+  const fig = $('#sheet .bm-has3d'), host = fig && fig.querySelector('.bm3d-host');
+  if (!host || fig.querySelector('.bm3d').hidden){ bm3dStop(); return; }
+  if (BM3.host === host) return;
+  bm3dStop(); BM3.host = host;
+  const msg = fig.querySelector('.bm3d-msg'), e = getEx(fig.dataset.ex);
+  (BM3.mod ? Promise.resolve(BM3.mod) : import(window.M3D.js)).then(mod => {
+    BM3.mod = mod;
+    if (BM3.host !== host || !host.isConnected) return;
+    BM3.v = mod.mount(host, {url:window.M3D.glb, groups:MUSCLE_GROUPS, spin:false, touch:'pan-y', dist:4.1,
+      onReady:() => { msg.hidden = true; }, onError:() => { bm3dFallback(fig); }});
+    BM3.v.set(exMuscles(e));
+  }).catch(() => bm3dFallback(fig));
+}
+function bm3dFallback(fig){
+  bm3dStop();
+  if (!fig.isConnected) return;
+  fig.querySelector('.bm3d').hidden = true; fig.querySelector('.bm-flat').hidden = false;
+  fig.querySelectorAll('[data-act="bmMode"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === '2d'));
 }
 function sessVol(s){ return (s.ex || []).reduce((a, x) => a + (x.sets || []).reduce((b, t) => b + (x.mode === 'time' ? 0 : (t.kg || 0) * (t.reps || 0)), 0), 0); }
 function sessSets(s){ return (s.ex || []).reduce((a, x) => a + (x.sets || []).length, 0); }
@@ -2485,10 +2530,10 @@ const topSheet = () => sheets[sheets.length - 1];
 function sheetHead(title){ return `<div class="sheet-h"><h2>${esc(title)}</h2><button class="iconbtn" data-act="closeSheet" aria-label="Zamknij">${svg('x')}</button></div>`; }
 function renderSheet(){
   const w = $('#sheet-wrap'), el = $('#sheet'), s = topSheet();
-  if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); return; }
+  if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); bm3dStop(); return; }
   w.hidden = false; el.innerHTML = SHEETS[s.type](s); if (!el.querySelector('.sheet-f')) el.insertAdjacentHTML('beforeend', '<div class="sheet-end"></div>'); el.scrollTop = 0; lockBody();
   if (s.type === 'pick') fillPickList();
-  animMount(); ytMount();
+  animMount(); ytMount(); bm3dMount();
   const f = $('[autofocus]', el); if (f && matchMedia('(pointer:fine)').matches) f.focus();
 }
 function lockBody(){ document.body.classList.toggle('lock', !!topSheet() || (!!ACTIVE && ui.showWorkout)); }
@@ -2825,6 +2870,14 @@ const ACT = {
   exInfo(el){ openSheet({type:'ex', id:el.dataset.id, noAdd:true}); },
   animPlay(){ animSetPlaying(!AP.playing); },
   ytToggle(){ ytToggle(); },
+  bmMode(el){
+    const fig = el.closest('.bm-has3d'), d3 = el.dataset.m === '3d';
+    bmPref = d3 ? '3d' : '2d'; try { localStorage.setItem('bmMode', bmPref); } catch (e) {}
+    fig.querySelectorAll('[data-act="bmMode"]').forEach(b => b.setAttribute('aria-pressed', b === el));
+    fig.querySelector('.bm3d').hidden = !d3; fig.querySelector('.bm-flat').hidden = d3;
+    bm3dMount();
+  },
+  bmView(el){ if (BM3.v) BM3.v.view(el.dataset.v); },
   ytRate(el){ if (!YP.ready) return; YP.p.setPlaybackRate(+el.dataset.r); el.parentNode.querySelectorAll('[data-act="ytRate"]').forEach(y => y.setAttribute('aria-pressed', y === el)); },
   ytSound(el){ if (!YP.ready) return; const on = el.getAttribute('aria-pressed') !== 'true'; on ? YP.p.unMute() : YP.p.mute(); el.setAttribute('aria-pressed', on); el.setAttribute('aria-label', on ? 'Wyłącz dźwięk' : 'Włącz dźwięk'); el.innerHTML = svg(on ? 'snd' : 'mute', 'i s'); if (on) YP.p.playVideo(); },
   animSlow(el){ AP.slow = !AP.slow; el.setAttribute('aria-pressed', AP.slow); },
