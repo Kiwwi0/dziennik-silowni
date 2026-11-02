@@ -70,7 +70,7 @@ export function mount(host, opt = {}){
   ro.observe(host);
   const mq = matchMedia('(prefers-color-scheme: dark)');
   const theme = () => { C = pal(); mats.m.color.set(C.muscle); mats.core.color.set(C.muscle); mats.bone.color.set(C.muscle); mats.skin.color.set(C.skin); mats.p1.color.set(C.p1); mats.p1.emissive.set(C.p1); mats.p2.color.set(C.p2); mats.p2.emissive.set(C.p2); for (const [k, c] of [['h-rec', C.p1], ['h-ok', C.ok], ['h-low', C.low]]){ mats[k].color.set(c); mats[k].emissive.set(c); } render(); };
-  mq.addEventListener('change', theme);
+  mq.addEventListener('change', theme); addEventListener('themechange', theme);
 
   let dead = false;
   loadModel(opt.url || 'models/miesnie.glb').then(g => {
@@ -93,6 +93,6 @@ export function mount(host, opt = {}){
     view(name){ auto = false; yaw = {front:0, back:Math.PI, left:-Math.PI / 2, right:Math.PI / 2}[name] ?? 0; pitch = 0.08; render(); },
     cam(y, p, d, ty){ auto = false; yaw = y; pitch = p; dist = d; target.y = ty; render(); },
     spin(on){ auto = on; if (on && !raf) raf = requestAnimationFrame(tick); },
-    dispose(){ dead = true; cancelAnimationFrame(raf); ro.disconnect(); mq.removeEventListener('change', theme); renderer.dispose(); renderer.forceContextLoss(); el.remove(); },
+    dispose(){ dead = true; cancelAnimationFrame(raf); ro.disconnect(); mq.removeEventListener('change', theme); removeEventListener('themechange', theme); renderer.dispose(); renderer.forceContextLoss(); el.remove(); },
   };
 }

@@ -33,6 +33,7 @@
   --f-body:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --r:10px;
 }
+:root[data-theme="light"]{color-scheme:light}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0F1214; --surface:#171B1F; --surface-2:#1F2429; --ink:#ECEFF2; --ink-2:#BCC4CB; --muted:#8C969F; --line:#2B3238;
   --accent:#7D9DFF; --accent-ink:#0A1024; --accent-soft:#1C2847;
@@ -301,6 +302,8 @@ main{padding-block:2px 28px}
 .wk-tag.warn{background:var(--warn-soft);color:var(--warn)}
 .dayrow .dv{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
 .pv-ok{color:var(--good);font-weight:600} .pv-warn{color:var(--warn);font-weight:600}
+.th-seg{display:flex;width:100%}
+.th-seg button{flex:1 1 0;min-width:0;padding:0 6px}
 .wk-freq{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .wk-freq .seg button{min-width:36px;padding:0 8px}
 .wk-tgt b{color:var(--ink)}
@@ -524,7 +527,16 @@ main{padding-block:2px 28px}
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script>window.M3D = {"js": "./miesnie3d.js?v=688a002286", "glb": "./models/miesnie.glb?v=7e6a48b49a"};</script>
+<script>window.M3D = {"js": "./miesnie3d.js?v=8950cc2993", "glb": "./models/miesnie.glb?v=7e6a48b49a"};
+/* motyw: auto (jak w systemie) / light / dark – ustawienie tego urządzenia */
+function applyTheme(t){
+  const r = document.documentElement; if (t === 'light' || t === 'dark') r.dataset.theme = t; else delete r.dataset.theme;
+  const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.content = (t === 'light' || t === 'dark') ? (dark ? '#0F1214' : '#E8EBEE') : (/dark/.test(m.media) ? '#0F1214' : '#E8EBEE'); });
+  try { dispatchEvent(new Event('themechange')); } catch (e) {}
+}
+try { applyTheme(localStorage.getItem('theme') || 'auto'); } catch (e) {}
+</script>
 <script>/* Animacje ćwiczeń: schematyczna postać w 3D rzutowana na płaszczyznę i rysowana jako SVG.
    Każde ćwiczenie = klatki kluczowe (kąty segmentów albo punkty docelowe dłoni/stóp) + sprzęt.
    API: ANIM.has(id), ANIM.svg(id, u, opt), ANIM.info(id, u), ANIM.dur(id), ANIM.thumb(id). */
@@ -3082,7 +3094,10 @@ const SHEETS = {
   settings(){
     const st = S.settings;
     const stp = (f, label) => `<div class="rests"><div><span>${label}</span><span class="stepper"><button class="iconbtn sm" data-act="setStep" data-f="${f}" data-d="-15" aria-label="Krócej">−</button><b>${fmtRest(st[f])}</b><button class="iconbtn sm" data-act="setStep" data-f="${f}" data-d="15" aria-label="Dłużej">+</button></span></div></div>`;
-    return sheetHead('Ustawienia') + `<h3 class="h3">Przerwy (dla nowych ćwiczeń)</h3>${stp('restSet', 'Między seriami')}${stp('restEx', 'Po ćwiczeniu')}
+    const th = (() => { try { return localStorage.getItem('theme') || 'auto'; } catch (e) { return 'auto'; } })();
+    return sheetHead('Ustawienia') + `<h3 class="h3">Wygląd</h3>
+      <div class="field"><span class="lbl" id="th-l">Motyw</span><div class="seg th-seg" role="group" aria-labelledby="th-l">${[['auto', 'Jak w telefonie'], ['light', 'Jasny'], ['dark', 'Ciemny']].map(([v, n]) => `<button data-act="setTheme" data-v="${v}" aria-pressed="${th === v}">${n}</button>`).join('')}</div></div>
+      <h3 class="h3">Przerwy (dla nowych ćwiczeń)</h3>${stp('restSet', 'Między seriami')}${stp('restEx', 'Po ćwiczeniu')}
       <label class="toggle"><input type="checkbox" id="st-auto" data-bind="setting" data-f="autoRest" ${st.autoRest ? 'checked' : ''}>Uruchamiaj przerwę automatycznie po odhaczeniu serii</label>
       <label class="toggle"><input type="checkbox" id="st-sound" data-bind="setting" data-f="sound" ${st.sound ? 'checked' : ''}>Sygnał dźwiękowy na koniec przerwy</label>
       <div class="field"><label class="lbl" for="st-pw">Treningów w tygodniu (cel serii na mapie mięśni)</label><select class="input" id="st-pw" data-bind="setting" data-f="perWeek">${[1, 2, 3, 4, 5, 6].map(v => `<option value="${v}" ${perWeek() === v ? 'selected' : ''}>${v} · cel ${WK_TARGET[v]} serii na partię</option>`).join('')}</select></div>
@@ -3416,6 +3431,7 @@ const ACT = {
   restStep(el){ const {it} = itemRef(el); const f = el.dataset.f; it[f] = Math.max(0, Math.min(600, (it[f] ?? 0) + +el.dataset.d)); commit(); },
   itemMove(el){ const {p, it} = itemRef(el); const i = p.items.indexOf(it); ssUnlink(p.items, i); move(p.items, i, +el.dataset.dir); commit(); },
   setFreq(el){ S.settings.perWeek = +el.dataset.v; persist(); render(); },
+  setTheme(el){ const v = el.dataset.v; try { if (v === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', v); } catch (e) {} applyTheme(v); $$('.th-seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === v)); },
   covAdd(el){ const p = planById(el.dataset.plan); if (!p) return; p.items.push(newItem(el.dataset.id)); commit(); toast('Dodano do planu: ' + getEx(el.dataset.id).name); },
   itemSS(el){ const {p, it} = itemRef(el); it.ssNext = !it.ssNext; commit(); },
   orderApply(el){ const p = planById(el.dataset.plan); if (!p) return; p.items = suggestOrder(p).sorted.map(x => x.it); p.items.forEach(x => x.ssNext = false); delete p.orderOk; commit(); toast('Ułożono ćwiczenia w sugerowanej kolejności'); },
