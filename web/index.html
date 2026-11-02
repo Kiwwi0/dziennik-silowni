@@ -471,7 +471,7 @@ main{padding-block:2px 28px}
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script>window.M3D = {"js": "./miesnie3d.js?v=5b4b07a897", "glb": "./models/miesnie.glb?v=7e6a48b49a"};</script>
+<script>window.M3D = {"js": "./miesnie3d.js?v=688a002286", "glb": "./models/miesnie.glb?v=7e6a48b49a"};</script>
 <script>/* Animacje ćwiczeń: schematyczna postać w 3D rzutowana na płaszczyznę i rysowana jako SVG.
    Każde ćwiczenie = klatki kluczowe (kąty segmentów albo punkty docelowe dłoni/stóp) + sprzęt.
    API: ANIM.has(id), ANIM.svg(id, u, opt), ANIM.info(id, u), ANIM.dur(id), ANIM.thumb(id). */
@@ -1968,6 +1968,7 @@ function render(){
   if (ui.tab === 'cwiczenia') fillExList();
   drawCharts();
   syncWorkout();
+  if (!topSheet()) bm3dMount();
 }
 
 /* ---------- TRENING (start) ---------- */
@@ -2465,17 +2466,17 @@ function bodyMap(e){
 const BM3 = {v:null, host:null, mod:null};
 function bm3dStop(){ if (BM3.v) try { BM3.v.dispose(); } catch (e) {} BM3.v = null; BM3.host = null; }
 function bm3dMount(){
-  const fig = $('#sheet .bm-has3d'), host = fig && fig.querySelector('.bm3d-host');
+  const fig = topSheet() ? $('#sheet .bm-has3d') : $('#view .bm-has3d'), host = fig && fig.querySelector('.bm3d-host');
   if (!host || fig.querySelector('.bm3d').hidden){ bm3dStop(); return; }
   if (BM3.host === host) return;
   bm3dStop(); BM3.host = host;
-  const msg = fig.querySelector('.bm3d-msg'), e = getEx(fig.dataset.ex);
+  const msg = fig.querySelector('.bm3d-msg'), week = !!fig.dataset.week, e = week ? null : getEx(fig.dataset.ex);
   (BM3.mod ? Promise.resolve(BM3.mod) : import(window.M3D.js)).then(mod => {
     BM3.mod = mod;
     if (BM3.host !== host || !host.isConnected) return;
     BM3.v = mod.mount(host, {url:window.M3D.glb, groups:MUSCLE_GROUPS, spin:false, touch:'pan-y', dist:4.1,
       onReady:() => { msg.hidden = true; }, onError:() => { bm3dFallback(fig); }});
-    BM3.v.set(exMuscles(e));
+    if (week) BM3.v.setHeat(wkHeat(weekStats())); else BM3.v.set(exMuscles(e));
   }).catch(() => bm3dFallback(fig));
 }
 function bm3dFallback(fig){
@@ -2487,11 +2488,10 @@ function bm3dFallback(fig){
 function sessVol(s){ return (s.ex || []).reduce((a, x) => a + (x.sets || []).reduce((b, t) => b + (x.mode === 'time' ? 0 : (t.kg || 0) * (t.reps || 0)), 0), 0); }
 function sessSets(s){ return (s.ex || []).reduce((a, x) => a + (x.sets || []).length, 0); }
 function sessRow(s){
-  const v = sessVol(s);
   const title = s.dayName || s.planName || 'Trening', sub = s.planName && s.planName !== title ? s.planName : '';
   return `<button class="sess" data-act="sessOpen" data-id="${esc(s.id)}"><span><span class="d" style="display:block">${esc(title)} · ${fmtDate(s.date, {weekday:'short', day:'numeric', month:'short'})}</span>
     <span class="m">${esc(sub)}${sub ? ' · ' : ''}${fmtDur(s.dur || 0)} · ${sessSets(s)} ${pl(sessSets(s),'seria','serie','serii')}</span></span>
-    <span class="v">${v ? fmtN(Math.round(v)) + ' kg' : ''}</span></button>`;
+    </button>`;
 }
 function progress(exId){
   const out = [];
@@ -2589,7 +2589,15 @@ function vWeek(){
     const sug = (q.state === 'none' || q.state === 'low') ? wkSuggest(q).map(e => `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`).join('') : '';
     return `<div class="wk-item"><div class="wk-l"><b>${esc(q.name)}</b>${tag}</div><div class="wk-n">${fmtN(q.sets)} / ${q.target} serii</div><div class="wk-bar"><i class="${q.state}" style="width:${pct}%"></i></div>${sug ? `<div class="wk-sug">Np.: ${sug}</div>` : ''}</div>`;
   }).join('');
-  return `<figure class="bodymap wk" style="margin:0" aria-label="Mięśnie w ostatnich 7 dniach">${bodyMapFigs({p:[], s:[]}, wkHeat(g))}${wkLegend}</figure>
+  const flat = bodyMapFigs({p:[], s:[]}, wkHeat(g)), d3 = has3D && bmPref !== '2d';
+  const fig = !has3D ? `<figure class="bodymap wk" style="margin:0" aria-label="Mięśnie w ostatnich 7 dniach">${flat}${wkLegend}</figure>`
+    : `<figure class="bodymap wk bm-has3d" style="margin:0" aria-label="Mięśnie w ostatnich 7 dniach" data-week="1">
+      <span class="bm-seg" role="group" aria-label="Widok manekina"><button data-act="bmMode" data-m="3d" aria-pressed="${d3}">3D</button><button data-act="bmMode" data-m="2d" aria-pressed="${!d3}">Płaski</button></span>
+      <span class="bm3d"${d3 ? '' : ' hidden'}><span class="bm3d-host"></span><span class="bm3d-msg">Wczytuję model 3D…</span>
+        <span class="bm3d-bar"><button class="btn sm" data-act="bmView" data-v="front">Przód</button><button class="btn sm" data-act="bmView" data-v="right">Bok</button><button class="btn sm" data-act="bmView" data-v="back">Tył</button></span>
+        <span class="bm3d-hint">Przesuń palcem w bok, żeby obrócić · dwa palce przybliżają</span></span>
+      <span class="bm-flat"${d3 ? ' hidden' : ''}>${flat}</span>${wkLegend}</figure>`;
+  return `${fig}
     <p class="note" style="margin:0">Liczę serie z ostatnich 7 dni: mięsień główny w ćwiczeniu to 1 seria, pomocniczy pół. Cel (${+S.settings.weekSets || 10} serii) zmienisz w Ustawieniach. Partia, która w ostatnich 48 godzinach dostała co najmniej 3 serie, jeszcze odpoczywa.</p>
     <div class="wk-list">${rows}</div>`;
 }
@@ -2711,7 +2719,7 @@ const topSheet = () => sheets[sheets.length - 1];
 function sheetHead(title){ return `<div class="sheet-h"><h2>${esc(title)}</h2><button class="iconbtn" data-act="closeSheet" aria-label="Zamknij">${svg('x')}</button></div>`; }
 function renderSheet(){
   const w = $('#sheet-wrap'), el = $('#sheet'), s = topSheet();
-  if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); bm3dStop(); return; }
+  if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); bm3dStop(); bm3dMount(); return; }
   w.hidden = false; el.innerHTML = SHEETS[s.type](s); if (!el.querySelector('.sheet-f')) el.insertAdjacentHTML('beforeend', '<div class="sheet-end"></div>'); el.scrollTop = 0; lockBody();
   if (s.type === 'pick') fillPickList();
   animMount(); ytMount(); bm3dMount();

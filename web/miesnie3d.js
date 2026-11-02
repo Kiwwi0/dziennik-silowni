@@ -25,18 +25,18 @@ export function mount(host, opt = {}){
   const pivot = new THREE.Group(); scene.add(pivot);
   const mats = {};
   const mat = (name, color, rough = 0.55, em = 0) => mats[name] = new THREE.MeshStandardMaterial({color, roughness:rough, metalness:0, emissive:color, emissiveIntensity:em, side:THREE.DoubleSide});
-  const pal = () => ({muscle:css('--bm-muscle') || '#3E444B', skin:css('--bm-skin') || '#B9C0C7', p1:css('--hl') || '#E11D2E', p2:css('--hl2') || '#F49AA0'});
+  const pal = () => ({muscle:css('--bm-muscle') || '#3E444B', skin:css('--bm-skin') || '#B9C0C7', p1:css('--hl') || '#E11D2E', p2:css('--hl2') || '#F49AA0', ok:css('--good') || '#15784A', low:css('--wk-low') || '#8FD3AE'});
   let C = pal();
-  mat('m', C.muscle, 0.5); mat('p1', C.p1, 0.42, 0.18); mat('p2', C.p2, 0.5, 0.06); mat('skin', C.skin, 0.62); mat('bone', C.muscle, 0.6); mat('core', C.muscle, 0.6); mat('dbg', '#00FF66', 0.5);
+  mat('m', C.muscle, 0.5); mat('p1', C.p1, 0.42, 0.18); mat('p2', C.p2, 0.5, 0.06); mat('skin', C.skin, 0.62); mat('bone', C.muscle, 0.6); mat('core', C.muscle, 0.6); mat('dbg', '#00FF66', 0.5); mat('h-rec', C.p1, 0.42, 0.18); mat('h-ok', C.ok, 0.45, 0.1); mat('h-low', C.low, 0.5, 0.05);
   // kolejność przy stykających się powierzchniach: skóra > mięsień pracujący > pomocniczy > zwykły > kości i wypełnienie (bez „przeskakiwania”)
   const off = (m, f, u) => { m.polygonOffset = true; m.polygonOffsetFactor = f; m.polygonOffsetUnits = u; };
-  off(mats.skin, -1, -4); off(mats.p1, -1, -3); off(mats.p2, -0.5, -2); off(mats.bone, 1, 4); off(mats.core, 2, 8);
+  off(mats.skin, -1, -4); off(mats.p1, -1, -3); off(mats['h-rec'], -1, -3); off(mats['h-ok'], -1, -3); off(mats['h-low'], -0.5, -2); off(mats.p2, -0.5, -2); off(mats.bone, 1, 4); off(mats.core, 2, 8);
   const meshes = [];
   let state = {P:new Set(), S:new Set()};
   const apply = () => {
     for (const o of meshes){
       const k = o.userData.key;
-      o.material = (DBG && k === DBG) ? mats.dbg : k === 'skin' ? mats.skin : k === 'bone' ? mats.bone : k === 'core' ? mats.core : state.P.has(k) ? mats.p1 : state.S.has(k) ? mats.p2 : mats.m;
+      o.material = (DBG && k === DBG) ? mats.dbg : k === 'skin' ? mats.skin : k === 'bone' ? mats.bone : k === 'core' ? mats.core : state.heat ? (mats[state.heat[k]] || mats.m) : state.P.has(k) ? mats.p1 : state.S.has(k) ? mats.p2 : mats.m;
     }
     render();
   };
@@ -69,7 +69,7 @@ export function mount(host, opt = {}){
   const ro = new ResizeObserver(() => { renderer.setSize(W(), H()); camera.aspect = W() / H(); camera.updateProjectionMatrix(); render(); });
   ro.observe(host);
   const mq = matchMedia('(prefers-color-scheme: dark)');
-  const theme = () => { C = pal(); mats.m.color.set(C.muscle); mats.core.color.set(C.muscle); mats.bone.color.set(C.muscle); mats.skin.color.set(C.skin); mats.p1.color.set(C.p1); mats.p1.emissive.set(C.p1); mats.p2.color.set(C.p2); mats.p2.emissive.set(C.p2); render(); };
+  const theme = () => { C = pal(); mats.m.color.set(C.muscle); mats.core.color.set(C.muscle); mats.bone.color.set(C.muscle); mats.skin.color.set(C.skin); mats.p1.color.set(C.p1); mats.p1.emissive.set(C.p1); mats.p2.color.set(C.p2); mats.p2.emissive.set(C.p2); for (const [k, c] of [['h-rec', C.p1], ['h-ok', C.ok], ['h-low', C.low]]){ mats[k].color.set(c); mats[k].emissive.set(c); } render(); };
   mq.addEventListener('change', theme);
 
   let dead = false;
@@ -85,6 +85,7 @@ export function mount(host, opt = {}){
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   render();
   return {
+    setHeat(heat){ state = {P:new Set(), S:new Set(), heat}; apply(); },
     set(m){
       const G = opt.groups || {}, ex = list => list.flatMap(k => G[k] || [k]);
       const P = new Set(ex(m.p)); state = {P, S:new Set(ex(m.s).filter(k => !P.has(k)))}; apply();
