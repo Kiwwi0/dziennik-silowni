@@ -331,6 +331,17 @@ main{padding-block:2px 28px}
 .anim-ctl .btn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .anim-ph{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted);padding:2px 12px 0;font-variant-numeric:tabular-nums}
 .anim-ph b{color:var(--ink);font-weight:600}
+.media.yt{background:var(--surface-2);display:grid;overflow:visible;flex:none}
+.yt-stage{display:block;position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;border-radius:11px 11px 0 0}
+.yt-stage .yt-ph,.yt-stage iframe,.yt-stage .yt-frame{position:absolute;inset:0;width:100%;height:100%;border:0}
+.yt-stage .yt-ph{background:#000 center/cover no-repeat;transition:opacity .3s}
+.media.yt.on .yt-ph{opacity:0;pointer-events:none}
+.yt-shield{position:absolute;inset:0;width:100%;height:100%;border:0;padding:0;margin:0;background:transparent;cursor:pointer;border-radius:0}
+.yt-time{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:48px;text-align:right}
+.yt-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:2px 8px 0}
+.yt-row .btn[aria-pressed="true"],.yt-row .iconbtn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.yt-lbl{font-size:12.5px;color:var(--muted);margin-right:2px}
+.yt-sp{flex:1}
 .anim-note{margin:0;padding:4px 12px 10px;font-size:12px;color:var(--muted);line-height:1.4}
 .anim-note i{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--a-hl);vertical-align:-1px;margin-right:4px}
 .thumb.at{background:var(--surface-2)}
@@ -864,6 +875,7 @@ return {
     return {label, pct:Math.round(ph.t * 100), cyc:!!ex.cyc}; },
   dur:id => (DEFS.get(id) || {}).dur || 4.8,
   _def:def, _solve:p => solve(expand(p)), _B:B,
+  _withBody:(dims, fn) => { if (!dims) return fn(); const old = {...B}; Object.assign(B, dims); try { return fn(); } finally { Object.assign(B, old); } },
   _ex:id => DEFS.get(id), _kit:makeKit, _ease:ease, _phase:(id, u) => phaseOf(DEFS.get(id), u),
   _P:(id, t) => { const ex = DEFS.get(id); return solve(compile(ex).pose(t)); }, _v:{add, sub, mul, unit, lerpA, cos, sin, len, cross, dot},
 };
@@ -1449,6 +1461,7 @@ const ICON = {
   search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
   play:'<path d="M8 5.5v13l11-6.5z"/>', stop:'<rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/>', more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
   min:'<path d="M6 9l6 6 6-6"/>', pause:'<path d="M8.5 5.5v13M15.5 5.5v13"/>', user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-3.8 4-5.5 7.5-5.5s6.3 1.7 7.5 5.5"/>', yt:'<rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10.5 9.5v5l4-2.5z"/>',
+  snd:'<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>', mute:'<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
 };
 const svg = (k, cls='i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[k] || k}</svg>`;
 const $ = (s, r=document) => r.querySelector(s);
@@ -1929,8 +1942,35 @@ function fillExList(){
   el.innerHTML = groupedRows(filterEx(ui.exQ, ui.exGroup, ui.exEquip), e =>
     `<button class="exrow" data-act="exOpen" data-id="${esc(e.id)}">${thumb(e.id)}<span><span class="nm">${esc(e.name)}</span><span class="meta" style="display:block">${esc(exMeta(e))}</span></span>${svg('chev','i s chev')}</button>`);
 }
-function ytLink(q, label){ return `<a class="btn sm" href="https://www.youtube.com/results?search_query=${encodeURIComponent(q)}" target="_blank" rel="noopener">${svg('yt','i s')}${label}</a>`; }
+// Filmy z serii „Atlas ćwiczeń – Michał Wrzosek” (Olimp) na YouTube. Tylko ta seria; bez filmu zostaje animacja.
+const YTV = {
+  'Barbell_Bench_Press_-_Medium_Grip':'TXdnlwrBaT4', Dumbbell_Bench_Press:'QApcl3o3tE0', Incline_Dumbbell_Press:'PUsjTUrXLUI',
+  Cable_Crossover:'fPP2iNBmGpo', Pushups:'pWnb2fIZSn0', 'Dips_-_Chest_Version':'hLtA-VuZMus', 'Dips_-_Triceps_Version':'hLtA-VuZMus',
+  Pullups:'zl48yliAeYs', 'Wide-Grip_Lat_Pulldown':'8igLvt5GZNc', 'One-Arm_Dumbbell_Row':'wG_5hb6qsgI', Seated_Cable_Rows:'wCz9JH3kkz8',
+  Barbell_Deadlift:'_WP24aEFjFU', Hyperextensions_Back_Extensions:'ufbZwgVDYhg', Standing_Military_Press:'4YQ1WG0uL_g',
+  Side_Lateral_Raise:'dxC3S2ixd64', Front_Dumbbell_Raise:'0ZslV4JJkIg', Face_Pull:'7nUMdDOEU5g', Standing_Biceps_Cable_Curl:'pgI_g0ZGrXg',
+  'EZ-Bar_Skullcrusher':'NkRUEqXdOPs', Bench_Dips:'RYUwvb8O7a4', Barbell_Squat:'0wChHrrc4rg', Goblet_Squat:'VUL9p7uI3Rk',
+  Dumbbell_Lunges:'cCuC96Uj6WU', Dumbbell_Rear_Lunge:'dUR5KqgtAds', Dumbbell_Step_Ups:'2PhpGR8HvlI', Good_Morning:'KvJOcge9ib0',
+  Barbell_Hip_Thrust:'yz7IW0gQECI', Plank:'fh7dXuqwkFI', Cable_Crunch:'6KlUGwZxdRE', Hanging_Leg_Raise:'JNm5q3cUhFo',
+  Russian_Twist:'AwoiVWAi4bo', Mountain_Climbers:'Ivvn7_CI77Q', 'One-Arm_Kettlebell_Swings':'fC1fb06_VWE', Pallof_Press:'KyJBb3s1EPE',
+};
+const ytWatch = v => `https://www.youtube.com/watch?v=${v}`;
 function mediaHTML(id){
+  if (YTV[id] && !ytBroken) return ytFigure(id);
+  return animFigure(id);
+}
+function ytFigure(id){
+  const v = YTV[id];
+  return `<figure class="media yt" data-yt="${esc(v)}" data-ex="${esc(id)}">
+    <span class="yt-stage"><span class="yt-ph" style="background-image:url(https://i.ytimg.com/vi/${esc(v)}/hqdefault.jpg)"></span><span class="yt-frame"></span><button class="yt-shield" data-act="ytToggle" aria-label="Odtwórz albo zatrzymaj film" tabindex="-1"></button></span>
+    <span class="anim-ctl"><button class="iconbtn sm" data-act="ytToggle" aria-label="Odtwórz" disabled>${svg('play', 'i s')}</button>
+      <input type="range" min="0" max="1000" step="1" value="0" aria-label="Moment filmu" disabled>
+      <span class="yt-time">0,0 s</span></span>
+    <span class="yt-row"><span class="yt-lbl">Tempo</span><button class="btn sm" data-act="ytRate" data-r="0.25" aria-pressed="false">¼×</button><button class="btn sm" data-act="ytRate" data-r="0.5" aria-pressed="false">½×</button><button class="btn sm" data-act="ytRate" data-r="1" aria-pressed="true">1×</button>
+      <span class="yt-sp"></span><button class="iconbtn sm" data-act="ytSound" aria-pressed="false" aria-label="Włącz dźwięk">${svg('mute','i s')}</button><a class="iconbtn sm" href="${ytWatch(v)}" target="_blank" rel="noopener" aria-label="Otwórz film na YouTube">${svg('yt','i s')}</a></span>
+    <figcaption class="anim-note">Film: Michał Wrzosek, Atlas ćwiczeń (Olimp), YouTube. Suwakiem przewiniesz ruch, tempem go zwolnisz.</figcaption></figure>`;
+}
+function animFigure(id){
   if (typeof ANIM !== 'undefined' && ANIM.has(id)){
     const playing = !reduced;
     return `<figure class="media anim" data-anim="${esc(id)}">
@@ -1982,6 +2022,85 @@ function animTick(now){
   } else AP.last = now;
   AP.raf = requestAnimationFrame(animTick);
 }
+
+// Odtwarzacz filmu YouTube w karcie ćwiczenia: bez dźwięku, w pętli, z suwakiem i tempem.
+// Bez internetu (albo gdy YouTube się nie wczyta) karta wraca do animacji.
+let ytBroken = false, ytApi = null;
+const YP = {el:null, p:null, ready:false, dur:0, drag:false, raf:0};
+function ytLoadApi(){
+  if (window.YT && YT.Player) return Promise.resolve();
+  if (ytApi) return ytApi;
+  ytApi = new Promise((res, rej) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); res(); };
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; s.async = true;
+    s.onerror = () => rej(new Error('yt'));
+    document.head.appendChild(s);
+    setTimeout(() => rej(new Error('yt-timeout')), 12000);
+  }).catch(e => { ytApi = null; throw e; });
+  return ytApi;
+}
+const ytFmt = t => Math.max(0, t).toFixed(1).replace('.', ',') + ' s';
+function ytMount(){
+  const fig = $('#sheet [data-yt]');
+  if (!fig){ ytStop(); return; }
+  if (YP.el === fig) return;
+  ytStop();
+  YP.el = fig;
+  const r = fig.querySelector('input[type=range]');
+  const seek = final => { if (!YP.ready || !(YP.dur > 0)) return; const t = YP.dur * r.value / 1000; YP.p.seekTo(t, final); fig.querySelector('.yt-time').textContent = ytFmt(t); };
+  r.addEventListener('pointerdown', () => { YP.drag = true; if (YP.ready) YP.p.pauseVideo(); });
+  r.addEventListener('input', () => { YP.drag = true; if (YP.ready) YP.p.pauseVideo(); seek(false); });
+  r.addEventListener('change', () => { seek(true); YP.drag = false; });
+  if (!navigator.onLine){ ytFallback(fig); return; }
+  ytLoadApi().then(() => {
+    if (YP.el !== fig || !fig.isConnected) return;
+    YP.p = new YT.Player(fig.querySelector('.yt-frame'), {
+      host: 'https://www.youtube-nocookie.com', videoId: fig.dataset.yt,
+      playerVars: {autoplay: 0, mute: 1, controls: 0, playsinline: 1, rel: 0, iv_load_policy: 3, disablekb: 1, fs: 0, origin: location.origin},
+      events: {
+        onReady: () => {
+          if (YP.el !== fig) return;
+          YP.ready = true; YP.dur = YP.p.getDuration() || 0; YP.p.mute();
+          fig.querySelectorAll('[disabled]').forEach(x => x.disabled = false);
+          if (!reduced) YP.p.playVideo();
+          if (!YP.raf) YP.raf = requestAnimationFrame(ytTick);
+        },
+        onStateChange: ev => {
+          if (YP.el !== fig) return;
+          if (ev.data === 1){ fig.classList.add('on'); if (!YP.dur) YP.dur = YP.p.getDuration() || 0; }
+          if (ev.data === 0){ YP.p.seekTo(0, true); YP.p.playVideo(); }
+          const on = ev.data === 1 || ev.data === 3, b = fig.querySelector('.anim-ctl [data-act="ytToggle"]');
+          b.innerHTML = svg(on ? 'pause' : 'play', 'i s'); b.setAttribute('aria-label', on ? 'Zatrzymaj' : 'Odtwórz');
+        },
+        onError: () => { if (YP.el === fig) ytFallback(fig); },
+      },
+    });
+  }).catch(() => { ytBroken = true; if (YP.el === fig) ytFallback(fig); });
+}
+function ytFallback(fig){
+  const id = fig.dataset.ex;
+  ytStop();
+  if (!fig.isConnected) return;
+  fig.outerHTML = animFigure(id);
+  animMount();
+}
+function ytStop(){
+  if (YP.raf) cancelAnimationFrame(YP.raf);
+  if (YP.p) try { YP.p.destroy(); } catch (e) {}
+  YP.el = null; YP.p = null; YP.ready = false; YP.dur = 0; YP.drag = false; YP.raf = 0;
+}
+function ytTick(){
+  YP.raf = 0;
+  if (!YP.el || !YP.el.isConnected){ ytStop(); return; }
+  if (YP.ready && !YP.drag && YP.dur > 0){
+    const t = YP.p.getCurrentTime() || 0, r = YP.el.querySelector('input[type=range]');
+    if (document.activeElement !== r) r.value = Math.round(Math.min(1, t / YP.dur) * 1000);
+    YP.el.querySelector('.yt-time').textContent = ytFmt(t);
+  }
+  YP.raf = requestAnimationFrame(ytTick);
+}
+function ytToggle(){ if (!YP.ready) return; const st = YP.p.getPlayerState(); (st === 1 || st === 3) ? YP.p.pauseVideo() : YP.p.playVideo(); }
 
 /* ---------- mapa mięśni (sylwetka z przodu i z tyłu) ---------- */
 const MUSCLE_REGIONS = {
@@ -2182,10 +2301,10 @@ const topSheet = () => sheets[sheets.length - 1];
 function sheetHead(title){ return `<div class="sheet-h"><h2>${esc(title)}</h2><button class="iconbtn" data-act="closeSheet" aria-label="Zamknij">${svg('x')}</button></div>`; }
 function renderSheet(){
   const w = $('#sheet-wrap'), el = $('#sheet'), s = topSheet();
-  if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); return; }
+  if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); return; }
   w.hidden = false; el.innerHTML = SHEETS[s.type](s); if (!el.querySelector('.sheet-f')) el.insertAdjacentHTML('beforeend', '<div class="sheet-end"></div>'); el.scrollTop = 0; lockBody();
   if (s.type === 'pick') fillPickList();
-  animMount();
+  animMount(); ytMount();
   const f = $('[autofocus]', el); if (f && matchMedia('(pointer:fine)').matches) f.focus();
 }
 function lockBody(){ document.body.classList.toggle('lock', !!topSheet() || (!!ACTIVE && ui.showWorkout)); }
@@ -2199,7 +2318,6 @@ const SHEETS = {
       h += `<dl class="muscles" style="margin:0"><dt>Główne mięśnie</dt><dd>${esc((e.primary || []).join(', ') || '–')}</dd>${(e.secondary || []).length ? `<dt>Pomocnicze</dt><dd>${esc(e.secondary.join(', '))}</dd>` : ''}</dl>`;
     if ((e.steps || []).length) h += `<h3 class="h3">Technika</h3><ol class="steps">${e.steps.map(x => `<li><span>${esc(x)}</span></li>`).join('')}</ol>`;
     if ((e.tips || []).length) h += `<h3 class="h3">Na co uważać</h3><ul class="tips">${e.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
-    h += `<h3 class="h3">Film</h3><div class="row">${ytLink(e.name + ' technika', 'YouTube po polsku')}${e.en ? ytLink(e.en + ' proper form', 'YouTube po angielsku') : ''}</div>`;
     if (e.custom) h += `<div class="row"><button class="btn sm" data-act="customEdit" data-id="${esc(e.id)}">Edytuj ćwiczenie</button><button class="btn sm danger" data-act="customDel" data-id="${esc(e.id)}">${svg('trash','i s')}Usuń</button></div>`;
     if (!s.noAdd) h += `<div class="sheet-f"><button class="btn primary" data-act="exAddToPlan" data-id="${esc(e.id)}">${svg('plus','i s')}Dodaj do planu</button></div>`;
     return h;
@@ -2521,6 +2639,9 @@ const ACT = {
   exOpen(el){ openSheet({type:'ex', id:el.dataset.id}); },
   exInfo(el){ openSheet({type:'ex', id:el.dataset.id, noAdd:true}); },
   animPlay(){ animSetPlaying(!AP.playing); },
+  ytToggle(){ ytToggle(); },
+  ytRate(el){ if (!YP.ready) return; YP.p.setPlaybackRate(+el.dataset.r); el.parentNode.querySelectorAll('[data-act="ytRate"]').forEach(y => y.setAttribute('aria-pressed', y === el)); },
+  ytSound(el){ if (!YP.ready) return; const on = el.getAttribute('aria-pressed') !== 'true'; on ? YP.p.unMute() : YP.p.mute(); el.setAttribute('aria-pressed', on); el.setAttribute('aria-label', on ? 'Wyłącz dźwięk' : 'Włącz dźwięk'); el.innerHTML = svg(on ? 'snd' : 'mute', 'i s'); if (on) YP.p.playVideo(); },
   animSlow(el){ AP.slow = !AP.slow; el.setAttribute('aria-pressed', AP.slow); },
   mediaToggle(el){ const f = el.closest('.media'); if (reduced){ const on = f.classList.toggle('show-b'); el.textContent = on ? 'Pokaż początek ruchu' : 'Pokaż koniec ruchu'; } else { const p = f.classList.toggle('paused'); el.textContent = p ? 'Odtwórz' : 'Zatrzymaj'; } },
   exAddToPlan(el){ openSheet({type:'addToPlan', id:el.dataset.id}); },
