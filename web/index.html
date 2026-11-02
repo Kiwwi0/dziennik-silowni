@@ -264,6 +264,19 @@ main{padding-block:2px 28px}
 .wex.alldone .wex-h .nm{color:var(--muted)}
 .last{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .cal{display:grid;gap:8px}
+.sum-lead{margin:0;font-weight:600}
+.sum-list{display:grid;gap:6px}
+.sum-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.sum-row>div{display:grid;min-width:0}
+.sum-row span{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmp{flex:none;font:700 13px var(--f-body);border-radius:99px;padding:3px 10px;background:var(--surface-2);color:var(--muted)}
+.cmp.up{background:var(--good-soft);color:var(--good)} .cmp.down{background:var(--bad-soft);color:var(--bad)}
+.cov{display:grid;gap:10px}
+.cov-top{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center}
+.cov-list{display:grid;gap:6px}
+.cov-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.cov-row small{color:var(--muted);font-variant-numeric:tabular-nums}
+.cov-row .btn{max-width:100%}
 .tpl{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:8px;background:var(--surface)}
 .tpl-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tpl-days{display:grid;gap:6px;font-size:13px;color:var(--muted)}
@@ -2036,6 +2049,7 @@ function vPlans(){
       h += `<button class="dayrow plan-link" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div></div>${svg('chev','i s chev')}</button>`;
     }
     h += `</section><div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div>`;
+    h += coverageCard(null);
   }
   return `<div class="wrap stack">${h}</div>`;
 }
@@ -2048,6 +2062,7 @@ function vPlanEditor(p){
   p.items.forEach((it, ii) => { h += vItem(p, it, ii); });
   h += `<button class="btn block" data-act="pickForPlan" data-plan="${p.id}">${svg('plus','i s')}Dodaj ćwiczenia</button></section>
     ${vOrderHint(p)}
+    ${coverageCard(p)}
     <div class="row" style="margin-top:8px"><button class="btn sm" data-act="planMove" data-dir="-1" data-plan="${p.id}" ${pi === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej na liście</button><button class="btn sm" data-act="planMove" data-dir="1" data-plan="${p.id}" ${pi === S.plans.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button>
       <span class="spacer"></span><button class="btn danger sm" data-act="planDel" data-plan="${p.id}">${svg('trash','i s')}Usuń plan</button></div>`;
   return `<div class="wrap stack">${h}</div>`;
@@ -2062,7 +2077,7 @@ function vItem(p, it, ii){
     h += `<div class="item-b">
       <div class="row"><div class="seg" role="group" aria-label="Rodzaj serii">
         <button data-act="itemMode" data-mode="reps" ${R} aria-pressed="${!t}">Powtórzenia</button><button data-act="itemMode" data-mode="time" ${R} aria-pressed="${t}">Czas</button></div>
-        <span class="spacer"></span><button class="btn sm ghost" data-act="exOpen" data-id="${esc(it.exId)}">${svg('info','i s')}Technika</button></div>
+        <span class="spacer"></span><button class="btn sm ghost" data-act="itemSwap" ${R}>Zamień</button><button class="btn sm ghost" data-act="exOpen" data-id="${esc(it.exId)}">${svg('info','i s')}Technika</button></div>
       <div class="ptable"><div class="prow head"><span>Seria</span><span>${t ? 'Czas (s)' : 'Powt.'}</span><span>Ciężar (kg)</span><span></span></div>`;
     it.sets.forEach((s, si) => {
       const f = t ? 'sec' : 'reps';
@@ -2567,9 +2582,10 @@ function weekStats(){
 }
 function wkHeat(g){ const h = {}; for (const q of g){ const c = {rec:'h-rec', ok:'h-ok', low:'h-low'}[q.state]; if (c) q.keys.forEach(k => h[k] = c); } return h; }
 function wkSuggest(q, n = 2){
+  // najpierw ćwiczenia, w których ta partia jest głównym (najlepiej jedynym) celem
   const out = [];
-  for (const e of EX){ const m = MUSCLE_EX[e.id]; if (!m) continue; if (wkExpand(m.p).some(k => q.keys.includes(k))){ out.push(e); if (out.length >= n) break; } }
-  return out;
+  EX.forEach((e, i) => { const m = MUSCLE_EX[e.id]; if (!m || e.id === 'External_Rotation_with_Cable') return; const P = wkExpand(m.p), hit = P.filter(k => q.keys.includes(k)).length; if (hit) out.push({e, f:hit / P.length, i}); });
+  return out.sort((a, b) => b.f - a.f || a.i - b.i).slice(0, n).map(o => o.e);
 }
 const wkLegend = `<figcaption class="legend wk-leg"><span><i style="background:var(--hl)"></i>odpoczywa (48 h)</span><span><i style="background:var(--good)"></i>cel tygodnia</span><span><i style="background:var(--wk-low)"></i>trenowane, mniej</span><span><i style="background:var(--bm-muscle)"></i>brak</span></figcaption>`;
 function weekCard(){
@@ -2600,6 +2616,46 @@ function vWeek(){
   return `${fig}
     <p class="note" style="margin:0">Liczę serie z ostatnich 7 dni: mięsień główny w ćwiczeniu to 1 seria, pomocniczy pół. Cel (${+S.settings.weekSets || 10} serii) zmienisz w Ustawieniach. Partia, która w ostatnich 48 godzinach dostała co najmniej 3 serie, jeszcze odpoczywa.</p>
     <div class="wk-list">${rows}</div>`;
+}
+
+/* ---------- zamiennik ćwiczenia: te same mięśnie główne ---------- */
+function swapCandidates(exId, n = 6){
+  const m0 = exMuscles(getEx(exId)), P0 = new Set(wkExpand(m0.p)), S0 = new Set(wkExpand(m0.s)), g0 = getEx(exId).group, cardio = g0 === 'Cardio';
+  const out = [];
+  for (const e of EX){
+    if (e.id === exId || (e.group === 'Cardio') !== cardio) continue;
+    const m = exMuscles(e), P = wkExpand(m.p), Q = wkExpand(m.s);
+    const hit = P.filter(k => P0.has(k)).length; if (!hit) continue;
+    const score = hit * 3 + Q.filter(k => P0.has(k) || S0.has(k)).length * .5 - P.filter(k => !P0.has(k)).length + (e.group === g0 ? 1 : 0);
+    out.push({e, score});
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, n).map(o => o.e);
+}
+
+/* ---------- pokrycie programu: wszystkie plany razem (każdy plan raz w tygodniu) ---------- */
+function planGroupSets(items){
+  const g = WK_GROUPS.map(([name, keys, f]) => ({name, keys, f:f || 1, sets:0}));
+  for (const it of items){
+    const m = exMuscles(getEx(it.exId)), P = new Set(wkExpand(m.p)), Q = new Set(wkExpand(m.s)), n = (it.sets || []).length;
+    for (const q of g){ const w = q.keys.some(k => P.has(k)) ? 1 : q.keys.some(k => Q.has(k)) ? .5 : 0; q.sets += w * n; }
+  }
+  return g;
+}
+function programGaps(){
+  const T = +S.settings.weekSets || 10;
+  return planGroupSets(S.plans.flatMap(p => p.items)).map(q => ({...q, target:Math.round(T * q.f)})).filter(q => q.sets < q.target).sort((a, b) => a.sets / a.target - b.sets / b.target);
+}
+function coverageCard(p){
+  if (typeof BODYMAP === 'undefined' || !S.plans.some(q => q.items.length)) return '';
+  const heat = {};
+  if (p){ for (const q of planGroupSets(p.items)){ const c = q.sets >= 3 ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); } }
+  else { const T = +S.settings.weekSets || 10; for (const q of planGroupSets(S.plans.flatMap(x => x.items))){ const c = q.sets >= Math.round(T * (q.f || 1)) ? 'h-ok' : q.sets > 0 ? 'h-low' : ''; if (c) q.keys.forEach(k => heat[k] = c); } }
+  const gaps = programGaps().slice(0, 6);
+  const sug = gaps.map(q => { const e = wkSuggest(q, 1)[0]; return e ? `<div class="cov-row"><span><b>${esc(q.name)}</b> <small>${fmtN(q.sets)} / ${q.target} serii</small></span>${p ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}${esc(e.name)}</button>` : `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`}</div>` : ''; }).join('');
+  return `<section class="card cov"><h3 class="h3" style="margin:0">${p ? 'Mięśnie w tym planie' : 'Twój program: wszystkie plany razem'}</h3>
+    <div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
+    <p class="muted small" style="margin:0">${p ? 'Ciemnozielone: co najmniej 3 serie w tym planie, jasne: mniej.' : 'Przy założeniu, że każdy plan robisz raz w tygodniu.'} Cel: ${+S.settings.weekSets || 10} serii tygodniowo na partię (zmienisz w Ustawieniach).</p></div>
+    ${gaps.length ? `<p style="margin:0"><b>Mało pracują w całym programie:</b></p><div class="cov-list">${sug}</div>` : '<p style="margin:0"><b class="wk-ok">Każda partia ma tygodniowy cel w Twoich planach.</b></p>'}</section>`;
 }
 function vHistory(){
   let h = `<div class="seg" role="group" aria-label="Widok historii"><button data-act="hist" data-v="treningi" aria-pressed="${ui.hist === 'treningi'}">Treningi</button><button data-act="hist" data-v="tydzien" aria-pressed="${ui.hist === 'tydzien'}">Tydzień</button><button data-act="hist" data-v="postepy" aria-pressed="${ui.hist === 'postepy'}">Postępy</button></div>`;
@@ -2751,6 +2807,12 @@ const SHEETS = {
     }
     return h;
   },
+  swap(s){
+    const cur = getEx(s.exId), list = swapCandidates(s.exId);
+    let h = sheetHead('Zamiennik') + `<p class="muted" style="margin:0">Zamiast <b>${esc(cur.name)}</b>, na te same mięśnie:</p><div class="exlist">`;
+    h += list.map(e => `<button class="exrow" data-act="swapDo" data-id="${esc(e.id)}">${thumb(e.id)}<span><span class="nm">${esc(e.name)}</span><span class="meta" style="display:block">${esc(e.equipment)} · ${esc(exMuscles(e).p.map(muscleName).join(', '))}</span></span>${svg('chev','i s chev')}</button>`).join('') || '<p class="muted">Brak podobnych ćwiczeń w bazie.</p>';
+    return h + `</div><p class="note" style="margin:0">${s.ctx === 'w' ? 'Zamiana dotyczy tylko dzisiejszego treningu. Plan się nie zmieni.' : 'Ćwiczenie zostanie zamienione w planie, serie i przerwy zostają.'}</p>`;
+  },
   addToPlan(s){
     const e = getEx(s.id);
     let h = sheetHead('Dodaj do planu') + `<p class="muted" style="margin:0">${esc(e.name)} trafi na koniec wybranego planu z 3 seriami. Szczegóły zmienisz w edycji planu.</p>`;
@@ -2804,6 +2866,35 @@ const SHEETS = {
       <textarea class="input" id="exp" readonly hidden></textarea>
       <div class="field"><label class="lbl" for="imp">Przywróć z kopii</label><textarea class="input" id="imp" placeholder="Wklej tutaj skopiowane dane"></textarea></div>
       <div class="row"><button class="btn sm" data-act="importAsk">Przywróć dane</button></div>`;
+  },
+  summary(s){
+    const x = SESS.find(q => q.id === s.id); if (!x) return sheetHead('Podsumowanie') + '<p class="muted">Brak treningu.</p>';
+    const best = sets => sets.reduce((a, t) => { const kg = t.kg || 0, r = t.reps || 0; return kg > a.kg || (kg === a.kg && r > a.reps) ? {kg, reps:r} : a; }, {kg:0, reps:0});
+    let up = 0, rows = '';
+    for (const e of x.ex || []){
+      const prev = lastFor(e.exId, x.id), name = getEx(e.exId).missing ? e.name : getEx(e.exId).name;
+      let cmp = '<span class="cmp new">pierwszy raz</span>';
+      if (prev){
+        if (e.mode === 'time'){ const a = Math.max(...e.sets.map(t => t.sec || 0)), b = Math.max(...prev.sets.map(t => t.sec || 0)); cmp = a > b ? `<span class="cmp up">+${a - b} s</span>` : a < b ? `<span class="cmp down">−${b - a} s</span>` : '<span class="cmp eq">bez zmian</span>'; if (a > b) up++; }
+        else {
+          const A = best(e.sets), B = best(prev.sets);
+          const totA = e.sets.reduce((q, t) => q + (t.reps || 0), 0), totB = prev.sets.reduce((q, t) => q + (t.reps || 0), 0);
+          if (A.kg > B.kg){ cmp = `<span class="cmp up">+${fmtN(Math.round((A.kg - B.kg) * 100) / 100)} kg</span>`; up++; }
+          else if (A.kg < B.kg) cmp = `<span class="cmp down">−${fmtN(Math.round((B.kg - A.kg) * 100) / 100)} kg</span>`;
+          else if (totA > totB){ cmp = `<span class="cmp up">+${totA - totB} powt.</span>`; up++; }
+          else if (totA < totB) cmp = `<span class="cmp down">−${totB - totA} powt.</span>`;
+          else cmp = '<span class="cmp eq">bez zmian</span>';
+        }
+      }
+      const sets = e.sets.map(t => e.mode === 'time' ? fmtN(t.sec) + ' s' : (t.kg ? fmtN(t.kg) + '×' : '') + (t.reps ?? 0)).join(' · ');
+      rows += `<div class="sum-row"><div><b>${esc(name)}</b><span>${esc(sets)}</span></div>${cmp}</div>`;
+    }
+    const n = (x.ex || []).length;
+    return sheetHead('Trening zapisany') + `<p class="sum-lead">${up ? `Lepiej niż ostatnio w ${up} z ${n} ${pl(n, 'ćwiczenia', 'ćwiczeń', 'ćwiczeń')}. Dobra robota!` : 'Trening zapisany. Porównanie z poprzednim razem poniżej.'}</p>
+      <div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(x.dur || 0)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(x)}</div></div>
+      <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(x)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${n}</div></div></div>
+      <h3 class="h3">W porównaniu z poprzednim razem</h3><div class="sum-list">${rows}</div>
+      <div class="sheet-f"><button class="btn primary" data-act="closeSheet">Gotowe</button></div>`;
   },
   finish(s){
     const sess = buildSession(); const linked = ACTIVE.ex.some(x => x.itemId) && planById(ACTIVE.planId);
@@ -2890,7 +2981,7 @@ function wCard(x, i, cur){
     <div class="wex-h"><button class="iconbtn plain" style="width:auto;height:auto;padding:0" data-act="exInfo" data-id="${esc(x.exId)}" aria-label="Technika: ${esc(ex.name)}">${thumb(x.exId)}</button>
       <div><button class="nm" data-act="exInfo" data-id="${esc(x.exId)}">${esc(ex.name)}</button><div class="meta">${doneN} z ${x.sets.length} serii${x.note ? ' · ' + esc(x.note) : ''}</div></div>
       <button class="iconbtn sm plain" data-act="wMenu" data-i="${i}" aria-label="Opcje ćwiczenia" aria-expanded="${ui.wMenu === x.key}">${svg('more','i s')}</button></div>`;
-  if (ui.wMenu === x.key) h += `<div class="row"><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="1" ${i === ACTIVE.ex.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><button class="btn sm" data-act="wNoteOpen" data-i="${i}">Notatka</button>${i < ACTIVE.ex.length - 1 ? `<button class="btn sm" data-act="wSS" data-i="${i}">${x.ssNext ? 'Rozłącz superserię' : 'Superseria z następnym'}</button>` : ''}<span class="spacer"></span><button class="btn sm danger" data-act="wDelEx" data-i="${i}">${svg('trash','i s')}Usuń</button></div>`;
+  if (ui.wMenu === x.key) h += `<div class="row"><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="1" ${i === ACTIVE.ex.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><button class="btn sm" data-act="wSwap" data-i="${i}">Zamień</button><button class="btn sm" data-act="wNoteOpen" data-i="${i}">Notatka</button>${i < ACTIVE.ex.length - 1 ? `<button class="btn sm" data-act="wSS" data-i="${i}">${x.ssNext ? 'Rozłącz superserię' : 'Superseria z następnym'}</button>` : ''}<span class="spacer"></span><button class="btn sm danger" data-act="wDelEx" data-i="${i}">${svg('trash','i s')}Usuń</button></div>`;
   if (x.wnote != null && (ui.wNote === x.key || x.wnote)) h += `<textarea class="input wnote" rows="2" data-bind="wnote" data-i="${i}" placeholder="Notatka do tego ćwiczenia, np. ustawienie siedziska 4" aria-label="Notatka do ćwiczenia">${esc(x.wnote)}</textarea>`;
   if (last) h += `<div class="last">Ostatni trening: ${fmtDate(last.date)}${last.note ? ` · <i>„${esc(last.note)}”</i>` : ''}</div>`;
   h += progHint(x, i, last);
@@ -3095,6 +3186,7 @@ const ACT = {
   psetDel(el){ const {it} = itemRef(el); if (it.sets.length <= 1){ toast('Ćwiczenie musi mieć co najmniej jedną serię.'); return; } it.sets.splice(+el.dataset.i, 1); commit(); },
   restStep(el){ const {it} = itemRef(el); const f = el.dataset.f; it[f] = Math.max(0, Math.min(600, (it[f] ?? 0) + +el.dataset.d)); commit(); },
   itemMove(el){ const {p, it} = itemRef(el); const i = p.items.indexOf(it); ssUnlink(p.items, i); move(p.items, i, +el.dataset.dir); commit(); },
+  covAdd(el){ const p = planById(el.dataset.plan); if (!p) return; p.items.push(newItem(el.dataset.id)); commit(); toast('Dodano do planu: ' + getEx(el.dataset.id).name); },
   itemSS(el){ const {p, it} = itemRef(el); it.ssNext = !it.ssNext; commit(); },
   orderApply(el){ const p = planById(el.dataset.plan); if (!p) return; p.items = suggestOrder(p).sorted.map(x => x.it); p.items.forEach(x => x.ssNext = false); delete p.orderOk; commit(); toast('Ułożono ćwiczenia w sugerowanej kolejności'); },
   orderKeep(el){ const p = planById(el.dataset.plan); if (!p) return; p.orderOk = orderSig(p); commit(); },
@@ -3185,7 +3277,7 @@ const ACT = {
         it.mode = x.mode; it.rest = x.rest; it.sets = done.map(q => x.mode === 'time' ? {sec:q.sec ?? 30, kg:q.kg ?? null} : {reps:q.reps ?? 10, kg:q.kg ?? null}); }
       persist();
     }
-    saveSession(s); endWorkout(); toast('Trening zapisany.');
+    saveSession(s); endWorkout(); openSheet({type:'summary', id:s.id});
   },
   discardAsk(){ confirmBox('Odrzucić trening?', 'Wpisane serie nie zostaną zapisane w historii.', 'Odrzuć trening', () => { endWorkout(); toast('Trening odrzucony.'); }); },
   toggleSet(el){
@@ -3214,6 +3306,22 @@ const ACT = {
   wRest(el){ const x = ACTIVE.ex[+el.dataset.i]; x.rest = Math.max(0, Math.min(600, x.rest + +el.dataset.d)); saveActive(); renderWorkout(); },
   wMenu(el){ const k = ACTIVE.ex[+el.dataset.i].key; ui.wMenu = ui.wMenu === k ? null : k; renderWorkout(); },
   wSS(el){ const x = ACTIVE.ex[+el.dataset.i]; x.ssNext = !x.ssNext; ui.wMenu = null; saveActive(); renderWorkout(); },
+  wSwap(el){ const x = ACTIVE.ex[+el.dataset.i]; ui.wMenu = null; openSheet({type:'swap', ctx:'w', key:x.key, exId:x.exId}); },
+  itemSwap(el){ const {p, it} = itemRef(el); openSheet({type:'swap', ctx:'p', plan:p.id, item:it.id, exId:it.exId}); },
+  swapDo(el){
+    const s = topSheet(), id = el.dataset.id, e = getEx(id), t = e.mode === 'time';
+    if (s.ctx === 'w'){
+      const x = ACTIVE.ex.find(q => q.key === s.key); if (!x) return;
+      const last = lastFor(id); x.exId = id; x.mode = t ? 'time' : 'reps'; x.wnote = x.wnote || null;
+      x.sets.forEach((q, j) => { if (q.done) return; q.kg = last && last.sets[j] ? last.sets[j].kg ?? null : null; if (t){ q.sec = q.sec ?? q.tSec ?? 30; } else { q.reps = q.reps ?? q.tReps ?? 10; } });
+      saveActive(); sheets.pop(); renderSheet(); renderWorkout();
+    } else {
+      const p = planById(s.plan), it = p && p.items.find(q => q.id === s.item); if (!it) return;
+      it.exId = id; if ((it.mode === 'time') !== t){ it.mode = t ? 'time' : 'reps'; it.sets = it.sets.map(q => t ? {sec:30, kg:null} : {reps:10, kg:null}); }
+      sheets.pop(); renderSheet(); commit();
+    }
+    toast('Zamieniono na: ' + e.name);
+  },
   wMove(el){ const i = +el.dataset.i, T = ACTIVE.timer; ssUnlink(ACTIVE.ex, i);
     const fKey = T && T.focus != null ? ACTIVE.ex[T.focus]?.key : null, wKey = T && T.kind === 'work' ? ACTIVE.ex[T.i]?.key : null;
     move(ACTIVE.ex, i, +el.dataset.dir);
