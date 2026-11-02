@@ -289,6 +289,13 @@ main{padding-block:2px 28px}
 .pr-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 8px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
 .pr-row:first-child{border-top:0}
 .pr-n{font-size:14px;font-weight:600;min-width:0}
+.pr-n small{display:block;font-size:12px;font-weight:500;color:var(--muted)}
+.pr-drop{display:grid;gap:6px;justify-content:stretch}
+.pr-drop.soft{background:var(--surface-2);border-radius:10px;padding:8px 10px}
+.pr-drop p{margin:0;font-size:13.5px}
+.pr-dr{display:flex;align-items:center;justify-content:space-between;gap:6px 10px;flex-wrap:wrap;background:var(--surface);border-radius:8px;padding:6px 6px 6px 10px}
+.pr-dr>span{display:grid;min-width:0;flex:1 1 170px}
+.pr-dr b{font-size:13.5px;font-weight:600} .pr-dr small{font-size:12px;color:var(--muted)}
 .pr-s{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:56px;text-align:right}
 .pr-row .wk-bar{height:4px}
 .wk-tag.warn{background:var(--warn-soft);color:var(--warn)}
@@ -2692,7 +2699,8 @@ function coverageCard(p){
   const skip = p && p.items.length ? planReview(p).flagged : new Set();
   const gaps = programGaps().filter(q => !skip.has(q.name)).slice(0, 6);
   const freqTxt = (() => { const n = S.plans.filter(q => q.items.length).length, f = programFactor(); return `${n} ${pl(n, 'plan', 'plany', 'planów')} przy ${perWeek()} ${pl(perWeek(), 'treningu', 'treningach', 'treningach')} w tygodniu: każdy plan ${f === 1 ? 'raz' : 'średnio ' + fmtN(Math.round(f * 10) / 10) + ' raza'} w tygodniu.`; })();
-  const sug = gaps.map(q => { const e = wkSuggest(q, 1)[0]; return e ? `<div class="cov-row"><span><b>${esc(q.name)}</b> <small>${fmtN(q.sets)} / ${q.target} serii</small></span>${p ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}${esc(e.name)}</button>` : `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`}</div>` : ''; }).join('');
+  const inPlans = new Set(S.plans.flatMap(o => o.items.map(i => i.exId)));
+  const sug = gaps.map(q => { const e = wkSuggest(q, 8).find(x => !inPlans.has(x.id)) || wkSuggest(q, 1)[0]; return e ? `<div class="cov-row"><span><b>${esc(q.name)}</b> <small>${fmtN(q.sets)} / ${q.target} serii</small></span>${p ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}${esc(e.name)}</button>` : `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`}</div>` : ''; }).join('');
   return `<section class="card cov"><h3 class="h3" style="margin:0">${p ? 'Cały program: tydzień' : 'Twój program: wszystkie plany razem'}</h3>
     ${p ? `<p class="muted small" style="margin:0">${freqTxt}</p>` : `<div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
     <p class="muted small" style="margin:0">${freqTxt}</p></div>`}
@@ -2736,7 +2744,7 @@ function nextCard(p){
    który jest w innym planie, nie jest błędem (np. FBW A i FBW B się uzupełniają). Ponad 12 serii na partię = dużo. */
 const EX_FAM = {'Klatka piersiowa':'klatka', 'Plecy':'plecy', 'Barki':'barki', 'Biceps':'biceps', 'Triceps':'triceps', 'Czworogłowe uda':'nogi', 'Dwugłowe uda':'nogi', 'Pośladki i biodra':'nogi', 'Łydki':'nogi', 'Brzuch':'brzuch'};
 const FAM_ORDER = ['klatka', 'plecy', 'barki', 'nogi', 'biceps', 'triceps', 'brzuch'];
-const PR_MAX = 12;
+const PR_MAX = 12, PR_WEEK = 20, PR_SETS = 25, PR_EX = 8;
 // [etykieta, grupy (wystarczy jedna z nich), podpowiedzi ćwiczeń]
 const PR_UPPER = [['Klatka', ['Klatka – środek i dół', 'Klatka – góra'], ['Barbell_Bench_Press_-_Medium_Grip', 'Dumbbell_Bench_Press', 'Incline_Dumbbell_Press', 'Pushups']],
   ['Plecy', ['Najszerszy grzbietu', 'Środek pleców'], ['Bent_Over_Barbell_Row', 'Wide-Grip_Lat_Pulldown', 'Seated_Cable_Rows', 'One-Arm_Dumbbell_Row']],
@@ -2745,6 +2753,8 @@ const PR_LOWER = [['Przód uda', ['Czworogłowe uda'], ['Barbell_Squat', 'Leg_Pr
   ['Tył uda i pośladki', ['Dwugłowe uda', 'Pośladki'], ['Romanian_Deadlift', 'Barbell_Hip_Thrust', 'Lying_Leg_Curls', 'Barbell_Deadlift']]];
 const PULL_K = ['lats', 'teres', 'trapsM', 'trapsL', 'deltP', 'infra'], PUSH_K = ['chestU', 'chestL', 'deltA'];
 const serii = n => Number.isInteger(n) ? pl(n, 'seria', 'serie', 'serii') : 'serii';
+const coTyg = f => { const k = Math.round(10 / f) / 10; return 'co ' + fmtN(k) + ' ' + (Number.isInteger(k) ? pl(k, 'tydzień', 'tygodnie', 'tygodni') : 'tygodnia'); };
+const fqTxt = f => f === 1 ? 'raz w tygodniu' : f > 1 ? fmtN(Math.round(f * 10) / 10) + (Number.isInteger(f) ? ' razy' : ' raza') + ' w tygodniu' : 'średnio ' + coTyg(f);
 function planTime(p){
   // praca ~40 s na serię (albo czas serii), przerwy z planu, ~30 s na przejście między ćwiczeniami
   let s = 0; const last = p.items.length - 1;
@@ -2768,9 +2778,9 @@ function planReview(p){
   const pick = (names, ids) => { const id = (ids || []).find(x => EXMAP.has(x) && !have.has(x)); return id ? getEx(id) : wkSuggest(by[names[0]], 8).find(e => !have.has(e.id)); };
   const others = S.plans.filter(o => o !== p && o.items.length).map(o => ({o, s:Object.fromEntries(planGroupSets(o.items).map(q => [q.name, q]))}));
   const issues = [], covered = [], short = new Set(), flagged = new Set();
-  // partia zaliczona: co najmniej min serii i choć jedno ćwiczenie, w którym jest mięśniem głównym,
-  // albo sporo pracy pomocniczej (min + 2), np. pośladki w przysiadzie i martwym ciągu
-  const okIn = (gs, names) => { const s = Math.max(...names.map(n => gs[n].sets)); return s >= min + 2 || (s >= min && names.some(n => gs[n].prim > 0)); };
+  // w jednym treningu: partia ma ćwiczenie, w którym jest mięśniem głównym, albo sporo pracy pomocniczej (min + 2),
+  // np. pośladki w przysiadzie i martwym ciągu. Czy serii wystarcza, ocenia tydzień (niżej).
+  const okIn = (gs, names) => Math.max(...names.map(n => gs[n].sets)) >= min + 2 || names.some(n => gs[n].prim > 0);
   const coveredNames = new Set(), notes = [];
   for (const [lbl, names, ids] of need){
     if (okIn(by, names)) continue;
@@ -2781,21 +2791,69 @@ function planReview(p){
     names.forEach(n => flagged.add(n));
     const e = pick(names, ids);
     issues.push({k:s ? 'malo' : 'brak', sh:(s ? 'mało: ' : 'brakuje: ') + lbl.toLowerCase(), add:e && e.id,
-      text:!s ? `Brakuje: <b>${esc(lbl)}</b>` : !pr ? `Mało: <b>${esc(lbl)}</b> – pracuje tylko pomocniczo (${fmtN(s)} ${serii(s)}), brak ćwiczenia głównie na tę partię` : `Mało: <b>${esc(lbl)}</b> – ${fmtN(s)} ${serii(s)}, w jednym treningu warto min. ${min}`});
+      text:!s ? `Brakuje: <b>${esc(lbl)}</b>` : `Mało: <b>${esc(lbl)}</b> – pracuje tylko pomocniczo (${fmtN(s)} ${serii(s)}), brak ćwiczenia głównie na tę partię`});
   }
-  for (const q of g) if (q.sets > PR_MAX) notes.push(`Dużo: ${q.name.toLowerCase()} – ${fmtN(q.sets)} serii w jednym treningu (z pomocniczymi). Powyżej ok. ${PR_MAX} kolejne serie dają coraz mniej. Przy treningu tej partii raz w tygodniu to częste, ale możesz przenieść jedno ćwiczenie na inny dzień.`);
+  for (const q of g) if (q.sets > PR_MAX && q.prim) notes.push(`Dużo: ${q.name.toLowerCase()} – ${fmtN(q.sets)} serii w jednym treningu (z pomocniczymi). Powyżej ok. ${PR_MAX} kolejne serie dają coraz mniej. Przy treningu tej partii raz w tygodniu to częste, ale możesz przenieść jedno ćwiczenie na inny dzień.`);
   if (type === 'fbw' || type === 'gora'){
     let push = 0, pull = 0;
     for (const it of p.items){ const P = wkExpand(exMuscles(getEx(it.exId)).p), n = (it.sets || []).length; if (P.some(k => PUSH_K.includes(k))) push += n; else if (P.some(k => PULL_K.includes(k))) pull += n; }
     if (push - pull >= 4 && push > pull * 1.5){ const e = pick(['Środek pleców'], PR_UPPER[1][2]); issues.push({k:'push', sh:'więcej pchania niż ciągnięcia', text:`Więcej pchania (${push} ${serii(push)}) niż ciągnięcia (${pull}). Dla równowagi barków dołóż ćwiczenie na plecy.`, add:e && e.id}); }
   }
+  // tydzień: ile razy robisz ten plan przy wybranej liczbie treningów i ile serii na partię daje cały program
+  const fq = programFactor(), nPlans = S.plans.filter(o => o.items.length).length, pw = perWeek();
+  const W = Object.fromEntries(programSets().map(q => [q.name, q]));
+  const przy = `przy ${pw} ${pl(pw, 'treningu', 'treningach', 'treningach')} w tygodniu`;
+  // partia łączona (np. klatka = góra + środek): ćwiczenie, w którym któraś część jest główna, liczy się raz w całości
+  const aggSets = (items, names) => { const K = new Set(names.flatMap(n => WK_GROUPS.find(x => x[0] === n)[1])); let t = 0;
+    for (const it of items){ const m = exMuscles(getEx(it.exId)), n = (it.sets || []).length; t += wkExpand(m.p).some(k => K.has(k)) ? n : wkExpand(m.s).some(k => K.has(k)) ? n / 2 : 0; } return t; };
+  const allItems = S.plans.flatMap(o => o.items);
+  const needW = need.map(([lbl, names, ids]) => ({lbl, names, ids, w:Math.round(aggSets(allItems, names) * fq * 2) / 2, t:W[names[0]].target}));
+  for (const {lbl, names, ids, w, t} of needW){
+    if (names.some(n => flagged.has(n))) continue;
+    if (w >= t) continue;
+    names.forEach(n => flagged.add(n));
+    const e = pick(names, ids);
+    issues.push({k:'tydz', sh:'za mało w tygodniu: ' + lbl.toLowerCase(), add:e && e.id, text:`Za mało w tygodniu: <b>${esc(lbl)}</b> – ${fmtN(w)} z ${t} serii ${przy}`});
+  }
+  for (const q of g) if (q.prim && W[q.name].sets > PR_WEEK) notes.push(`Dużo w tygodniu: ${q.name.toLowerCase()} – ${fmtN(W[q.name].sets)} serii (z pomocniczymi). Ponad ok. ${PR_WEEK} serii tygodniowo na partię zwykle nie daje już więcej, a trudniej się zregenerować.`);
+  if (type === 'partie' && nPlans > pw) notes.push(`Masz ${nPlans} ${pl(nPlans, 'plan', 'plany', 'planów')} ${przy}, więc ten plan wypada średnio ${coTyg(fq)} i te partie pracują rzadko. Przy ${pw} treningach lepiej sprawdzają się ${pw} ${pl(pw, 'plan', 'plany', 'planów')} całego ciała (FBW) albo góra / dół.`);
+  // ćwiczenia do wykluczenia: bez nich żadna partia nie spadnie poniżej celu tygodnia (dwa naraz też)
   const total = p.items.reduce((a, it) => a + (it.sets || []).length, 0), time = planTime(p);
+  const long = total > PR_SETS || p.items.length > PR_EX || time > 75;
+  const why = `${total} ${serii(total)}, ${p.items.length} ${pl(p.items.length, 'ćwiczenie', 'ćwiczenia', 'ćwiczeń')}, ok. ${fmtMin(time)}`;
+  const iso = it => exOrd(getEx(it.exId)) >= 30;
+  const Wc = Object.fromEntries(Object.entries(W).map(([k, v]) => [k, {sets:v.sets, target:v.target}])), Nc = needW.map(n => ({...n}));
+  const canDrop = it => {
+    if (!(it.sets || []).length) return null;
+    let best = null;
+    for (const q of planGroupSets([it])){
+      if (!q.prim) continue;                                  // partie pomocnicze nie blokują (sprawdza je partia łączona)
+      const after = Wc[q.name].sets - q.sets * fq; if (after < Wc[q.name].target - .01) return null;
+      const r = after / Wc[q.name].target, own = W[q.name].sets - q.sets * fq;
+      if (!best || r < best.r) best = {r, name:q.name, before:W[q.name].sets, after:Math.max(0, Math.round(own * 2) / 2), target:W[q.name].target};
+    }
+    for (const n of Nc) if (n.w >= n.t && n.w - aggSets([it], n.names) * fq < n.t - .01) return null;
+    return best;
+  };
+  const drop = [];
+  for (let k = 0; k < 2; k++){
+    const c = p.items.filter(it => !drop.some(d => d.it === it)).map(it => ({it, b:canDrop(it)})).filter(x => x.b && (long || (iso(x.it) && x.b.r >= 1.5)))
+      .map(x => ({it:x.it, ...x.b, score:x.b.r + (iso(x.it) ? .3 : 0)})).sort((a, b) => b.score - a.score)[0];
+    if (!c) break;
+    drop.push(c);
+    for (const q of planGroupSets([c.it])) Wc[q.name].sets -= q.sets * fq;
+    for (const n of Nc) n.w -= aggSets([c.it], n.names) * fq;
+  }
+  let drops = null;
+  if (long && drop.length) drops = {lead:`Za dużo jak na jeden trening: ${why}. Cel tygodnia ${przy} osiągniesz i bez ${drop.length > 1 ? 'tych ćwiczeń (nawet obu naraz)' : 'tego ćwiczenia'}:`, list:drop};
+  else if (drop.length) drops = {lead:`Możesz wykluczyć bez straty dla celu tygodnia${drop.length > 1 ? ' (nawet oba naraz)' : ''}:`, list:drop, soft:true};
+  if (long && drop.length) issues.push({k:'dlugi', sh:'za dużo ćwiczeń', text:'', drops:true});
+  else if (long) (total > 30 || time > 90 ? issues.push({k:'dlugi', sh:'za długi trening', text:`Długi trening: ${why}. Każde ćwiczenie jest potrzebne do celu tygodnia, więc jeśli chcesz krócej, odejmij po jednej serii z kilku ćwiczeń.`}) : notes.push(`Dość długi trening: ${why}. Każde ćwiczenie jest potrzebne do celu tygodnia, więc jeśli chcesz krócej, odejmij po jednej serii z kilku ćwiczeń.`));
   if (type !== 'inne' && total < 8) notes.push(`Krótki trening: ${total} ${serii(total)}. W porządku jako dodatek, jako główny trening to mało.`);
-  if (total > 30) notes.push(`Długi trening: ${total} serii, ok. ${fmtMin(time)}. Pod koniec siły będzie już mniej.`);
-  const rows = g.filter(q => q.sets > 0).sort((a, b) => b.sets - a.sets).map(q => ({...q,
-    st:q.sets > PR_MAX ? 'duzo' : !q.prim ? 'pom' : short.has(q.name) && q.sets < min ? 'malo' : 'ok'}));
+  const rows = g.filter(q => q.sets > 0).sort((a, b) => b.sets - a.sets).map(q => ({...q, wk:W[q.name].sets, tgt:W[q.name].target,
+    st:q.sets > PR_MAX || W[q.name].sets > PR_WEEK ? 'duzo' : !q.prim ? 'pom' : W[q.name].sets >= W[q.name].target ? 'ok' : W[q.name].sets >= W[q.name].target * .8 ? 'prawie' : 'malo'}));
   const none = type === 'inne' ? [] : g.filter(q => !q.sets && !flagged.has(q.name) && !coveredNames.has(q.name)).map(q => q.name);
-  return {type, label, min, issues, covered, notes, rows, none, total, time, flagged, ok:type !== 'inne' && !issues.length};
+  return {type, label, min, issues, covered, notes, rows, none, total, time, flagged, drops, fq, nPlans, ok:type !== 'inne' && !issues.length};
 }
 function planBadge(p){
   if (!p.items.length) return '';
@@ -2807,24 +2865,26 @@ function planReviewCard(p){
   if (!p.items.length) return '';
   const r = planReview(p), heat = {};
   for (const q of r.rows){ const c = q.st === 'ok' ? 'h-ok' : 'h-low'; q.keys.forEach(k => heat[k] = c); }
-  const tag = {ok:'<span class="wk-tag ok">dobrze</span>', malo:'<span class="wk-tag warn">mało</span>', duzo:'<span class="wk-tag warn">dużo</span>', pom:'<span class="wk-tag">pomocniczo</span>'};
-  const mx = Math.max(8, ...r.rows.map(q => q.sets));
+  const tag = {ok:'<span class="wk-tag ok">dobrze</span>', malo:'<span class="wk-tag warn">mało</span>', prawie:'<span class="wk-tag">prawie</span>', duzo:'<span class="wk-tag warn">dużo</span>', pom:'<span class="wk-tag">pomocniczo</span>'};
   const pom = r.rows.filter(q => q.st === 'pom');
-  const rows = r.rows.filter(q => q.st !== 'pom').map(q => `<div class="pr-row"><span class="pr-n">${esc(q.name)}</span>${tag[q.st]}<span class="pr-s">${fmtN(q.sets)} ${serii(q.sets)}</span><span class="wk-bar"><i class="${q.st === 'ok' ? 'ok' : ''}" style="width:${Math.round(Math.min(1, q.sets / mx) * 100)}%"></i></span></div>`).join('');
+  const rows = r.rows.filter(q => q.st !== 'pom').map(q => `<div class="pr-row"><span class="pr-n">${esc(q.name)}<small>w tygodniu ${fmtN(q.wk)} z ${q.tgt}</small></span>${tag[q.st]}<span class="pr-s">${fmtN(q.sets)} ${serii(q.sets)}</span><span class="wk-bar"><i class="${q.wk >= q.tgt ? 'ok' : ''}" style="width:${Math.round(Math.min(1, q.wk / q.tgt) * 100)}%"></i></span></div>`).join('');
+  const dropHTML = d => `<p>${esc(d.lead)}</p>${d.list.map(x => `<div class="pr-dr"><span><b>${esc(getEx(x.it.exId).name)}</b><small>${esc(x.name.toLowerCase())}: ${fmtN(x.before)} → ${fmtN(x.after)} serii w tygodniu, cel ${x.target}</small></span><button class="btn sm" data-act="itemDel" ${refAttr(p, x.it)}>${svg('trash','i s')}Usuń</button></div>`).join('')}`;
   const verdict = r.type === 'inne' ? '' : `<span class="pr-v ${r.ok ? 'ok' : 'warn'}">${svg(r.ok ? 'check' : 'info', 'i s')}${r.ok ? 'Dobry plan' : 'Do poprawy'}</span>`;
   const cov = r.covered.length ? ' (część w innym planie).' : '.';
-  const goodTxt = {fbw:'Klatka, plecy, barki, przód i tył uda mają swoje ćwiczenia' + cov, gora:'Klatka, plecy i barki mają swoje ćwiczenia' + cov, partie:`Każda część trenowanych partii ma swoje ćwiczenie i co najmniej ${r.min} serie` + cov}[r.type];
+  const goal = ` i cel ${wkTarget()} serii w tygodniu`;
+  const goodTxt = {fbw:'Klatka, plecy, barki, przód i tył uda mają swoje ćwiczenia' + goal + cov, gora:'Klatka, plecy i barki mają swoje ćwiczenia' + goal + cov, partie:'Każda część trenowanych partii ma swoje ćwiczenie' + goal + cov}[r.type];
   return `<section class="card pr"><div class="pr-h"><h3 class="h3" style="margin:0">Ocena planu</h3>${verdict}</div>
     <div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
-      <div class="pr-meta"><b>${esc(r.label)}</b><span>${p.items.length} ${pl(p.items.length, 'ćwiczenie', 'ćwiczenia', 'ćwiczeń')} · ${r.total} ${serii(r.total)} · ok. ${fmtMin(r.time)}</span><small>Ciemnozielone: partie, które dobrze pracują. Jasne: mało albo tylko pomocniczo (liczby to serie).</small></div></div>
-    ${r.issues.length ? `<div class="pr-iss">${r.issues.map(i => `<div class="pr-i ${i.k}"><p>${i.text}</p>${i.add ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(i.add)}">${svg('plus','i s')}${esc(getEx(i.add).name)}</button>` : ''}</div>`).join('')}</div>` : r.type === 'inne' ? '' : `<p class="pr-good">${esc(goodTxt)}</p>`}
+      <div class="pr-meta"><b>${esc(r.label)}</b><span>${p.items.length} ${pl(p.items.length, 'ćwiczenie', 'ćwiczenia', 'ćwiczeń')} · ${r.total} ${serii(r.total)} · ok. ${fmtMin(r.time)}</span><span>Robisz go ${fqTxt(r.fq)} (${r.nPlans} ${pl(r.nPlans, 'plan', 'plany', 'planów')}, ${perWeek()} ${pl(perWeek(), 'trening', 'treningi', 'treningów')} w tygodniu)</span><small>Ciemnozielone: partie, które dobrze pracują. Jasne: mało albo tylko pomocniczo (liczby to serie).</small></div></div>
+    ${r.issues.length ? `<div class="pr-iss">${r.issues.map(i => i.drops ? `<div class="pr-i pr-drop">${dropHTML(r.drops)}</div>` : `<div class="pr-i ${i.k}"><p>${i.text}</p>${i.add ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(i.add)}">${svg('plus','i s')}${esc(getEx(i.add).name)}</button>` : ''}</div>`).join('')}</div>` : r.type === 'inne' ? '' : `<p class="pr-good">${esc(goodTxt)}</p>`}
     ${r.covered.length ? `<p class="small muted" style="margin:0">W innym planie: ${r.covered.map(c => `${esc(c.lbl.toLowerCase())} (${esc(c.plan)})`).join(', ')}.</p>` : ''}
+    ${r.drops && r.drops.soft ? `<div class="pr-drop soft">${dropHTML(r.drops)}</div>` : ''}
     ${r.notes.map(n => `<p class="small" style="margin:0">${esc(n)}</p>`).join('')}
     <div class="pr-sec"><b>Partie w tym planie</b><small>serie w jednym treningu</small></div>
     <div class="pr-list">${rows || '<p class="small muted" style="margin:0">Żadna partia nie pracuje tu jako główna.</p>'}</div>
     ${pom.length ? `<p class="small" style="margin:0"><b>Pomocniczo:</b> <span class="muted">${pom.map(q => `${esc(q.name.toLowerCase())} ${fmtN(q.sets)}`).join(' · ')}</span></p>` : ''}
     ${r.none.length ? `<p class="small muted" style="margin:0"><b>Nie pracują:</b> ${esc(r.none.join(', ').toLowerCase())}.</p>` : ''}
-    <p class="note" style="margin:0">Mięsień główny w ćwiczeniu to 1 seria, pomocniczy pół. Partia jest zaliczona, gdy ma co najmniej ${r.min} serie i ćwiczenie, w którym pracuje jako główna (albo ${r.min + 2} serie pomocniczo). „Dużo” to ponad ${PR_MAX} serii na partię w jednym treningu.</p></section>`;
+    <p class="note" style="margin:0">„W tygodniu” liczę ze wszystkich planów przy wybranej liczbie treningów (zmienisz ją niżej). Mięsień główny w ćwiczeniu to 1 seria, pomocniczy pół. „Dużo” to ponad ${PR_MAX} serii na partię w jednym treningu albo ponad ${PR_WEEK} w tygodniu. Za dużo jak na jeden trening: ponad ${PR_SETS} serii, ${PR_EX} ćwiczeń albo 75 minut.</p></section>`;
 }
 function vHistory(){
   let h = `<div class="seg" role="group" aria-label="Widok historii"><button data-act="hist" data-v="treningi" aria-pressed="${ui.hist === 'treningi'}">Treningi</button><button data-act="hist" data-v="tydzien" aria-pressed="${ui.hist === 'tydzien'}">Tydzień</button><button data-act="hist" data-v="postepy" aria-pressed="${ui.hist === 'postepy'}">Postępy</button></div>`;
