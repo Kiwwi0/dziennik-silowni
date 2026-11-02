@@ -14,7 +14,7 @@ export function mount(host, opt = {}){
   host.appendChild(renderer.domElement);
   renderer.domElement.style.touchAction = 'none';
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(24, W() / H(), 0.05, 20);
+  const camera = new THREE.PerspectiveCamera(24, W() / H(), 0.4, 9);   // wąski zakres głębi = brak migotania
   scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2f35, 1.25));
   const key = new THREE.DirectionalLight(0xffffff, 1.9); key.position.set(1.2, 2.2, 2.4); scene.add(key);
   const rim = new THREE.DirectionalLight(0xffffff, 0.9); rim.position.set(-1.8, 1.4, -2.2); scene.add(rim);
@@ -26,6 +26,9 @@ export function mount(host, opt = {}){
   const pal = () => ({muscle:css('--bm-muscle') || '#3E444B', skin:css('--bm-skin') || '#B9C0C7', p1:css('--hl') || '#E11D2E', p2:css('--hl2') || '#F49AA0'});
   let C = pal();
   mat('m', C.muscle, 0.5); mat('p1', C.p1, 0.42, 0.18); mat('p2', C.p2, 0.5, 0.06); mat('skin', C.skin, 0.62); mat('bone', C.muscle, 0.6); mat('core', C.muscle, 0.6); mat('dbg', '#00FF66', 0.5);
+  // kolejność przy stykających się powierzchniach: skóra > mięsień pracujący > pomocniczy > zwykły > kości i wypełnienie (bez „przeskakiwania”)
+  const off = (m, f, u) => { m.polygonOffset = true; m.polygonOffsetFactor = f; m.polygonOffsetUnits = u; };
+  off(mats.skin, -1, -4); off(mats.p1, -1, -3); off(mats.p2, -0.5, -2); off(mats.bone, 1, 4); off(mats.core, 2, 8);
   const meshes = [];
   let state = {P:new Set(), S:new Set()};
   const apply = () => {
