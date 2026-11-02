@@ -1942,8 +1942,12 @@ function fillExList(){
   el.innerHTML = groupedRows(filterEx(ui.exQ, ui.exGroup, ui.exEquip), e =>
     `<button class="exrow" data-act="exOpen" data-id="${esc(e.id)}">${thumb(e.id)}<span><span class="nm">${esc(e.name)}</span><span class="meta" style="display:block">${esc(exMeta(e))}</span></span>${svg('chev','i s chev')}</button>`);
 }
-// Filmy z serii „Atlas ćwiczeń – Michał Wrzosek” (Olimp) na YouTube. Tylko ta seria; bez filmu zostaje animacja.
-const YTV = {
+// Filmy z YouTube po polsku. Najpierw seria „Atlas ćwiczeń – Michał Wrzosek” (Olimp); gdzie jej nie ma,
+// inne polskie filmy z techniką (głównie Atlas Ćwiczeń SFD). Bez filmu albo bez internetu zostaje animacja.
+const YT_SRC = {W:'Michał Wrzosek, Atlas ćwiczeń (Olimp)', S:'Atlas Ćwiczeń SFD', D:'Atlas ćwiczeń DWS', F:'FitNOW.pl', P:''};
+const YTV = {};
+const addYT = (src, o) => Object.entries(o).forEach(([k, v]) => { YTV[k] = {v, src}; });
+addYT('W', {
   'Barbell_Bench_Press_-_Medium_Grip':'TXdnlwrBaT4', Dumbbell_Bench_Press:'QApcl3o3tE0', Incline_Dumbbell_Press:'PUsjTUrXLUI',
   Cable_Crossover:'fPP2iNBmGpo', Pushups:'pWnb2fIZSn0', 'Dips_-_Chest_Version':'hLtA-VuZMus', 'Dips_-_Triceps_Version':'hLtA-VuZMus',
   Pullups:'zl48yliAeYs', 'Wide-Grip_Lat_Pulldown':'8igLvt5GZNc', 'One-Arm_Dumbbell_Row':'wG_5hb6qsgI', Seated_Cable_Rows:'wCz9JH3kkz8',
@@ -1953,14 +1957,41 @@ const YTV = {
   Dumbbell_Lunges:'cCuC96Uj6WU', Dumbbell_Rear_Lunge:'dUR5KqgtAds', Dumbbell_Step_Ups:'2PhpGR8HvlI', Good_Morning:'KvJOcge9ib0',
   Barbell_Hip_Thrust:'yz7IW0gQECI', Plank:'fh7dXuqwkFI', Cable_Crunch:'6KlUGwZxdRE', Hanging_Leg_Raise:'JNm5q3cUhFo',
   Russian_Twist:'AwoiVWAi4bo', Mountain_Climbers:'Ivvn7_CI77Q', 'One-Arm_Kettlebell_Swings':'fC1fb06_VWE', Pallof_Press:'KyJBb3s1EPE',
-};
+});
+addYT('S', {
+  'Barbell_Incline_Bench_Press_-_Medium_Grip':'voKocA7kblo', Dumbbell_Flyes:'pzb2P55g8vc', Butterfly:'vSwGglMtDhs', Machine_Bench_Press:'DgasTNLyQcg',
+  'Straight-Arm_Dumbbell_Pullover':'tBGPh0r0w3I', 'Chin-Up':'HkZH3rgnTUo', 'V-Bar_Pulldown':'R5dUPJWmMpw', Bent_Over_Barbell_Row:'PaqvesLOcpA',
+  'Reverse_Grip_Bent-Over_Rows':'3xWUgeOXb_Q', 'T-Bar_Row_with_Handle':'-XD4HXqqdNY', Leverage_Iso_Row:'pU4aOW2yBGw', Sumo_Deadlift:'J6sZ8J5Zo2Q',
+  Barbell_Shrug:'8SMJ56w_sPM', Dumbbell_Shrug:'7kKQpAdOsXM', Seated_Dumbbell_Press:'XhCtAly3Kj0', Arnold_Dumbbell_Press:'Q1tpgtNxgeQ',
+  Machine_Shoulder_Military_Press:'CEOnwf1qjyo', Reverse_Flyes:'0R7zaVMjoyU', Upright_Barbell_Row:'UJN3gVIvNk4', Barbell_Curl:'415ZedAmmGg',
+  Dumbbell_Alternate_Bicep_Curl:'1IdQyaVmCMo', Incline_Dumbbell_Curl:'pBb63SovXhQ', Preacher_Curl:'BPxCVAz0gbA', Concentration_Curls:'kt63lmiVck0',
+  Triceps_Pushdown:'qM10SRGkZPs', 'Triceps_Pushdown_-_Rope_Attachment':'m0wu8oTCso0', Standing_Dumbbell_Triceps_Extension:'lRJz0tqLlpk',
+  'Close-Grip_Barbell_Bench_Press':'cm_68gAawDA', Tricep_Dumbbell_Kickback:'wW_G7mAvELo', Front_Barbell_Squat:'rdCcNWe7j1s',
+  Bodyweight_Squat:'artFx1gn52s', Leg_Press:'HIAWxO-NPpA', Hack_Squat:'RJ4u3rJxE8g', Smith_Machine_Squat:'0N62juykh1s',
+  Barbell_Walking_Lunge:'NfPDzdEyL74', Leg_Extensions:'zmpFEl7NFG0', Seated_Leg_Curl:'8zBPlAB8nkw', 'One-Legged_Cable_Kickback':'6DQFHs5JoZw',
+  Thigh_Abductor:'NMPxVVsOluA', Thigh_Adductor:'uYR3YXexVx8', Seated_Calf_Raise:'oPvL4J_B-zk', Calf_Press_On_The_Leg_Press_Machine:'Ms0zzmzw6TE',
+  Crunches:'R3gkCOj3NB0', Ab_Crunch_Machine:'ufOw92cUjqg',
+});
+addYT('D', {'Standing_Low-Pulley_Deltoid_Raise':'-wICgEt29F8', Hammer_Curls:'cXCiPnzzuQc', Side_Bridge:'BGyKfbpSeu4'});
+addYT('F', {'EZ-Bar_Curl':'ik2JQgK-Cys', Reverse_Crunch:'7XpO7eJc42E'});
+addYT('P', {
+  Decline_Barbell_Bench_Press:'VMcT1xm6FZA', Incline_Dumbbell_Flyes:'BNVEYL__TM0', 'Band_Assisted_Pull-Up':'nlt0cSXqry4',
+  'Straight-Arm_Pulldown':'lhcbV0AiO48', Inverted_Row:'Eh1HhDGrOVE', Dumbbell_Incline_Row:'78DW0BFqSjs', Trap_Bar_Deadlift:'gfNltMkp5Jk',
+  Reverse_Machine_Flyes:'ePjds8o0syg', Band_Pull_Apart:'aLRUFilFA2g', External_Rotation_with_Cable:'kD50h6f7cvk',
+  Cable_Rope_Overhead_Triceps_Extension:'csLDdPwdkic', Split_Squat_with_Dumbbells:'yHA1ybrvKJE', Romanian_Deadlift:'U-4JcJ7GHi0',
+  'Stiff-Legged_Dumbbell_Deadlift':'TuAYDZNrdMs', Lying_Leg_Curls:'q4jACUe9UEM', Barbell_Glute_Bridge:'FppWbNtY9Qs',
+  Single_Leg_Glute_Bridge:'YYswY02_j9Q', Standing_Calf_Raises:'NBUnlzg3IXc', Knee_Hip_Raise_On_Parallel_Bars:'W56NCQrp6bw',
+  Ab_Roller:'yN47bwkUeMA', Dead_Bug:'TzpwuC73gJs', Farmers_Walk:'NcjHxH528-Y', Battling_Ropes:'0BwzXubwLXo',
+  Running_Treadmill:'jckRarSPT-U', Bicycling_Stationary:'lLv-dGP14Cw', Rowing_Stationary:'k4rwI18ggLE', Elliptical_Trainer:'Gi-qefDEAmA',
+  Rope_Jumping:'4Op28LaWlZ4',
+});
 const ytWatch = v => `https://www.youtube.com/watch?v=${v}`;
 function mediaHTML(id){
   if (YTV[id] && !ytBroken) return ytFigure(id);
   return animFigure(id);
 }
 function ytFigure(id){
-  const v = YTV[id];
+  const {v, src} = YTV[id], who = YT_SRC[src];
   return `<figure class="media yt" data-yt="${esc(v)}" data-ex="${esc(id)}">
     <span class="yt-stage"><span class="yt-ph" style="background-image:url(https://i.ytimg.com/vi/${esc(v)}/hqdefault.jpg)"></span><span class="yt-frame"></span><button class="yt-shield" data-act="ytToggle" aria-label="Odtwórz albo zatrzymaj film" tabindex="-1"></button></span>
     <span class="anim-ctl"><button class="iconbtn sm" data-act="ytToggle" aria-label="Odtwórz" disabled>${svg('play', 'i s')}</button>
@@ -1968,7 +1999,7 @@ function ytFigure(id){
       <span class="yt-time">0,0 s</span></span>
     <span class="yt-row"><span class="yt-lbl">Tempo</span><button class="btn sm" data-act="ytRate" data-r="0.25" aria-pressed="false">¼×</button><button class="btn sm" data-act="ytRate" data-r="0.5" aria-pressed="false">½×</button><button class="btn sm" data-act="ytRate" data-r="1" aria-pressed="true">1×</button>
       <span class="yt-sp"></span><button class="iconbtn sm" data-act="ytSound" aria-pressed="false" aria-label="Włącz dźwięk">${svg('mute','i s')}</button><a class="iconbtn sm" href="${ytWatch(v)}" target="_blank" rel="noopener" aria-label="Otwórz film na YouTube">${svg('yt','i s')}</a></span>
-    <figcaption class="anim-note">Film: Michał Wrzosek, Atlas ćwiczeń (Olimp), YouTube. Suwakiem przewiniesz ruch, tempem go zwolnisz.</figcaption></figure>`;
+    <figcaption class="anim-note">${who ? `Film: ${esc(who)}, YouTube.` : 'Film z YouTube.'} Suwakiem przewiniesz ruch, tempem go zwolnisz.</figcaption></figure>`;
 }
 function animFigure(id){
   if (typeof ANIM !== 'undefined' && ANIM.has(id)){
