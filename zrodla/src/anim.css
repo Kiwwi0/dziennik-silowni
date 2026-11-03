@@ -1,0 +1,41 @@
+/* kolory animacji ćwiczeń */
+:root{
+  --a-fig:#2B3138; --a-far:#8A939C; --a-ghost:#9AA3AC; --a-hl:#D7263D; --a-hlf:#EC8E9B;
+  --a-metal:#4A525A; --a-plate:#3B4148; --a-hub:#C9CED3; --a-pad:#A3ADB7; --a-leg:#C3C9CF;
+  --a-mach:#DDE1E5; --a-frame:#AEB5BC; --a-cable:#7A838C; --a-band:#E07B00; --a-floor:#C9CFD5; --a-trail:#1D4ED8;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --a-fig:#E3E7EB; --a-far:#6D7680; --a-ghost:#58616A; --a-hl:#FF4D62; --a-hlf:#A43C4C;
+  --a-metal:#AEB6BE; --a-plate:#AEB6BE; --a-hub:#2B3238; --a-pad:#4E5761; --a-leg:#3A424A;
+  --a-mach:#242A30; --a-frame:#4A535C; --a-cable:#8C969F; --a-band:#FF9A2E; --a-floor:#343B42; --a-trail:#7D9DFF;
+}}
+:root[data-theme="dark"]{
+  --a-fig:#E3E7EB; --a-far:#6D7680; --a-ghost:#58616A; --a-hl:#FF4D62; --a-hlf:#A43C4C;
+  --a-metal:#AEB6BE; --a-plate:#AEB6BE; --a-hub:#2B3238; --a-pad:#4E5761; --a-leg:#3A424A;
+  --a-mach:#242A30; --a-frame:#4A535C; --a-cable:#8C969F; --a-band:#FF9A2E; --a-floor:#343B42; --a-trail:#7D9DFF;
+}
+.anim-svg{display:block;width:100%;height:auto}
+.anim-svg line,.anim-svg polyline{stroke-linecap:round;stroke-linejoin:round}
+.anim-svg polygon{stroke-linejoin:round}
+.anim-svg circle,.anim-svg ellipse{stroke:none}
+.anim-svg .a-n{stroke:var(--a-fig);fill:var(--a-fig)}
+.anim-svg .a-f{stroke:var(--a-far);fill:var(--a-far)}
+.anim-svg .a-h{stroke:var(--a-hl);fill:var(--a-hl)}
+.anim-svg .a-hf{stroke:var(--a-hlf);fill:var(--a-hlf)}
+.anim-svg .a-g{stroke:var(--a-ghost);fill:var(--a-ghost)}
+.anim-svg .a-gh{opacity:.3}
+.anim-svg .a-eq{stroke:var(--a-metal);fill:none}
+.anim-svg .a-pl{fill:var(--a-plate);opacity:.93}
+.anim-svg .a-hub{fill:var(--a-hub)}
+.anim-svg .a-db{fill:var(--a-metal)}
+.anim-svg .a-pad{fill:var(--a-pad);stroke:var(--a-pad);stroke-width:2}
+.anim-svg .a-env{fill:var(--a-leg);stroke:var(--a-leg);stroke-width:1.5}
+.anim-svg .a-mach{fill:var(--a-mach);stroke:var(--a-mach);stroke-width:1.5}
+.anim-svg .a-fr{stroke:var(--a-frame);fill:none}
+.anim-svg .a-fr2{fill:var(--a-frame)}
+.anim-svg .a-cab{stroke:var(--a-cable);fill:none}
+.anim-svg .a-band{stroke:var(--a-band);fill:none}
+.anim-svg .a-bandf{fill:var(--a-band)}
+.anim-svg .a-flr{stroke:var(--a-floor)}
+.anim-svg .a-flrf{fill:var(--a-floor);opacity:.3}
+.anim-svg .a-tr{stroke:var(--a-trail);stroke-dasharray:3 4;opacity:.75}

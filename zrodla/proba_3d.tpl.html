@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Manekin 3D – próbka</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap">
+<style>
+:root{--bg:#E8EBEE;--surface:#FFFFFF;--surface-2:#F2F4F6;--ink:#13171B;--ink-2:#434C55;--muted:#646D76;--line:#D2D7DC;--accent:#1D4ED8;
+  --hl:#E11D2E;--hl2:#F49AA0;--bm-muscle:#3E444B;--bm-skin:#B9C0C7;
+  --f-display:"Big Shoulders Display","Arial Narrow",sans-serif;--f-body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+@media (prefers-color-scheme: dark){:root{--bg:#0F1214;--surface:#171B1F;--surface-2:#1F2429;--ink:#ECEFF2;--ink-2:#BCC4CB;--muted:#8C969F;--line:#2B3238;--accent:#7D9DFF;
+  --hl:#EF2B3C;--hl2:#F49AA0;--bm-muscle:#59616A;--bm-skin:#8B949D;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:760px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:grid;gap:14px}
+.brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--f-display);font-weight:800;font-size:34px;line-height:.95;text-transform:uppercase;margin:2px 0 0}
+h2{font-family:var(--f-display);font-weight:800;font-size:24px;line-height:1;text-transform:uppercase;margin:0}
+.lead{margin:0;color:var(--ink-2)}
+select{min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 15px var(--f-body);padding:0 12px;width:100%}
+.stage{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.view3d{width:100%;height:min(72vh,620px);min-height:420px;cursor:grab}
+.view3d:active{cursor:grabbing}
+.load{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:14px;pointer-events:none}
+.bar{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:10px;border-top:1px solid var(--line)}
+.bar button{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--f-body);cursor:pointer}
+.bar button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.hint{position:absolute;left:0;right:0;top:10px;text-align:center;font-size:12.5px;color:var(--muted);pointer-events:none}
+.legend{display:flex;gap:14px;justify-content:center;font-size:12.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.muscles{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:14px;margin:0}
+.muscles dt{color:var(--muted)} .muscles dd{margin:0;font-weight:600}
+.note{font-size:12px;color:var(--muted);margin:0}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><span class="brand">Dziennik siłowni · próbka</span><h1>Manekin 3D do obracania</h1></div>
+  <p class="lead">Przeciągnij palcem, żeby obrócić. Dwa palce albo kółko myszy przybliżają. Dwuklik wraca do widoku z przodu.</p>
+  <select id="ex" aria-label="Ćwiczenie"></select>
+  <div class="stage">
+    <div class="view3d" id="v"></div>
+    <div class="hint" id="hint">Przeciągnij, żeby obrócić</div>
+    <div class="load" id="load">Wczytuję model…</div>
+    <div class="bar"><button data-v="front">Przód</button><button data-v="right">Bok</button><button data-v="back">Tył</button><button id="spin" aria-pressed="true">Obracaj sam</button></div>
+  </div>
+  <div class="legend"><span><i style="background:var(--hl)"></i>główne</span><span><i style="background:var(--hl2)"></i>pomocnicze</span></div>
+  <dl class="muscles" id="list"></dl>
+  <p class="note">Model anatomiczny: BodyParts3D, © The Database Center for Life Science, licencja CC BY-SA 2.1 Japan.</p>
+  <p class="lead">To próbka. Wróć do <a href="./">Dziennika siłowni</a>.</p>
+</div>
+<script>
+/*__MUSCLES__*/
+window.__M = {MUSCLE_EX, MUSCLE_GROUPS, MUSCLE_NAMES, MUSCLE_GROUP_NAMES};
+window.__EXS = /*__EXS__*/null;
+</script>
+<script type="module">
+import {mount} from './miesnie3d.js';
+const {MUSCLE_EX, MUSCLE_GROUPS, MUSCLE_NAMES, MUSCLE_GROUP_NAMES} = window.__M, EXS = window.__EXS;
+const name = k => MUSCLE_GROUP_NAMES[k] || MUSCLE_NAMES[k] || k;
+const sel = document.getElementById('ex');
+EXS.forEach(([id, n]) => { const o = document.createElement('option'); o.value = id; o.textContent = n; sel.appendChild(o); });
+const v = mount(document.getElementById('v'), {url:'__GLB__', groups:MUSCLE_GROUPS, onReady:() => document.getElementById('load').remove(),
+  onError:() => { document.getElementById('load').textContent = 'Nie udało się wczytać modelu.'; }});
+window.__v = v;
+const show = id => {
+  const m = MUSCLE_EX[id]; v.set(m);
+  document.getElementById('list').innerHTML = `<dt>Główne</dt><dd>${m.p.map(name).join(', ')}</dd>${m.s.length ? `<dt>Pomocnicze</dt><dd>${m.s.map(name).join(', ')}</dd>` : ''}`;
+};
+sel.onchange = () => show(sel.value);
+show(EXS[0][0]);
+const spin = document.getElementById('spin');
+document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { v.view(b.dataset.v); spin.setAttribute('aria-pressed', 'false'); });
+spin.onclick = () => { const on = spin.getAttribute('aria-pressed') !== 'true'; spin.setAttribute('aria-pressed', on); v.spin(on); };
+document.getElementById('v').addEventListener('pointerdown', () => { spin.setAttribute('aria-pressed', 'false'); document.getElementById('hint').style.opacity = 0; });
+</script>
+</body>
+</html>

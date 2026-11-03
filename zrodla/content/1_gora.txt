@@ -1,0 +1,373 @@
+# Format: @id | nazwa | tryb (reps/time) ; "-" krok techniki ; "!" wskazówka / częsty błąd
+
+## KLATKA
+
+@Barbell_Bench_Press_-_Medium_Grip | Wyciskanie sztangi na ławce płaskiej | reps
+- Połóż się na ławce tak, aby oczy były mniej więcej pod sztangą. Stopy oprzyj stabilnie na podłodze.
+- Ściągnij łopatki do siebie i w dół, lekko wygnij odcinek piersiowy. Pośladki, łopatki i głowa cały czas dotykają ławki.
+- Chwyć sztangę nachwytem nieco szerzej niż barki, zdejmij ją ze stojaków i ustaw nad barkami na wyprostowanych rękach.
+- Na wdechu opuszczaj sztangę w kontrolowany sposób do dolnej części klatki, z łokciami ustawionymi ok. 45–70° od tułowia.
+- Po lekkim dotknięciu klatki wypchnij sztangę z wydechem z powrotem do góry.
+! Nie odbijaj sztangi od klatki i nie odrywaj pośladków od ławki.
+! Nadgarstki trzymaj prosto, sztanga leży nad przedramionami.
+! Przy ciężkich seriach ćwicz z asekuracją.
+
+@Barbell_Incline_Bench_Press_-_Medium_Grip | Wyciskanie sztangi na ławce skośnej | reps
+- Ustaw ławkę pod kątem ok. 30–45°. Usiądź, oprzyj plecy i ściągnij łopatki.
+- Chwyć sztangę nachwytem nieco szerzej niż barki i zdejmij ją ze stojaków nad górną część klatki.
+- Opuszczaj sztangę powoli do górnej części klatki, tuż pod obojczykami.
+- Wypchnij sztangę pionowo w górę, prawie do pełnego wyprostu łokci.
+! Zbyt stromy kąt ławki przenosi pracę na barki.
+! Nie odrywaj pleców od oparcia i nie unoś barków do uszu.
+
+@Decline_Barbell_Bench_Press | Wyciskanie sztangi na ławce skośnej głową w dół | reps
+- Zablokuj nogi pod wałkami ławki ustawionej głową w dół i połóż się, ściągając łopatki.
+- Chwyć sztangę nachwytem nieco szerzej niż barki i zdejmij ją ze stojaków, najlepiej z pomocą partnera.
+- Opuszczaj sztangę do dolnej części klatki.
+- Wypchnij ją z powrotem do wyprostu rąk.
+! Ćwicz z asekuracją, bo w tej pozycji trudniej bezpiecznie odłożyć sztangę.
+! Kontroluj ruch w dół i nie odbijaj sztangi.
+
+@Dumbbell_Bench_Press | Wyciskanie hantli na ławce płaskiej | reps
+- Usiądź na końcu ławki z hantlami opartymi na udach, potem połóż się, przenosząc hantle nad klatkę.
+- Ściągnij łopatki, stopy oprzyj na podłodze. Hantle trzymaj nachwytem na wysokości klatki.
+- Wypchnij hantle w górę, zbliżając je do siebie nad klatką.
+- Opuszczaj je powoli do poziomu klatki, czując rozciągnięcie mięśni piersiowych.
+! Hantle dają większy zakres ruchu niż sztanga, ale nie opuszczaj ich niżej, niż pozwalają barki.
+! Po serii odłóż hantle na uda, zamiast upuszczać je na boki.
+
+@Incline_Dumbbell_Press | Wyciskanie hantli na ławce skośnej | reps
+- Ustaw ławkę pod kątem 30–45°, usiądź z hantlami na udach i połóż się, przenosząc je na wysokość barków.
+- Ściągnij łopatki, nadgarstki trzymaj prosto nad łokciami.
+- Wypchnij hantle w górę i lekko do środka, aż ręce będą prawie proste.
+- Opuszczaj je powoli do poziomu górnej części klatki.
+! Nie stukaj hantlami o siebie na górze, żeby nie tracić napięcia mięśni.
+! Łokcie nie powinny uciekać daleko na boki.
+
+@Dumbbell_Flyes | Rozpiętki z hantlami na ławce płaskiej | reps
+- Połóż się na ławce z hantlami nad klatką, dłonie zwrócone do siebie, łokcie lekko ugięte.
+- Na wdechu opuszczaj hantle szerokim łukiem na boki, aż poczujesz rozciągnięcie klatki.
+- Zatrzymaj ruch na wysokości klatki i tym samym łukiem unieś hantle z powrotem, jakbyś obejmował beczkę.
+! Kąt w łokciach pozostaje stały przez cały ruch. To nie jest wyciskanie.
+! Używaj mniejszego ciężaru niż przy wyciskaniu i nie opuszczaj rąk za nisko.
+
+@Incline_Dumbbell_Flyes | Rozpiętki z hantlami na ławce skośnej | reps
+- Ustaw ławkę pod kątem ok. 30°, połóż się z hantlami nad górną częścią klatki, dłonie zwrócone do siebie.
+- Z lekko ugiętymi łokciami opuszczaj hantle łukiem na boki do poziomu barków.
+- Wróć tym samym łukiem do góry, napinając klatkę.
+! Ruch kontrolowany, bez szarpania na dole.
+! Nie prostuj całkowicie łokci.
+
+@Cable_Crossover | Krzyżowanie linek wyciągu (brama) | reps
+- Ustaw wyciągi w górnej pozycji, chwyć uchwyty i zrób krok do przodu, stając w lekkim wykroku. Pochyl tułów nieco do przodu.
+- Ramiona rozłożone na boki, łokcie lekko ugięte.
+- Sprowadź dłonie łukiem przed siebie i w dół, aż spotkają się przed biodrami.
+- Zatrzymaj na chwilę, napinając klatkę, i powoli wróć do rozłożenia ramion.
+! Nie zamieniaj ruchu w wyciskanie, łokcie mają stały kąt.
+! Wyciągi ustawione nisko akcentują górną część klatki, wysoko dolną.
+
+@Butterfly | Rozpiętki na maszynie (butterfly) | reps
+- Ustaw siedzisko tak, aby uchwyty były na wysokości klatki. Usiądź, plecy przy oparciu.
+- Chwyć uchwyty (lub oprzyj przedramiona o poduszki) z lekko ugiętymi łokciami.
+- Sprowadź ramiona przed siebie, aż uchwyty prawie się zetkną, i na chwilę napnij klatkę.
+- Powoli wróć do pozycji wyjściowej.
+! Nie odrywaj pleców od oparcia.
+! Nie pozwól, by ciężar szarpał ramionami do tyłu.
+
+@Machine_Bench_Press | Wyciskanie na maszynie siedząc | reps
+- Ustaw siedzisko tak, aby uchwyty były na wysokości środka klatki. Usiądź, plecy przy oparciu, łopatki ściągnięte.
+- Chwyć uchwyty nachwytem.
+- Wypchnij uchwyty przed siebie, prawie do pełnego wyprostu łokci.
+- Powoli wróć, nie odkładając ciężaru całkowicie na stos.
+! Dobre ćwiczenie do bezpiecznej pracy aż do upadku mięśniowego.
+! Nie wysuwaj barków do przodu na końcu ruchu.
+
+@Pushups | Pompki | reps
+- Oprzyj dłonie o podłogę nieco szerzej niż barki, nogi wyprostowane, ciało w jednej linii od głowy do pięt.
+- Napnij brzuch i pośladki.
+- Opuszczaj ciało, uginając łokcie, aż klatka znajdzie się tuż nad podłogą.
+- Wypchnij się z powrotem do wyprostu rąk.
+! Biodra nie mogą opadać ani wędrować w górę.
+! Łokcie prowadź ok. 45° od tułowia, nie na boki.
+! Za trudne? Rób pompki z dłońmi opartymi o ławkę.
+
+@Dips_-_Chest_Version | Pompki na poręczach (wersja na klatkę) | reps
+- Wejdź na poręcze i ustaw się w podporze na prostych rękach.
+- Pochyl tułów do przodu ok. 30°, łokcie lekko na zewnątrz.
+- Opuszczaj się, aż poczujesz rozciągnięcie klatki (ramiona mniej więcej równolegle do podłogi).
+- Wypchnij się z powrotem do góry.
+! Nie schodź za nisko, jeśli czujesz dyskomfort w barkach.
+! Gdy masa ciała to za mało, dodaj obciążenie na pasie.
+
+@Straight-Arm_Dumbbell_Pullover | Przenoszenie hantla za głowę (pullover) | reps
+- Połóż się w poprzek ławki, opierając na niej tylko łopatki. Biodra nisko, stopy na podłodze.
+- Chwyć hantel oburącz pod talerzem i trzymaj go nad klatką na prawie prostych rękach.
+- Opuszczaj hantel łukiem za głowę, aż poczujesz rozciągnięcie klatki i boków pleców.
+- Wróć tym samym łukiem nad klatkę.
+! Łokcie lekko ugięte i nieruchome.
+! Trzymaj stabilną pozycję bioder przez całą serię.
+
+## PLECY
+
+@Pullups | Podciąganie na drążku nachwytem | reps
+- Chwyć drążek nachwytem szerzej niż barki i zawiśnij na prostych rękach.
+- Ściągnij łopatki w dół i lekko wypchnij klatkę.
+- Podciągnij się, prowadząc łokcie w dół do boków, aż broda znajdzie się nad drążkiem.
+- Opuść się powoli do pełnego zwisu.
+! Bez bujania i wymachów nóg.
+! Kontroluj także fazę opuszczania.
+! Za trudne? Użyj gumy albo maszyny wspomagającej.
+
+@Chin-Up | Podciąganie na drążku podchwytem | reps
+- Chwyć drążek podchwytem na szerokość barków i zawiśnij.
+- Napnij brzuch i ściągnij łopatki.
+- Podciągnij się, aż broda znajdzie się nad drążkiem, prowadząc łokcie blisko tułowia.
+- Opuść się powoli do wyprostu rąk.
+! Ten wariant mocniej angażuje bicepsy niż podciąganie nachwytem.
+! Pełny zakres ruchu w każdym powtórzeniu.
+
+@Band_Assisted_Pull-Up | Podciąganie z gumą | reps
+- Zaczep gumę oporową o drążek i włóż w nią kolano lub stopę.
+- Chwyć drążek nachwytem i zawiśnij na prostych rękach.
+- Podciągnij się, aż broda znajdzie się nad drążkiem.
+- Opuść się powoli, kontrolując ruch.
+! Im grubsza guma, tym większa pomoc. Zmniejszaj ją wraz z postępami.
+! Kolor gumy możesz zapisać w notatce ćwiczenia w planie.
+
+@Wide-Grip_Lat_Pulldown | Ściąganie drążka wyciągu górnego szerokim chwytem | reps
+- Usiądź przy wyciągu i zablokuj uda pod wałkami.
+- Chwyć drążek nachwytem wyraźnie szerzej niż barki.
+- Lekko odchyl tułów do tyłu, wypnij klatkę i ściągnij łopatki w dół.
+- Ściągnij drążek do górnej części klatki, prowadząc łokcie w dół i do tyłu.
+- Powoli oddaj drążek do góry, do pełnego wyprostu rąk.
+! Nie odchylaj się mocno do tyłu i nie ciągnij tułowiem.
+! Nie ściągaj drążka za głowę.
+
+@V-Bar_Pulldown | Ściąganie wyciągu górnego wąskim uchwytem | reps
+- Załóż uchwyt V na wyciąg górny i usiądź, blokując uda pod wałkami.
+- Chwyć uchwyt chwytem neutralnym (dłonie zwrócone do siebie) i lekko odchyl się do tyłu.
+- Ściągnij uchwyt do górnej części klatki, ściągając łopatki.
+- Powoli wróć do wyprostu rąk.
+! Klatka idzie na spotkanie uchwytu, barki zostają nisko.
+! Kontroluj fazę powrotu.
+
+@Straight-Arm_Pulldown | Ściąganie wyciągu prostymi rękami | reps
+- Stań przed wyciągiem górnym z prostym drążkiem lub liną i chwyć go nachwytem na szerokość barków.
+- Pochyl lekko tułów, ręce prawie proste przed sobą na wysokości głowy.
+- Sprowadź drążek łukiem w dół do ud, napinając mięśnie najszersze grzbietu.
+- Powoli wróć do góry.
+! Łokcie lekko ugięte, ale nieruchome.
+! Ruch odbywa się w stawach barkowych, nie w łokciach.
+
+@Bent_Over_Barbell_Row | Wiosłowanie sztangą w opadzie tułowia | reps
+- Stań ze sztangą trzymaną nachwytem nieco szerzej niż barki. Ugnij lekko kolana.
+- Pochyl tułów do przodu (ok. 45° lub niżej), utrzymując proste plecy. Sztanga wisi na prostych rękach.
+- Przyciągnij sztangę do dolnej części brzucha, prowadząc łokcie blisko tułowia i ściągając łopatki.
+- Opuść sztangę powoli do wyprostu rąk.
+! Plecy cały czas proste, nie zaokrąglaj odcinka lędźwiowego.
+! Nie prostuj tułowia, żeby „wrzucić” ciężar.
+
+@Reverse_Grip_Bent-Over_Rows | Wiosłowanie sztangą podchwytem | reps
+- Chwyć sztangę podchwytem na szerokość barków, ugnij lekko kolana i pochyl tułów do przodu z prostymi plecami.
+- Przyciągnij sztangę do brzucha, prowadząc łokcie blisko ciała.
+- Na górze ściśnij łopatki, a potem powoli opuść sztangę.
+! Podchwyt mocniej angażuje bicepsy i dolną część najszerszego grzbietu.
+! Tułów nieruchomy przez całą serię.
+
+@One-Arm_Dumbbell_Row | Wiosłowanie hantlem jednorącz | reps
+- Oprzyj kolano i dłoń tej samej strony o ławkę, drugą stopę postaw na podłodze. Plecy proste, równoległe do podłogi.
+- W wolnej ręce trzymaj hantel na wyprostowanym ramieniu.
+- Przyciągnij hantel do biodra, prowadząc łokieć blisko tułowia.
+- Powoli opuść hantel do pełnego wyprostu. Po serii zmień stronę.
+! Nie skręcaj tułowia przy podciąganiu hantla.
+! Myśl o ciągnięciu łokciem, a nie dłonią.
+
+@Seated_Cable_Rows | Przyciąganie linki wyciągu dolnego siedząc | reps
+- Usiądź przy wyciągu dolnym, oprzyj stopy o podest i lekko ugnij kolana. Chwyć uchwyt V.
+- Wyprostuj plecy, tułów prawie pionowo, ręce wyprostowane przed sobą.
+- Przyciągnij uchwyt do brzucha, ściągając łopatki i prowadząc łokcie blisko ciała.
+- Powoli oddaj uchwyt do przodu, pozwalając łopatkom się rozsunąć.
+! Nie bujaj tułowiem w przód i w tył.
+! Barki trzymaj nisko, z dala od uszu.
+
+@T-Bar_Row_with_Handle | Wiosłowanie sztangą T (T-bar) | reps
+- Stań okrakiem nad sztangą zablokowaną jednym końcem (lub na maszynie T-bar) i załóż uchwyt pod talerzami.
+- Ugnij kolana, pochyl tułów z prostymi plecami i chwyć uchwyt oburącz.
+- Przyciągnij ciężar do dolnej części klatki, ściągając łopatki.
+- Opuść go powoli do wyprostu rąk.
+! Plecy proste, głowa w przedłużeniu tułowia.
+! Nie podrywaj ciężaru biodrami.
+
+@Leverage_Iso_Row | Wiosłowanie na maszynie | reps
+- Ustaw siedzisko tak, aby uchwyty były na wysokości klatki, i oprzyj klatkę o poduszkę.
+- Chwyć uchwyty chwytem neutralnym lub nachwytem.
+- Przyciągnij uchwyty do tułowia, ściągając łopatki.
+- Powoli wróć, nie odkładając ciężaru całkowicie.
+! Klatka cały czas przy poduszce.
+! Na końcu ruchu zatrzymaj się na sekundę.
+
+@Inverted_Row | Podciąganie australijskie | reps
+- Ustaw drążek (np. w suwnicy Smitha) na wysokości pasa. Połóż się pod nim i chwyć go nachwytem szerzej niż barki.
+- Wyprostuj ciało w jednej linii, pięty oparte o podłogę.
+- Podciągnij klatkę do drążka, ściągając łopatki.
+- Opuść się powoli do wyprostu rąk.
+! Biodra nie mogą opadać.
+! Im bardziej poziomo leży ciało, tym trudniej.
+
+@Dumbbell_Incline_Row | Wiosłowanie hantlami w leżeniu na ławce skośnej | reps
+- Ustaw ławkę pod kątem 30–45° i połóż się na niej przodem, z hantlami w dłoniach.
+- Ręce zwisają prosto w dół, dłonie zwrócone do siebie.
+- Przyciągnij hantle do boków tułowia, ściągając łopatki.
+- Opuść je powoli do wyprostu.
+! Klatka cały czas oparta o ławkę, co odciąża dolny odcinek pleców.
+! Nie unoś barków do uszu.
+
+@Barbell_Deadlift | Martwy ciąg klasyczny | reps
+- Stań ze stopami na szerokość bioder, sztanga nad środkiem stopy, blisko piszczeli.
+- Zegnij biodra i kolana i chwyć sztangę nachwytem tuż za kolanami. Plecy proste, klatka do przodu, barki nad sztangą.
+- Weź wdech, napnij brzuch i plecy, odepchnij podłogę nogami i podnoś sztangę blisko nóg, prostując jednocześnie kolana i biodra.
+- Na górze stań prosto, bez odchylania się do tyłu.
+- Opuść sztangę kontrolowanie: najpierw cofnij biodra, potem ugnij kolana.
+! Najczęstszy błąd to zaokrąglanie pleców. Lepiej mniejszy ciężar z dobrą techniką.
+! Sztanga przez cały czas blisko ciała.
+! Przed każdym powtórzeniem weź wdech i napnij brzuch.
+
+@Sumo_Deadlift | Martwy ciąg sumo | reps
+- Stań w szerokim rozkroku, palce stóp skierowane na zewnątrz, sztanga blisko piszczeli.
+- Zejdź w dół z wyprostowanymi plecami i chwyć sztangę wąsko, między nogami.
+- Rozpychaj kolana na zewnątrz, napnij plecy i podnoś sztangę, prostując nogi i biodra.
+- Opuść sztangę kontrolowanie.
+! Tułów jest bardziej pionowy niż w martwym ciągu klasycznym.
+! Kolana podążają w kierunku palców stóp.
+
+@Trap_Bar_Deadlift | Martwy ciąg z trap barem | reps
+- Wejdź do środka sztangi heksagonalnej (trap bar), stopy na szerokość bioder.
+- Zegnij biodra i kolana i chwyć uchwyty po bokach.
+- Napnij plecy i brzuch, wstań, prostując jednocześnie kolana i biodra.
+- Opuść ciężar kontrolowanie.
+! Łatwiejszy technicznie i łagodniejszy dla pleców niż martwy ciąg klasyczny.
+! Plecy proste, wzrok przed siebie.
+
+@Hyperextensions_Back_Extensions | Wyprosty tułowia na ławce rzymskiej | reps
+- Ustaw się na ławce rzymskiej tak, aby biodra opierały się o poduszkę, a pięty były zablokowane.
+- Skrzyżuj ręce na klatce lub trzymaj je przy głowie. Ciało w jednej linii.
+- Opuść tułów, zginając się w biodrach, z prostymi plecami.
+- Unieś tułów z powrotem do linii z nogami.
+! Nie przeprostowuj pleców na górze.
+! Talerz trzymany przy klatce zwiększa obciążenie.
+
+@Barbell_Shrug | Szrugsy ze sztangą | reps
+- Stań prosto, trzymając sztangę nachwytem na szerokość barków przed udami.
+- Unieś barki jak najwyżej w stronę uszu, ręce proste.
+- Zatrzymaj się na sekundę na górze.
+- Powoli opuść barki.
+! Nie kręć barkami w kółko. Ruch tylko w górę i w dół.
+! Nie uginaj łokci.
+
+@Dumbbell_Shrug | Szrugsy z hantlami | reps
+- Stań prosto z hantlami po bokach tułowia, dłonie zwrócone do ciała.
+- Unieś barki jak najwyżej w stronę uszu.
+- Zatrzymaj na chwilę i powoli opuść.
+! Ręce pozostają proste.
+! Głowa w neutralnej pozycji, nie wysuwaj jej do przodu.
+
+## BARKI
+
+@Standing_Military_Press | Wyciskanie sztangi nad głowę stojąc (OHP) | reps
+- Ustaw sztangę na stojakach na wysokości klatki. Chwyć ją nachwytem nieco szerzej niż barki i zdejmij, opierając na przedniej części barków.
+- Stopy na szerokość bioder, napnij brzuch i pośladki.
+- Wypchnij sztangę pionowo nad głowę, odsuwając głowę lekko do tyłu, żeby zrobić jej miejsce.
+- Na górze sztanga jest nad środkiem stopy, łokcie proste. Opuść ją kontrolowanie na barki.
+! Nie wyginaj mocno lędźwi, trzymaj tułów napięty.
+! Nie pomagaj sobie nogami.
+
+@Seated_Dumbbell_Press | Wyciskanie hantli nad głowę siedząc | reps
+- Usiądź na ławce z oparciem ustawionym pionowo. Unieś hantle na wysokość barków, dłonie zwrócone do przodu.
+- Wypchnij hantle nad głowę, aż ręce będą prawie proste.
+- Opuść je powoli do wysokości barków.
+! Plecy przy oparciu, bez wyginania lędźwi.
+! Nie stukaj hantlami nad głową.
+
+@Arnold_Dumbbell_Press | Wyciskanie Arnolda | reps
+- Usiądź z hantlami przed barkami, dłonie zwrócone do siebie.
+- Wypychając hantle w górę, obracaj dłonie tak, aby na górze były zwrócone do przodu.
+- Opuszczaj hantle, wykonując obrót w odwrotnym kierunku.
+! Ruch płynny, bez szarpania.
+! Używaj mniejszego ciężaru niż przy zwykłym wyciskaniu.
+
+@Machine_Shoulder_Military_Press | Wyciskanie nad głowę na maszynie | reps
+- Ustaw siedzisko tak, aby uchwyty były na wysokości barków. Usiądź, plecy przy oparciu.
+- Chwyć uchwyty nachwytem.
+- Wypchnij je w górę, prawie do pełnego wyprostu łokci.
+- Opuść powoli do wysokości barków.
+! Nie odrywaj pleców od oparcia.
+! Dobra alternatywa dla wyciskania wolnym ciężarem na początek.
+
+@Side_Lateral_Raise | Unoszenie hantli bokiem | reps
+- Stań prosto z hantlami po bokach ciała, łokcie lekko ugięte.
+- Unieś hantle bokiem do wysokości barków, prowadząc ruch łokciami.
+- Zatrzymaj na chwilę i powoli opuść.
+! Nie bujaj tułowiem i nie podrzucaj hantli.
+! Nie unoś rąk wyżej niż barki i nie podciągaj barków do uszu.
+! Najlepiej działa lekki ciężar i więcej powtórzeń.
+
+@Standing_Low-Pulley_Deltoid_Raise | Unoszenie ramienia bokiem na wyciągu dolnym | reps
+- Stań bokiem do wyciągu dolnego i chwyć uchwyt ręką dalszą od wyciągu. Drugą ręką przytrzymaj się konstrukcji.
+- Ręka z uchwytem przed ciałem, łokieć lekko ugięty.
+- Unieś ramię bokiem do wysokości barku.
+- Powoli opuść. Po serii zmień stronę.
+! Wyciąg utrzymuje napięcie także na dole ruchu, czego brakuje przy hantlach.
+! Tułów nieruchomy.
+
+@Front_Dumbbell_Raise | Unoszenie hantli przodem | reps
+- Stań prosto z hantlami przed udami, dłonie zwrócone do ciała.
+- Unieś jedną lub obie hantle przed sobą do wysokości oczu, z lekko ugiętymi łokciami.
+- Powoli opuść.
+! Bez bujania tułowiem.
+! Przednia część barków mocno pracuje też przy wyciskaniach, więc to ćwiczenie nie zawsze jest potrzebne.
+
+@Reverse_Flyes | Odwrotne rozpiętki z hantlami w opadzie | reps
+- Pochyl tułów do przodu prawie do poziomu (albo połóż się przodem na ławce skośnej). Hantle zwisają pod klatką.
+- Z lekko ugiętymi łokciami unieś hantle łukiem na boki do wysokości barków.
+- Zatrzymaj na chwilę i powoli opuść.
+! Pracuje tylna część barków, więc nie ściągaj mocno łopatek.
+! Lekki ciężar, pełna kontrola.
+
+@Reverse_Machine_Flyes | Odwrotne rozpiętki na maszynie | reps
+- Usiądź na maszynie butterfly przodem do oparcia. Ustaw uchwyty w tylnej pozycji.
+- Chwyć uchwyty na prostych rękach przed sobą.
+- Rozłóż ręce łukiem na boki i do tyłu, aż będą w linii z barkami.
+- Powoli wróć do przodu.
+! Łokcie lekko ugięte i nieruchome.
+! Klatka przy oparciu przez całą serię.
+
+@Face_Pull | Przyciąganie liny do twarzy (face pull) | reps
+- Załóż linę na wyciąg ustawiony na wysokości twarzy lub nieco wyżej. Chwyć końce liny nachwytem.
+- Cofnij się o krok, aby ręce były wyprostowane przed sobą.
+- Przyciągnij linę w stronę twarzy, rozciągając jej końce na boki i prowadząc łokcie wysoko.
+- Na końcu ruchu dłonie są obok uszu. Powoli wróć.
+! Świetne ćwiczenie na tylną część barków i zdrowie stawów barkowych.
+! Nie odchylaj się do tyłu, żeby ruszyć ciężar.
+
+@Upright_Barbell_Row | Podciąganie sztangi wzdłuż tułowia | reps
+- Stań prosto ze sztangą trzymaną nachwytem przed udami, ręce na szerokość barków lub nieco węziej.
+- Unieś sztangę blisko ciała, prowadząc łokcie w górę i na boki.
+- Zatrzymaj, gdy łokcie znajdą się na wysokości barków.
+- Powoli opuść.
+! Nie unoś łokci wyżej niż barki, jeśli czujesz dyskomfort w stawach.
+! Szerszy chwyt jest zwykle bezpieczniejszy dla barków.
+
+@Band_Pull_Apart | Rozciąganie gumy przed sobą | reps
+- Stań prosto, trzymając gumę oporową oburącz przed sobą na wysokości barków, ręce proste.
+- Rozciągnij gumę, rozkładając ręce na boki, aż dotknie klatki.
+- Powoli wróć do pozycji wyjściowej.
+! Dobra rozgrzewka barków przed wyciskaniem.
+! Barki nisko, bez wyginania pleców.
+
+@External_Rotation_with_Cable | Rotacja zewnętrzna ramienia na wyciągu | reps
+- Stań bokiem do wyciągu ustawionego na wysokości łokcia i chwyć uchwyt ręką dalszą od wyciągu.
+- Łokieć przyciśnij do boku tułowia, ugięty pod kątem 90°, przedramię przed brzuchem.
+- Obróć przedramię na zewnątrz, nie odrywając łokcia od ciała.
+- Powoli wróć. Po serii zmień stronę.
+! Bardzo lekki ciężar, to ćwiczenie wzmacniające stożek rotatorów.
+! Łokieć cały czas przy tułowiu.

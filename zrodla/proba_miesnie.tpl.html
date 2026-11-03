@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Próbka mapy mięśni</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap">
+<style>
+:root{--bg:#E8EBEE;--surface:#FFFFFF;--surface-2:#F2F4F6;--ink:#13171B;--ink-2:#434C55;--muted:#646D76;--line:#D2D7DC;--accent:#1D4ED8;
+  --f-display:"Big Shoulders Display","Arial Narrow",sans-serif;--f-body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+@media (prefers-color-scheme: dark){:root{--bg:#0F1214;--surface:#171B1F;--surface-2:#1F2429;--ink:#ECEFF2;--ink-2:#BCC4CB;--muted:#8C969F;--line:#2B3238;--accent:#7D9DFF;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:760px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:grid;gap:16px}
+.brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--f-display);font-weight:800;font-size:34px;line-height:.95;text-transform:uppercase;margin:2px 0 0}
+h2{font-family:var(--f-display);font-weight:800;font-size:26px;line-height:1;text-transform:uppercase;margin:0}
+.lead{margin:0;color:var(--ink-2)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--f-body);cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.style{display:grid;gap:10px}
+.style .hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.style .hd .tag{font:700 13px var(--f-body);color:var(--bg);background:var(--ink);border-radius:8px;padding:2px 8px}
+.style .desc{margin:0;color:var(--muted);font-size:14px}
+.card{border-radius:16px;overflow:hidden;border:1px solid var(--line);padding:14px 10px 12px;display:grid;gap:10px}
+.figs{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:end}
+.fig{display:grid;gap:4px;justify-items:center}
+.fig svg{width:100%;height:auto;display:block;max-height:420px}
+.fig .cap{font:700 11px var(--f-body);letter-spacing:.14em;text-transform:uppercase}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;font-size:13px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:4px;display:inline-block}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.chip{font-size:12.5px;border-radius:999px;padding:3px 10px;font-weight:600}
+/* A: grafit */
+.sA .card{background:var(--surface)}
+.sA .cap{color:var(--muted)}
+/* B: jasny */
+.sB .card{background:linear-gradient(180deg,#FFFFFF,#F3F5F8);color:#13171B;border-color:#E1E5EA}
+.sB .cap{color:#7A838C}
+/* C: rzeźba (ciemne tło zawsze) */
+.sC .card{background:radial-gradient(120% 90% at 50% 10%,#262C33 0%,#14181C 70%);border-color:#0B0D10;color:#ECEFF2}
+.sC .cap{color:#8C969F}
+/* D: anatomia */
+.sD .card{background:#FFFFFF;color:#13171B;border-color:#E1E5EA}
+.sD .cap{color:#7A838C}
+.anat{position:relative;width:100%;aspect-ratio:200/369;max-height:420px}
+.anat img{position:absolute;inset:0;width:100%;height:100%}
+.anat .base{filter:grayscale(1) contrast(.75) brightness(1.55)}
+.anat .ov{mix-blend-mode:multiply}
+.note{font-size:12px;color:var(--muted);margin:0}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><span class="brand">Dziennik siłowni · próbka</span><h1>Mapa mięśni: 4 style</h1></div>
+  <p class="lead">Ten sam manekin w czterech wyglądach. Na czerwono mięśnie, które pracują najmocniej, jaśniej pomocnicze. Przełącz ćwiczenie i wybierz styl, który Ci się podoba.</p>
+  <div class="tabs" id="tabs"></div>
+  <div id="out" style="display:grid;gap:22px"></div>
+  <p class="note">Kształty mięśni w stylach A–C: react-native-body-highlighter (licencja MIT). Styl D: ilustracja z Wikimedia Commons i nakładki z bazy wger.</p>
+  <p class="lead">To próbka. Wróć do <a href="./">Dziennika siłowni</a>.</p>
+</div>
+<script>
+'use strict';
+const BODY = /*__BODY__*/null;
+const EXS = /*__EXS__*/null;
+// nasze nazwy mięśni → obszary na rysunku
+const REG = {'klatka piersiowa':['chest'], 'barki':['delts'], 'biceps':['biceps'], 'triceps':['triceps'], 'przedramiona':['forearm'],
+  'brzuch':['abs','obliques'], 'czworogłowe uda':['quads'], 'przywodziciele':['adductors'], 'odwodziciele':['abductors'],
+  'pośladki':['glutes','abductors'], 'dwugłowe uda':['hamstrings'], 'łydki':['calves'], 'najszerszy grzbietu':['lats'],
+  'środek pleców':['midback','trapsB'], 'prostowniki grzbietu':['erectors'], 'kaptury':['traps'], 'szyja':['neck']};
+const VB = {front:'40 150 646 1215', back:'764 150 646 1215'};
+const STY = {
+  A:{name:'Grafit', desc:'Nowoczesny, płaski, jak w popularnych aplikacjach treningowych. Ciemne mięśnie, wyraźna czerwień.',
+     outline:['var(--surface)','var(--line)'], muscle:'var(--mA)', skin:'var(--sA)', p:'#E11D2E', s:'#F49AA0', glow:false, emboss:false},
+  B:{name:'Jasny z poświatą', desc:'Delikatny, jasny manekin. Pracujące mięśnie mają czerwony gradient i lekką poświatę.',
+     outline:['#EEF1F4','none'], muscle:'#CBD2D9', skin:'#DDE2E7', p:'url(#gP)', s:'#FFB6A8', glow:true, emboss:false},
+  C:{name:'Rzeźba', desc:'Ciemne tło i mięśnie z cieniowaniem, jak wyrzeźbione. Najbardziej efektowny.',
+     outline:['#232930','none'], muscle:'#59626B', skin:'#3A4148', p:'url(#gPc)', s:'#E8826E', glow:true, emboss:true},
+};
+const styleVars = document.createElement('style');
+styleVars.textContent = ':root{--mA:#3E444B;--sA:#B9C0C7}@media (prefers-color-scheme: dark){:root{--mA:#5A626B;--sA:#7C858E}}';
+document.head.appendChild(styleVars);
+
+function sets(ex){
+  const P = new Set(), S = new Set();
+  ex.primary.forEach(m => (REG[m] || []).forEach(r => P.add(r)));
+  ex.secondary.forEach(m => (REG[m] || []).forEach(r => { if (!P.has(r)) S.add(r); }));
+  return {P, S};
+}
+let uid = 0;
+function bodySVG(view, ex, st){
+  const {P, S} = sets(ex), id = 'b' + (++uid);
+  const ol = BODY.outline[view];
+  const defs = `<defs>
+    <linearGradient id="gP" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF5A5F"/><stop offset="1" stop-color="#D3122F"/></linearGradient>
+    <linearGradient id="gPc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6A55"/><stop offset="1" stop-color="#E0182D"/></linearGradient>
+    <filter id="${id}glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="${id}emb" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="blur"/>
+      <feSpecularLighting in="blur" surfaceScale="5" specularConstant=".55" specularExponent="18" lighting-color="#ffffff" result="spec"><fePointLight x="380" y="-200" z="420"/></feSpecularLighting>
+      <feComposite in="spec" in2="SourceAlpha" operator="in" result="specIn"/>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="b2"/><feOffset in="b2" dx="0" dy="5" result="off"/>
+      <feComposite in="SourceAlpha" in2="off" operator="out" result="inner"/><feFlood flood-color="#000" flood-opacity=".0"/>
+      <feComposite in="SourceGraphic" in2="specIn" operator="arithmetic" k1="0" k2="1" k3=".9" k4="0"/>
+    </filter></defs>`;
+  const V = view === 'front' ? 'F' : 'B', inP = r => P.has(r) || P.has(r + V), inS = r => S.has(r) || S.has(r + V);
+  const fillOf = r => r.startsWith('skin:') ? st.skin : inP(r) ? st.p : inS(r) ? st.s : st.muscle;
+  let base = '', hi = '';
+  for (const [r, d] of BODY[view]){
+    const f = fillOf(r); if (!f) continue;
+    const isP = !r.startsWith('skin:') && inP(r);
+    const el = `<path d="${d}" fill="${f}"/>`;
+    if (isP) hi += el; else base += el;
+  }
+  const filt = st.emboss ? ` filter="url(#${id}emb)"` : '';
+  const glowG = st.glow ? `<g opacity=".55" filter="url(#${id}glow)">${hi}</g>` : '';
+  return `<svg viewBox="${VB[view]}" role="img" aria-label="${view === 'front' ? 'Przód' : 'Tył'}: pracujące mięśnie">${defs}
+    <path d="${ol}" fill="${st.outline[0]}" stroke="${st.outline[1]}" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <g${filt}>${base}</g>${glowG}<g${filt}>${hi}</g></svg>`;
+}
+// styl D: ilustracja anatomiczna (wger) — tylko 16 mięśni
+const WG = {front:{'klatka piersiowa':[4], 'barki':[2], 'biceps':[1,13], 'brzuch':[6,14], 'czworogłowe uda':[10]},
+            back:{'triceps':[5], 'łydki':[7,15], 'pośladki':[8], 'kaptury':[9], 'środek pleców':[9], 'dwugłowe uda':[11], 'najszerszy grzbietu':[12], 'prostowniki grzbietu':[16]}};
+function anat(view, ex){
+  const m = WG[view], P = new Set(), S = new Set();
+  ex.primary.forEach(x => (m[x] || []).forEach(i => P.add(i)));
+  ex.secondary.forEach(x => (m[x] || []).forEach(i => { if (!P.has(i)) S.add(i); }));
+  return `<div class="anat"><img class="base" src="proba/muscular_system_${view}.svg" alt="">${[...S].map(i => `<img class="ov" src="proba/s${i}.svg" alt="">`).join('')}${[...P].map(i => `<img class="ov" src="proba/m${i}.svg" alt="">`).join('')}</div>`;
+}
+function chips(ex, pc, sc, txt){
+  return `<div class="chips">${ex.primary.map(m => `<span class="chip" style="background:${pc};color:#fff">${m}</span>`).join('')}${ex.secondary.map(m => `<span class="chip" style="background:${sc};color:${txt}">${m}</span>`).join('')}</div>`;
+}
+function render(k){
+  const ex = EXS[k], out = document.getElementById('out');
+  let h = '';
+  for (const key of ['A','B','C']){
+    const st = STY[key];
+    h += `<section class="style s${key}"><div class="hd"><span class="tag">${key}</span><h2>${st.name}</h2></div><p class="desc">${st.desc}</p>
+      <div class="card"><div class="figs"><div class="fig">${bodySVG('front', ex, st)}<span class="cap">Przód</span></div><div class="fig">${bodySVG('back', ex, st)}<span class="cap">Tył</span></div></div>
+      ${chips(ex, key === 'A' ? '#E11D2E' : '#E0182D', key === 'C' ? 'rgba(232,130,110,.25)' : '#FFE1DB', key === 'C' ? '#FFC9BC' : '#9B1C1C')}</div></section>`;
+  }
+  h += `<section class="style sD"><div class="hd"><span class="tag">D</span><h2>Anatomiczny</h2></div><p class="desc">Realistyczna ilustracja anatomiczna z zaznaczeniem. Ma mniej mięśni (brak m.in. przedramion i przywodzicieli), za to wygląda jak z atlasu.</p>
+    <div class="card"><div class="figs"><div class="fig">${anat('front', ex)}<span class="cap">Przód</span></div><div class="fig">${anat('back', ex)}<span class="cap">Tył</span></div></div>
+    ${chips(ex, '#E0182D', '#FFE7D1', '#9A4A00')}</div></section>`;
+  out.innerHTML = h;
+}
+const tabs = document.getElementById('tabs');
+Object.keys(EXS).forEach((k, i) => {
+  const b = document.createElement('button'); b.textContent = EXS[k].name; b.setAttribute('aria-pressed', i === 0);
+  b.onclick = () => { tabs.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); render(k); };
+  tabs.appendChild(b);
+});
+render(Object.keys(EXS)[0]);
+</script>
+</body>
+</html>
