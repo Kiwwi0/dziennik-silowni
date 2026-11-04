@@ -4,6 +4,8 @@ Aplikacja treningowa Olka (iPhone 11 Pro, Windows). Strona: https://kiwwi0.githu
 Interfejs i rozmowa po polsku. Olek prosi: ostrożnie z poprawkami, a przed czymś kosztownym (duże przebudowy,
 model 3D, długie testy) najpierw powiedz mu o koszcie. Każdy czat zajmuje się jednym segmentem (lista niżej),
 czytaj tylko potrzebne fragmenty kodu (grep + zakres linii), nie cały plik.
+Na starcie dołącz repozytorium od razu z prawem zapisu (add_repo z `access: "push"`), bo każda zmiana kończy się
+wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wdrożyć zmian.
 
 ## Repozytorium
 - `web/` – gotowa strona (GitHub Pages). Wdraża się sama po pushu do `main` (zmiany w `web/**`), ok. 1 min.
