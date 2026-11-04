@@ -14,6 +14,8 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
   `dist/exercises.json` (baza ćwiczeń), skrypty budujące.
 - `DziennikSilowni/`, `project.yml` – aplikacja na iPhone'a (SwiftUI, buduje się w GitHub Actions do .ipa).
   Jest starsza niż strona (bez manekina, oceny planu itd.).
+  Workflow „Zbuduj aplikację na iPhone'a” rusza tylko przy zmianach w `DziennikSilowni/`, `Resources/`, `project.yml`
+  (albo ręcznie w Actions). Strona wdraża się workflow „Strona siłownia” (`pages.yml`).
 - `firebase-config.json`, `firestore.rules` – baza Firebase (plany i treningi każdej osoby w osobnym folderze).
 
 ## Budowanie, test, wdrożenie (z katalogu repozytorium)

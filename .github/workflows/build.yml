@@ -3,10 +3,10 @@ name: Zbuduj aplikację na iPhone'a
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'web/**'
-      - '.github/workflows/pages.yml'
-      - 'README.md'
+    paths:
+      - 'DziennikSilowni/**'
+      - 'Resources/**'
+      - 'project.yml'
   workflow_dispatch:
 
 permissions:

@@ -1,4 +1,4 @@
-name: Opublikuj wersję w przeglądarce
+name: Strona siłownia
 
 on:
   push:
