@@ -4,3 +4,7 @@ Payload/
 *.ipa
 .DS_Store
 DziennikSilowni/Info.plist
+
+zrodla/dist/index.html
+zrodla/dist/img/
+__pycache__/
