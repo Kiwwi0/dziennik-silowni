@@ -1820,19 +1820,25 @@ function flattenPlans(plans){
   }
   return out;
 }
+// górne granice wpisywanych wartości (bez nich np. 1000000000000 kg zawieszało kalkulator talerzy)
+const LIM = {kg:200, reps:100, sec:3600, tKg:200, tReps:100, tSec:3600};
+const clampV = (f, v) => v == null || !LIM[f] || !Number.isFinite(+v) ? v : Math.min(LIM[f], Math.max(0, +v));
+const clampSets = sets => Array.isArray(sets) ? sets.map(t => { if (!t || typeof t !== 'object') return t; const o = {...t}; for (const k in LIM) if (k in o) o[k] = clampV(k, o[k]); return o; }) : sets;
 function normalize(s){
   if (!s || typeof s !== 'object') return blankState();
-  return {v:2, plans:flattenPlans(s.plans), custom:Array.isArray(s.custom) ? s.custom : [], settings:{...DEF_SETTINGS, ...(s.settings || {})}};
+  const plans = flattenPlans(s.plans).map(p => ({...p, items:(p.items || []).map(it => ({...it, sets:clampSets(it.sets)}))}));
+  return {v:2, plans, custom:Array.isArray(s.custom) ? s.custom : [], settings:{...DEF_SETTINGS, ...(s.settings || {})}};
 }
 const FIREBASE_CONFIG = {"apiKey":"AIzaSyDLpXiqdzypBWxqCOnqmccQCJgCgHaS9Q4","authDomain":"dziennik-silowni.firebaseapp.com","projectId":"dziennik-silowni","storageBucket":"dziennik-silowni.firebasestorage.app","messagingSenderId":"1004577535817","appId":"1:1004577535817:web:0b20ed7095f65423974c98"};
 const FIRE = !!FIREBASE_CONFIG;
 let FOLDER = FIRE ? LS.get('dz.folder', null) : null;
 let FOLDERS = [];
 const lsKey = k => FIRE ? (FOLDER ? `dz.f.${FOLDER.id}.${k}` : null) : 'dz.' + k;
-const sortSess = list => (list || []).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+const sortSess = list => (list || []).map(x => x && Array.isArray(x.ex) ? {...x, ex:x.ex.map(e => ({...e, sets:clampSets(e.sets)}))} : x).sort((a, b) => String(b.date).localeCompare(String(a.date)));
 let S = normalize(lsKey('state') ? LS.get(lsKey('state'), null) : null);
 let SESS = sortSess(lsKey('sessions') ? LS.get(lsKey('sessions'), []) : []);
 let ACTIVE = LS.get('dz.active', null);
+if (ACTIVE && Array.isArray(ACTIVE.ex)) ACTIVE.ex.forEach(x => { x.sets = clampSets(x.sets); });
 const ui = {tab:'trening', planId:null, openItem:null, exQ:'', exGroup:'', exEquip:'', hist:'treningi', progEx:null, showWorkout:false, wMenu:null};
 const sheets = [];
 const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, uid:null, ref:null, col:null, dirty:false, writing:false, t:null, foldersReady:false, fireError:false};
@@ -3187,7 +3193,7 @@ function platesHTML(i){
   const s = x.sets.find(t => !t.done) || x.sets[x.sets.length - 1]; const kg = s && s.kg; const bar = +S.settings.bar || 20;
   if (!kg || kg <= bar) return kg && kg <= bar ? `<div class="plates" data-plates="${i}">Sam gryf (${bar} kg)</div>` : `<div class="plates" data-plates="${i}"></div>`;
   let side = (kg - bar) / 2; const out = [];
-  for (const p of PLATES){ while (side >= p - 1e-9){ out.push(p); side -= p; } }
+  for (const p of PLATES){ const n = Math.min(40, Math.floor((side + 1e-9) / p)); for (let k = 0; k < n; k++) out.push(p); side -= n * p; }
   const cls = p => p === 25 ? 'p25' : p === 20 ? 'p20' : p === 15 ? 'p15' : p === 10 ? 'p10' : p === 5 ? 'p5' : 'ps';
   return `<div class="plates" data-plates="${i}">Na stronę gryfu:${out.map(p => `<span class="plate ${cls(p)}">${fmtN(p)}</span>`).join('')}${side > 0.01 ? `<span>+ ${fmtN(Math.round(side * 100) / 100)} kg brakuje</span>` : ''}</div>`;
 }
@@ -3579,16 +3585,21 @@ const ACT = {
   tbAdj(el){ const T = ACTIVE.timer; if (!T) return; T.endsAt += +el.dataset.d * 1000; T.total = Math.max(1, T.total + +el.dataset.d); if (T.endsAt <= Date.now()){ T.fired = true; ACTIVE.timer = null; } saveActive(); updateTimer(); },
   tbSkip(){ const T = ACTIVE.timer; ACTIVE.timer = null; saveActive(); renderWorkout(); if (T){ const x = ACTIVE.ex[T.focus]; const c = x && $('#wex-' + x.key); if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); } },
 };
+function limitInput(t){
+  const f = t.dataset.f, v = num(t.value), c = clampV(f, v);
+  if (v != null && c !== v){ t.value = fmtN(c); toast(f === 'kg' ? `Maksymalnie ${LIM.kg} kg.` : f === 'sec' ? `Maksymalnie ${LIM.sec} s.` : `Maksymalnie ${LIM.reps} powtórzeń.`); }
+  return c;
+}
 const BIND = {
   exq(t){ ui.exQ = t.value; fillExList(); },
   exeq(t){ ui.exEquip = t.value; fillExList(); },
   pickq(t){ topSheet().q = t.value; fillPickList(); },
   planName(t){ const p = planById(t.dataset.plan); if (p){ p.name = t.value; persist(); } },
-  pset(t){ const {it} = itemRef(t); if (!it) return; it.sets[+t.dataset.i][t.dataset.f] = num(t.value); persist();
+  pset(t){ const {it} = itemRef(t); if (!it) return; it.sets[+t.dataset.i][t.dataset.f] = limitInput(t); persist();
     const m = $(`.item-h[data-item="${it.id}"] .meta`); if (m) m.textContent = setsSummary(it); },
   note(t){ const {it} = itemRef(t); if (it){ it.note = t.value; persist(); } },
   wnote(t){ const x = ACTIVE?.ex[+t.dataset.i]; if (!x) return; x.wnote = t.value; saveActive(); },
-  wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; s[t.dataset.f] = num(t.value); saveActive();
+  wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; s[t.dataset.f] = limitInput(t); saveActive();
     if (t.dataset.f === 'kg'){ const p = $(`[data-plates="${i}"]`); if (p) p.outerHTML = platesHTML(i); } },
   progEx(t){ ui.progEx = t.value; render(); },
   setting(t){ const f = t.dataset.f; S.settings[f] = t.type === 'checkbox' ? t.checked : num(t.value); persist(); },
