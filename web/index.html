@@ -271,6 +271,7 @@ main{padding-block:2px 28px}
 .sum-row>div{display:grid;min-width:0}
 .sum-row span{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmp{flex:none;font:700 13px var(--f-body);border-radius:99px;padding:3px 10px;background:var(--surface-2);color:var(--muted)}
+.sum-row span.rec,.rec{color:var(--good);font-weight:600;white-space:normal}
 .cmp.up{background:var(--good-soft);color:var(--good)} .cmp.down{background:var(--bad-soft);color:var(--bad)}
 .cov{display:grid;gap:10px}
 .pr{display:grid;gap:10px}
@@ -1880,7 +1881,68 @@ async function flush(){
   finally { store.writing = false; }
 }
 function commit(){ persist(); render(); }
-function saveActive(){ if (ACTIVE) LS.set('dz.active', ACTIVE); else LS.del('dz.active'); }
+function saveActive(){ if (ACTIVE){ ACTIVE.updatedAt = Date.now(); LS.set('dz.active', ACTIVE); pushActive(); } else LS.del('dz.active'); }
+/* ---------- trwający trening w bazie: folders/{id}/sessions/_active ----------
+   Dokument nie ma pola `date`, więc nie trafia do historii (zapytanie sortuje po dacie); dodatkowo jest odfiltrowany.
+   Każde urządzenie z tym folderem widzi trening w toku i może go dokończyć; wygrywa nowsza zmiana (updatedAt). */
+const ACTIVE_DOC = '_active';
+let unsubActive = null, activeT = null, activePending = null;
+const fireOn = () => store.mode === 'fire' && FOLDER && FB.db;
+const activeRef = fid => FB.doc(FB.db, 'folders', fid, 'sessions', ACTIVE_DOC);
+function pushActive(now){
+  if (!fireOn() || !ACTIVE) return;
+  if (!ACTIVE.folder) ACTIVE.folder = FOLDER.id;
+  if (ACTIVE.folder !== FOLDER.id) return;
+  const fid = FOLDER.id;
+  clearTimeout(activeT);
+  activePending = () => {
+    activeT = activePending = null;
+    if (!ACTIVE || !FOLDER || FOLDER.id !== fid || ACTIVE.folder !== fid) return;
+    const id = ACTIVE.id;
+    FB.setDoc(activeRef(fid), {kind:'active', updatedAt:ACTIVE.updatedAt || Date.now(), active:clone(ACTIVE)}).then(() => LS.set('dz.activeSeen', id)).catch(() => {});
+  };
+  if (now) activePending(); else activeT = setTimeout(activePending, 1200);   // wpisywanie ciężaru = wiele zmian, zapis zbiorczy
+}
+// zmiana folderu przy treningu w toku: wolno, jeśli trening jest już bezpiecznie w bazie (zostaje tam i wróci po otwarciu folderu)
+function activeBlocksSwitch(){
+  if (!ACTIVE) return false;
+  if (fireOn() && ACTIVE.folder === FOLDER.id && LS.get('dz.activeSeen', null) === ACTIVE.id && !activePending){ ACTIVE = null; LS.del('dz.active'); ui.showWorkout = false; releaseWake(); renderWorkout(); return false; }
+  toast('Najpierw zakończ albo odrzuć trening w toku.'); return true;
+}
+function flushActive(){ if (activePending){ clearTimeout(activeT); activePending(); } }
+function dropRemoteActive(fid){
+  clearTimeout(activeT); activeT = activePending = null;
+  if (fid && store.mode === 'fire' && FB.db) FB.deleteDoc(activeRef(fid)).catch(() => {});
+}
+function clearLocalActive(msg){
+  ACTIVE = null; LS.del('dz.active'); ui.showWorkout = false; releaseWake();
+  if (topSheet() && topSheet().type === 'finish'){ sheets.length = 0; renderSheet(); }
+  render(); renderWorkout(); if (msg) toast(msg);
+}
+function watchActive(fid){
+  if (unsubActive) unsubActive();
+  if (ACTIVE && !ACTIVE.folder) ACTIVE.folder = fid;   // trening sprzed tej wersji należy do otwartego folderu
+  unsubActive = FB.onSnapshot(activeRef(fid), snap => {
+    if (!FOLDER || FOLDER.id !== fid || snap.metadata.hasPendingWrites) return;
+    const mine = ACTIVE && ACTIVE.folder === fid;
+    if (!snap.exists()){
+      if (snap.metadata.fromCache) return;
+      if (mine && LS.get('dz.activeSeen', null) === ACTIVE.id) clearLocalActive('Trening zakończono na innym urządzeniu.');
+      else if (mine) pushActive(true);   // trening zaczęty bez internetu: wysyłamy go teraz
+      return;
+    }
+    const d = snap.data() || {}, R = d.active; if (!R || !R.id) return;
+    if (SESS.some(s => s.id === R.id)){ dropRemoteActive(fid); if (mine && ACTIVE.id === R.id) clearLocalActive(); return; }   // już zapisany w historii
+    if (ACTIVE && ACTIVE.folder && ACTIVE.folder !== fid) return;
+    if (mine && ACTIVE.id === R.id && (ACTIVE.updatedAt || 0) >= (d.updatedAt || 0)){ LS.set('dz.activeSeen', R.id); if ((ACTIVE.updatedAt || 0) > (d.updatedAt || 0)) pushActive(true); return; }
+    if (mine && ACTIVE.id !== R.id && (ACTIVE.updatedAt || 0) > (d.updatedAt || 0)){ pushActive(true); return; }
+    const a = document.activeElement;
+    if (ui.showWorkout && a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.closest('#workout')){ setTimeout(() => { if (FOLDER && FOLDER.id === fid) watchActive(fid); }, 1500); return; }   // nie przerywamy wpisywania
+    if (mine && ACTIVE.id !== R.id && LS.get('dz.activeSeen', null) !== ACTIVE.id && ACTIVE.ex.some(x => x.sets.some(q => q.done))){ saveSession(buildSession()); toast('Wcześniejszy trening z tego urządzenia zapisano w historii.'); }   // dwa treningi naraz: nic nie ginie
+    ACTIVE = {...R, folder:fid}; LS.set('dz.active', ACTIVE); LS.set('dz.activeSeen', R.id);
+    render(); if (ui.showWorkout) renderWorkout();
+  }, () => {});
+}
 async function saveSession(s){
   SESS = [s, ...SESS.filter(x => x.id !== s.id)];
   const k = lsKey('sessions'); if (k) LS.set(k, SESS);
@@ -1925,7 +1987,7 @@ function watchFolders(){
   }, () => { store.fireError = true; render(); });
 }
 function closeFolder(){
-  if (unsubState) unsubState(); if (unsubSess) unsubSess(); unsubState = unsubSess = null;
+  if (unsubState) unsubState(); if (unsubSess) unsubSess(); if (unsubActive) unsubActive(); unsubState = unsubSess = unsubActive = null;
   FOLDER = null; LS.del('dz.folder'); S = blankState(); SESS = []; ui.planId = null;
 }
 function openFolder(f){
@@ -1949,10 +2011,11 @@ function openFolder(f){
   unsubSess = FB.onSnapshot(FB.query(FB.collection(FB.db, 'folders', fid, 'sessions'), FB.orderBy('date', 'desc'), FB.limit(1000)), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
     if (snap.metadata.fromCache && snap.empty && SESS.length) return;
-    const list = sortSess(snap.docs.map(d => ({...d.data(), id:d.id})));
+    const list = sortSess(snap.docs.filter(d => d.id !== ACTIVE_DOC).map(d => ({...d.data(), id:d.id})));
     if (JSON.stringify(list) === JSON.stringify(SESS)) return;
     SESS = list; LS.set(lsKey('sessions'), SESS); render();
   }, () => {});
+  watchActive(fid);
   render();
 }
 function maybeMoveLocalData(){
@@ -2046,6 +2109,26 @@ function render(){
 }
 
 /* ---------- TRENING (start) ---------- */
+// rekord z listy serii: na czas → najdłuższa; z ciężarem → najcięższa (przy remisie więcej powt.); bez ciężaru → najwięcej powt.
+function setBest(sets, mode){
+  let b = null;
+  for (const t of sets || []){
+    const v = mode === 'time' ? {sec:t.sec || 0} : {kg:t.kg || 0, reps:t.reps || 0};
+    if (!b || recBetter(v, b, mode)) b = v;
+  }
+  return b && (mode === 'time' ? b.sec > 0 : (b.kg > 0 || b.reps > 0)) ? b : null;
+}
+function recBetter(a, b, mode){ return mode === 'time' ? a.sec > b.sec : a.kg > b.kg + 1e-9 || (Math.abs(a.kg - b.kg) < 1e-9 && a.reps > b.reps); }
+function recText(r, mode){ return mode === 'time' ? fmtN(r.sec) + ' s' : r.kg ? fmtN(r.kg) + ' kg × ' + r.reps : r.reps + ' powt.'; }
+// najlepszy wynik w ćwiczeniu z historii (opcjonalnie tylko treningi przed datą `before`, bez treningu `excludeId`)
+function recordFor(exId, mode, before, excludeId){
+  let b = null;
+  for (const s of SESS){
+    if (s.id === excludeId || (before && String(s.date) >= String(before))) continue;
+    for (const x of s.ex || []){ if (x.exId !== exId || (x.mode === 'time') !== (mode === 'time')) continue; const r = setBest(x.sets, mode); if (r && (!b || recBetter(r, b, mode))) b = r; }
+  }
+  return b;
+}
 function lastFor(exId, excludeId){
   for (const s of SESS){ if (s.id === excludeId) continue; const x = (s.ex || []).find(e => e.exId === exId); if (x && x.sets && x.sets.length) return {date:s.date, mode:x.mode, sets:x.sets, note:x.note || ''}; }
   return null;
@@ -3127,9 +3210,11 @@ const SHEETS = {
   summary(s){
     const x = SESS.find(q => q.id === s.id); if (!x) return sheetHead('Podsumowanie') + '<p class="muted">Brak treningu.</p>';
     const best = sets => sets.reduce((a, t) => { const kg = t.kg || 0, r = t.reps || 0; return kg > a.kg || (kg === a.kg && r > a.reps) ? {kg, reps:r} : a; }, {kg:0, reps:0});
-    let up = 0, rows = '';
+    let up = 0, rows = '', recs = 0;
     for (const e of x.ex || []){
       const prev = lastFor(e.exId, x.id), name = getEx(e.exId).missing ? e.name : getEx(e.exId).name;
+      const recNow = setBest(e.sets, e.mode), recOld = recordFor(e.exId, e.mode, x.date, x.id);
+      const isRec = recNow && recOld && recBetter(recNow, recOld, e.mode); if (isRec) recs++;
       let cmp = '<span class="cmp new">pierwszy raz</span>';
       if (prev){
         if (e.mode === 'time'){ const a = Math.max(...e.sets.map(t => t.sec || 0)), b = Math.max(...prev.sets.map(t => t.sec || 0)); cmp = a > b ? `<span class="cmp up">+${a - b} s</span>` : a < b ? `<span class="cmp down">−${b - a} s</span>` : '<span class="cmp eq">bez zmian</span>'; if (a > b) up++; }
@@ -3144,10 +3229,10 @@ const SHEETS = {
         }
       }
       const sets = e.sets.map(t => e.mode === 'time' ? fmtN(t.sec) + ' s' : (t.kg ? fmtN(t.kg) + '×' : '') + (t.reps ?? 0)).join(' · ');
-      rows += `<div class="sum-row"><div><b>${esc(name)}</b><span>${esc(sets)}</span></div>${cmp}</div>`;
+      rows += `<div class="sum-row"><div><b>${esc(name)}</b><span>${esc(sets)}</span>${isRec ? `<span class="rec">Nowy rekord: ${esc(recText(recNow, e.mode))} (było ${esc(recText(recOld, e.mode))})</span>` : ''}</div>${cmp}</div>`;
     }
     const n = (x.ex || []).length;
-    return sheetHead('Trening zapisany') + `<p class="sum-lead">${up ? `Lepiej niż ostatnio w ${up} z ${n} ${pl(n, 'ćwiczenia', 'ćwiczeń', 'ćwiczeń')}. Dobra robota!` : 'Trening zapisany. Porównanie z poprzednim razem poniżej.'}</p>
+    return sheetHead('Trening zapisany') + `<p class="sum-lead">${up ? `Lepiej niż ostatnio w ${up} z ${n} ${pl(n, 'ćwiczenia', 'ćwiczeń', 'ćwiczeń')}. Dobra robota!` : 'Trening zapisany. Porównanie z poprzednim razem poniżej.'}${recs ? ` <b class="rec">${recs === 1 ? 'Nowy rekord!' : `Nowe rekordy: ${recs}!`}</b>` : ''}</p>
       <div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(x.dur || 0)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(x)}</div></div>
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(x)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${n}</div></div></div>
       <h3 class="h3">W porównaniu z poprzednim razem</h3><div class="sum-list">${rows}</div>
@@ -3241,7 +3326,8 @@ function wCard(x, i, cur){
       <button class="iconbtn sm plain" data-act="wMenu" data-i="${i}" aria-label="Opcje ćwiczenia" aria-expanded="${ui.wMenu === x.key}">${svg('more','i s')}</button></div>`;
   if (ui.wMenu === x.key) h += `<div class="row"><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="1" ${i === ACTIVE.ex.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><button class="btn sm" data-act="wSwap" data-i="${i}">Zamień</button><button class="btn sm" data-act="wNoteOpen" data-i="${i}">Notatka</button>${i < ACTIVE.ex.length - 1 ? `<button class="btn sm" data-act="wSS" data-i="${i}">${x.ssNext ? 'Rozłącz superserię' : 'Superseria z następnym'}</button>` : ''}<span class="spacer"></span><button class="btn sm danger" data-act="wDelEx" data-i="${i}">${svg('trash','i s')}Usuń</button></div>`;
   if (x.wnote != null && (ui.wNote === x.key || x.wnote)) h += `<textarea class="input wnote" maxlength="300" rows="2" data-bind="wnote" data-i="${i}" placeholder="Notatka do tego ćwiczenia, np. ustawienie siedziska 4" aria-label="Notatka do ćwiczenia">${esc(x.wnote)}</textarea>`;
-  if (last) h += `<div class="last">Ostatni trening: ${fmtDate(last.date)}${last.note ? ` · <i>„${esc(last.note)}”</i>` : ''}</div>`;
+  const rec = last ? recordFor(x.exId, x.mode) : null;
+  if (last) h += `<div class="last">Ostatni trening: ${fmtDate(last.date)}${rec ? ` · rekord: <b>${esc(recText(rec, x.mode))}</b>` : ''}${last.note ? ` · <i>„${esc(last.note)}”</i>` : ''}</div>`;
   h += progHint(x, i, last);
   h += `<div class="sets"><div class="srow head"><span>#</span><span>${last ? 'Cel · ostatnio' : 'Cel'}</span><span>kg</span><span>${t ? 'Sek.' : 'Powt.'}</span><span></span></div>`;
   x.sets.forEach((s, j) => {
@@ -3376,11 +3462,11 @@ setInterval(tick, 250);
 let wake = null;
 async function requestWake(){ try { if ('wakeLock' in navigator && !wake){ wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch {} }
 function releaseWake(){ try { wake && wake.release(); } catch {} wake = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible'){ if (ACTIVE && ui.showWorkout) requestWake(); tick(); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushActive(); if (document.visibilityState === 'visible'){ if (ACTIVE && ui.showWorkout) requestWake(); tick(); } });
 
 function startWorkoutFrom(p){
   const name = p.name || 'Trening';
-  ACTIVE = {id:uid(), planId:p.id, dayId:p.id, planName:name, dayName:name, startedAt:Date.now(), timer:null,
+  ACTIVE = {id:uid(), folder:FOLDER ? FOLDER.id : null, planId:p.id, dayId:p.id, planName:name, dayName:name, startedAt:Date.now(), timer:null,
     ex:p.items.map(it => { const last = lastFor(it.exId); return {key:uid(), itemId:it.id, exId:it.exId, mode:it.mode, ssNext:!!it.ssNext, rest:it.rest ?? S.settings.restSet, restAfter:it.restAfter ?? S.settings.restEx, note:it.note || '',
       sets:it.sets.map((s, j) => ({tReps:s.reps ?? null, tKg:s.kg ?? null, tSec:s.sec ?? null, reps:s.reps ?? null, sec:s.sec ?? null, kg:s.kg ?? (last && last.sets[j] ? last.sets[j].kg ?? null : null), done:false}))}; })};
   saveActive(); ui.showWorkout = true; ui.wMenu = null; audioUnlock(); requestWake(); render(); renderWorkout();
@@ -3398,21 +3484,21 @@ function buildSession(){
   return {id:ACTIVE.id, date:new Date(ACTIVE.startedAt).toISOString(), dur:Math.max(0, Math.round((end - ACTIVE.startedAt) / 1000)),
     planId:ACTIVE.planId || null, planName:ACTIVE.planName || '', dayId:ACTIVE.dayId || null, dayName:ACTIVE.dayName || 'Trening', ex};
 }
-function endWorkout(){ ACTIVE = null; saveActive(); ui.showWorkout = false; releaseWake(); sheets.length = 0; renderSheet(); render(); }
+function endWorkout(){ const fid = ACTIVE && (ACTIVE.folder || FOLDER?.id); ACTIVE = null; saveActive(); dropRemoteActive(fid); ui.showWorkout = false; releaseWake(); sheets.length = 0; renderSheet(); render(); }
 
 /* ====================== akcje ====================== */
 const ACT = {
   openSettings(){ openSheet({type:'settings'}); },
   folderSwitch(){ openSheet({type:'folders'}); },
   folderOpen(el){
-    if (ACTIVE){ toast('Najpierw zakończ albo odrzuć trening w toku.'); return; }
     const f = FOLDERS.find(x => x.id === el.dataset.id); if (!f) return;
+    if (!(FOLDER && f.id === FOLDER.id) && activeBlocksSwitch()) return;
     sheets.length = 0; renderSheet(); openFolder(f); if (location.hash !== '#trening') location.hash = 'trening'; scrollTo(0, 0);
   },
   folderCreate(){
     const inp = $('#newfolder'); const name = (inp && inp.value || '').trim();
     if (!name){ toast('Wpisz imię albo nazwę folderu.'); inp && inp.focus(); return; }
-    if (ACTIVE){ toast('Najpierw zakończ albo odrzuć trening w toku.'); return; }
+    if (activeBlocksSwitch()) return;
     const same = FOLDERS.find(f => norm(f.name) === norm(name));
     if (same){ toast(`Folder „${same.name}” już istnieje. Otwieram go.`); sheets.length = 0; renderSheet(); openFolder(same); return; }
     const id = uid(); store.creating = true;
@@ -3624,12 +3710,10 @@ const BIND = {
   note(t){ const {it} = itemRef(t); if (it){ it.note = t.value; persist(); } },
   wnote(t){ const x = ACTIVE?.ex[+t.dataset.i]; if (!x) return; x.wnote = t.value; saveActive(); },
   wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; s[t.dataset.f] = limitInput(t); saveActive();
-    if (t.dataset.f === 'kg'){
-      // ten sam ciężar od razu w kolejnych, jeszcze niezrobionych seriach (piramida: zmień serię 3 → zmieniają się 3, 4, 5…)
-      const x = ACTIVE.ex[i], j = +t.dataset.j;
-      if (!s.done) x.sets.forEach((q, k) => { if (k <= j || q.done) return; q.kg = s.kg; const inp = $(`#w-${x.key}-${k}-kg`); if (inp && inp !== document.activeElement) inp.value = fmtN(s.kg); });
-      saveActive();
-      const p = $(`[data-plates="${i}"]`); if (p) p.outerHTML = platesHTML(i); } },
+    // ciężar / powtórzenia / sekundy od razu w kolejnych, jeszcze niezrobionych seriach (piramida: zmień serię 3 → zmieniają się 3, 4, 5…)
+    const f = t.dataset.f, x = ACTIVE.ex[i], j = +t.dataset.j;
+    if (!s.done){ x.sets.forEach((q, k) => { if (k <= j || q.done) return; q[f] = s[f]; const inp = $(`#w-${x.key}-${k}-${f}`); if (inp && inp !== document.activeElement) inp.value = f === 'kg' ? fmtN(s[f]) : (s[f] ?? ''); }); saveActive(); }
+    if (f === 'kg'){ const p = $(`[data-plates="${i}"]`); if (p) p.outerHTML = platesHTML(i); } },
   progEx(t){ ui.progEx = t.value; render(); },
   setting(t){ const f = t.dataset.f; S.settings[f] = t.type === 'checkbox' ? t.checked : num(t.value); persist(); },
   cf(t){ topSheet().f[t.dataset.f] = t.value; },
