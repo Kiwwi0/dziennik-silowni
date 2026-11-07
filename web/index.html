@@ -2034,7 +2034,9 @@ function render(){
   document.querySelector('.tabbar').hidden = picking;
   const v = $('#view');
   if (picking){ v.innerHTML = vFolders(); syncWorkout(); return; }
-  const live = ACTIVE ? `<div class="wrap" style="margin-bottom:12px"><div class="live"><div class="t"><span class="small" style="opacity:.75">Trening w toku · <span data-elapsed>${fmtClock((Date.now() - ACTIVE.startedAt) / 1000)}</span></span><b>${esc(ACTIVE.dayName)}</b></div>
+  const live = ACTIVE && isStale() ? `<div class="wrap" style="margin-bottom:12px"><div class="live"><div class="t"><span class="small" style="opacity:.75">Niezakończony trening z ${esc(fmtDate(new Date(ACTIVE.startedAt).toISOString(), {weekday:'short', day:'numeric', month:'short'}))}</span><b>${esc(ACTIVE.dayName)}</b></div>
+      <div class="row" style="flex-wrap:nowrap;gap:6px"><button class="btn sm" data-act="openWorkout">Otwórz</button><button class="btn sm" data-act="finishOpen">Zakończ</button></div></div></div>`
+    : ACTIVE ? `<div class="wrap" style="margin-bottom:12px"><div class="live"><div class="t"><span class="small" style="opacity:.75">Trening w toku · <span data-elapsed>${fmtClock((Date.now() - ACTIVE.startedAt) / 1000)}</span></span><b>${esc(ACTIVE.dayName)}</b></div>
       <button class="btn sm" data-act="openWorkout">Wróć do treningu</button></div></div>` : '';
   v.innerHTML = live + (ui.tab === 'trening' ? vHome() : ui.tab === 'plany' ? vPlans() : ui.tab === 'cwiczenia' ? vExercises() : vHistory());
   if (ui.tab === 'cwiczenia') fillExList();
@@ -3153,7 +3155,8 @@ const SHEETS = {
   },
   finish(s){
     const sess = buildSession(); const linked = ACTIVE.ex.some(x => x.itemId) && planById(ACTIVE.planId);
-    return sheetHead('Zakończ trening') + (s.auto ? `<p class="muted" style="margin:0">Wszystkie serie zrobione. Zapisać trening? Jeśli chcesz jeszcze coś dorobić, zamknij to okno.</p>` : '') + `<div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(sess.dur)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(sess)}</div></div>
+    const staleTxt = isStale() ? `<p class="note" style="margin:0">Trening „${esc(ACTIVE.dayName)}” z ${esc(fmtDate(new Date(ACTIVE.startedAt).toISOString(), {weekday:'long', day:'numeric', month:'long'}))} nie został zakończony. Zapisz go teraz, żeby nie przepadł. Czas liczę do ostatniej odhaczonej serii.</p>` : '';
+    return sheetHead('Zakończ trening') + staleTxt + (s.auto ? `<p class="muted" style="margin:0">Wszystkie serie zrobione. Zapisać trening? Jeśli chcesz jeszcze coś dorobić, zamknij to okno.</p>` : '') + `<div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(sess.dur)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(sess)}</div></div>
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(sess)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${sess.ex.length}</div></div></div>
       ${sessSets(sess) ? '' : '<p class="note">Nie odhaczyłeś żadnej serii, więc nie ma czego zapisać.</p>'}
       ${linked ? `<label class="toggle"><input type="checkbox" id="fin-upd" ${s.upd ? 'checked' : ''} data-bind="finUpd">Zapisz dzisiejsze ciężary i powtórzenia jako nowe wartości w planie</label>` : ''}
@@ -3301,7 +3304,7 @@ function startTimer(kind, sec, label, focus, extra={}){
 }
 function nextUndone(after){ let k = ACTIVE.ex.findIndex((x, n) => n > after && x.sets.some(s => !s.done)); if (k < 0) k = ACTIVE.ex.findIndex(x => x.sets.some(s => !s.done)); return k; }
 function afterSetDone(i){
-  const x = ACTIVE.ex[i]; ACTIVE.focusKey = null;
+  const x = ACTIVE.ex[i]; ACTIVE.focusKey = null; ACTIVE.lastSetAt = Date.now();
   const sp = ssPos(ACTIVE.ex, i);
   if (sp){   // superseria: następne ćwiczenie z grupy bez przerwy, przerwa dopiero po całej rundzie
     const round = x.sets.filter(s => s.done).length;
@@ -3352,8 +3355,17 @@ function onTimerEnd(T){
   const typing = document.activeElement && document.activeElement.tagName === 'INPUT';
   if (ui.showWorkout && !typing){ const x = ACTIVE.ex[T.focus]; const c = x && $('#wex-' + x.key); if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); }
 }
+// trening bez żadnej serii od 2 godzin uznajemy za zapomniany: pytamy o zakończenie (raz na każdą przerwę w aktywności)
+const STALE_MS = 2 * 3600e3;
+const activeLast = () => ACTIVE ? (ACTIVE.lastSetAt || ACTIVE.startedAt) : 0;
+const isStale = () => !!ACTIVE && Date.now() - activeLast() > STALE_MS;
+function staleCheck(){
+  if (!isStale() || ui.staleAsked === activeLast() || topSheet() || (FIRE && !FOLDER)) return;
+  ui.staleAsked = activeLast(); render(); openSheet({type:'finish', upd:false, stale:true});
+}
 function tick(){
   if (!ACTIVE) return;
+  staleCheck();
   const el = fmtClock((Date.now() - ACTIVE.startedAt) / 1000);
   $$('[data-elapsed]').forEach(e => { e.textContent = el; });
   const T = ACTIVE.timer;
@@ -3381,7 +3393,9 @@ function newWorkoutEx(exId){
 function buildSession(){
   const ex = ACTIVE.ex.map(x => ({exId:x.exId, name:getEx(x.exId).name, mode:x.mode, ...(x.wnote ? {note:x.wnote} : {}),
     sets:x.sets.filter(s => s.done).map(s => x.mode === 'time' ? {sec:s.sec ?? 0, kg:s.kg ?? null} : {reps:s.reps ?? 0, kg:s.kg ?? null})})).filter(x => x.sets.length);
-  return {id:ACTIVE.id, date:new Date(ACTIVE.startedAt).toISOString(), dur:Math.round((Date.now() - ACTIVE.startedAt) / 1000),
+  // zawieszony trening: czas liczony do ostatniej serii, a nie do chwili zapisania (np. kilka dni później)
+  const end = isStale() ? (ACTIVE.lastSetAt || ACTIVE.startedAt + STALE_MS) : Date.now();
+  return {id:ACTIVE.id, date:new Date(ACTIVE.startedAt).toISOString(), dur:Math.max(0, Math.round((end - ACTIVE.startedAt) / 1000)),
     planId:ACTIVE.planId || null, planName:ACTIVE.planName || '', dayId:ACTIVE.dayId || null, dayName:ACTIVE.dayName || 'Trening', ex};
 }
 function endWorkout(){ ACTIVE = null; saveActive(); ui.showWorkout = false; releaseWake(); sheets.length = 0; renderSheet(); render(); }
