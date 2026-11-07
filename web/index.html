@@ -3056,10 +3056,14 @@ const SHEETS = {
     return h;
   },
   swap(s){
-    const cur = getEx(s.exId), list = swapCandidates(s.exId);
-    let h = sheetHead('Zamiennik') + `<p class="muted" style="margin:0">Zamiast <b>${esc(cur.name)}</b>, na te same mięśnie:</p><div class="exlist">`;
-    h += list.map(e => `<button class="exrow" data-act="swapDo" data-id="${esc(e.id)}">${thumb(e.id)}<span><span class="nm">${esc(e.name)}</span><span class="meta" style="display:block">${esc(e.equipment)} · ${esc(exMuscles(e).p.map(muscleName).join(', '))}</span></span>${svg('chev','i s chev')}</button>`).join('') || '<p class="muted">Brak podobnych ćwiczeń w bazie.</p>';
-    return h + `</div><p class="note" style="margin:0">${s.ctx === 'w' ? 'Zamiana dotyczy tylko dzisiejszego treningu. Plan się nie zmieni.' : 'Ćwiczenie zostanie zamienione w planie, serie i przerwy zostają.'}</p>`;
+    const cur = getEx(s.exId), list = swapCandidates(s.exId), seen = new Set([s.exId, ...list.map(e => e.id)]);
+    // najpierw podobne (te same mięśnie), potem wszystkie pozostałe z tej samej partii, alfabetycznie
+    const rest = allEx().filter(e => e.group === cur.group && !seen.has(e.id)).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+    const row = e => `<button class="exrow" data-act="swapDo" data-id="${esc(e.id)}">${thumb(e.id)}<span><span class="nm">${esc(e.name)}</span><span class="meta" style="display:block">${esc(e.equipment || '')}${exMuscles(e).p.length ? ' · ' + esc(exMuscles(e).p.map(muscleName).join(', ')) : ''}</span></span>${svg('chev','i s chev')}</button>`;
+    let h = sheetHead('Zamiennik') + `<p class="muted" style="margin:0">Zamiast <b>${esc(cur.name)}</b>:</p>`;
+    h += `<h3 class="h3">Podobne ćwiczenia</h3><div class="exlist">` + (list.map(row).join('') || '<p class="muted">Brak podobnych ćwiczeń w bazie.</p>') + `</div>`;
+    if (rest.length) h += `<h3 class="h3">Wszystkie: ${esc(cur.group)}</h3><div class="exlist">` + rest.map(row).join('') + `</div>`;
+    return h + `<p class="note" style="margin:0">${s.ctx === 'w' ? 'Zamiana dotyczy tylko dzisiejszego treningu. Plan się nie zmieni.' : 'Ćwiczenie zostanie zamienione w planie, serie i przerwy zostają.'}</p>`;
   },
   addToPlan(s){
     const e = getEx(s.id);
@@ -3149,7 +3153,7 @@ const SHEETS = {
   },
   finish(s){
     const sess = buildSession(); const linked = ACTIVE.ex.some(x => x.itemId) && planById(ACTIVE.planId);
-    return sheetHead('Zakończ trening') + `<div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(sess.dur)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(sess)}</div></div>
+    return sheetHead('Zakończ trening') + (s.auto ? `<p class="muted" style="margin:0">Wszystkie serie zrobione. Zapisać trening? Jeśli chcesz jeszcze coś dorobić, zamknij to okno.</p>` : '') + `<div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(sess.dur)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(sess)}</div></div>
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(sess)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${sess.ex.length}</div></div></div>
       ${sessSets(sess) ? '' : '<p class="note">Nie odhaczyłeś żadnej serii, więc nie ma czego zapisać.</p>'}
       ${linked ? `<label class="toggle"><input type="checkbox" id="fin-upd" ${s.upd ? 'checked' : ''} data-bind="finUpd">Zapisz dzisiejsze ciężary i powtórzenia jako nowe wartości w planie</label>` : ''}
@@ -3308,14 +3312,19 @@ function afterSetDone(i){
     const first = [...Array(sp.n).keys()].map(d => sp.a + d).find(k => ACTIVE.ex[k].sets.some(s => !s.done));
     if (first != null){ if (S.settings.autoRest) startTimer('rest', x.rest, 'Przerwa po rundzie superserii', first); else { ACTIVE.timer = null; ACTIVE.focusKey = ACTIVE.ex[first].key; } return; }
     const k = nextUndone(sp.b);
-    if (k < 0 || (k >= sp.a && k <= sp.b)){ ACTIVE.timer = null; toast('Wszystkie serie zrobione. Zakończ trening, żeby go zapisać.'); return; }
+    if (k < 0 || (k >= sp.a && k <= sp.b)){ ACTIVE.timer = null; allDoneAsk(); return; }
     if (S.settings.autoRest) startTimer('rest', x.restAfter, 'Przerwa · następne: ' + getEx(ACTIVE.ex[k].exId).name, k); else ACTIVE.timer = null;
     return;
   }
   if (x.sets.some(s => !s.done)){ if (S.settings.autoRest) startTimer('rest', x.rest, 'Przerwa między seriami', i); else ACTIVE.timer = null; return; }
   const k = nextUndone(i);
-  if (k < 0){ ACTIVE.timer = null; toast('Wszystkie serie zrobione. Zakończ trening, żeby go zapisać.'); return; }
+  if (k < 0){ ACTIVE.timer = null; allDoneAsk(); return; }
   if (S.settings.autoRest) startTimer('rest', x.restAfter, 'Przerwa · następne: ' + getEx(ACTIVE.ex[k].exId).name, k); else ACTIVE.timer = null;
+}
+// wszystkie serie odhaczone: od razu pytamy o zakończenie (arkusz „Zakończ trening”; zamknięcie go = trenujesz dalej)
+function allDoneAsk(){
+  if (!ui.showWorkout || topSheet()){ toast('Wszystkie serie zrobione. Zakończ trening, żeby go zapisać.'); return; }
+  setTimeout(() => { if (ACTIVE && ui.showWorkout && !topSheet()) openSheet({type:'finish', upd:false, auto:true}); }, 0);
 }
 let AC = null;
 function audioUnlock(){ try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); } catch {} }
@@ -3601,7 +3610,12 @@ const BIND = {
   note(t){ const {it} = itemRef(t); if (it){ it.note = t.value; persist(); } },
   wnote(t){ const x = ACTIVE?.ex[+t.dataset.i]; if (!x) return; x.wnote = t.value; saveActive(); },
   wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; s[t.dataset.f] = limitInput(t); saveActive();
-    if (t.dataset.f === 'kg'){ const p = $(`[data-plates="${i}"]`); if (p) p.outerHTML = platesHTML(i); } },
+    if (t.dataset.f === 'kg'){
+      // ten sam ciężar od razu w kolejnych, jeszcze niezrobionych seriach (piramida: zmień serię 3 → zmieniają się 3, 4, 5…)
+      const x = ACTIVE.ex[i], j = +t.dataset.j;
+      if (!s.done) x.sets.forEach((q, k) => { if (k <= j || q.done) return; q.kg = s.kg; const inp = $(`#w-${x.key}-${k}-kg`); if (inp && inp !== document.activeElement) inp.value = fmtN(s.kg); });
+      saveActive();
+      const p = $(`[data-plates="${i}"]`); if (p) p.outerHTML = platesHTML(i); } },
   progEx(t){ ui.progEx = t.value; render(); },
   setting(t){ const f = t.dataset.f; S.settings[f] = t.type === 'checkbox' ? t.checked : num(t.value); persist(); },
   cf(t){ topSheet().f[t.dataset.f] = t.value; },
