@@ -710,7 +710,7 @@ function watchFolders(){
     if (FOLDER){
       const f = FOLDERS.find(x => x.id === FOLDER.id);
       if (f && f.name !== FOLDER.name){ FOLDER = {id:f.id, name:f.name}; LS.set('dz.folder', FOLDER); }
-      if (!f && !snap.metadata.fromCache && !snap.metadata.hasPendingWrites && !store.creating){ closeFolder(); toast('Ten folder został usunięty.'); }
+      if (!f && !snap.metadata.fromCache && !snap.metadata.hasPendingWrites && !store.creating){ closeFolder(); toast('To konto zostało usunięte.'); }
     }
     render();
     if (topSheet() && (topSheet().type === 'folders' || (topSheet().type === 'pin' && !topSheet().busy && pinMode(topSheet()) !== topSheet().shown))) renderSheet();
@@ -786,15 +786,15 @@ function maybeMoveLocalData(){
   if (LS.get('dz.movedLocal', false) || hasData(S) || SESS.length) return;
   const st = normalize(LS.get('dz.state', null)), ss = LS.get('dz.sessions', []) || [];
   if (!st.plans.length && !st.custom.length && !ss.length) return;
-  confirmBox('Przenieść wcześniejsze dane?', `Na tym urządzeniu są plany i treningi zapisane przed wprowadzeniem folderów (${st.plans.length} ${pl(st.plans.length,'plan','plany','planów')}, ${ss.length} ${pl(ss.length,'trening','treningi','treningów')}). Przenieść je do folderu „${FOLDER.name}”?`, 'Przenieś', () => {
+  confirmBox('Przenieść wcześniejsze dane?', `Na tym urządzeniu są plany i treningi zapisane przed wprowadzeniem kont (${st.plans.length} ${pl(st.plans.length,'plan','plany','planów')}, ${ss.length} ${pl(ss.length,'trening','treningi','treningów')}). Przenieść je do konta „${FOLDER.name}”?`, 'Przenieś', () => {
     LS.set('dz.movedLocal', true);
-    S = st; persist(); sortSess(ss).forEach(x => saveSession(x)); render(); toast('Przeniesiono dane do folderu.');
+    S = st; persist(); sortSess(ss).forEach(x => saveSession(x)); render(); toast('Przeniesiono dane do konta.');
   }, false);
 }
 function vFolders(){
-  let h = `<p style="margin:0;color:var(--ink-2)">Wybierz swój folder. Plany i historia każdej osoby zapisują się osobno w internecie, więc nic nie zniknie po zamknięciu strony i otworzysz je na każdym urządzeniu.</p>`;
-  if (!store.foldersReady) h += `<div class="card muted">${store.fireError ? 'Nie udało się połączyć z bazą. Sprawdź połączenie z internetem.' : 'Wczytuję foldery…'}</div>`;
-  else h += `<section class="plan">${FOLDERS.map(f => `<button class="dayrow plan-link" data-act="folderOpen" data-id="${esc(f.id)}"><div class="dn">${esc(f.name)}</div>${svg('chev','i s chev')}</button>`).join('') || '<div class="dayrow"><span class="muted">Nie ma jeszcze żadnych folderów. Dodaj pierwszy poniżej.</span></div>'}</section>`;
+  let h = `<p style="margin:0;color:var(--ink-2)">Wybierz swoje konto. Plany i historia każdej osoby zapisują się osobno w internecie, więc nic nie zniknie po zamknięciu strony i otworzysz je na każdym urządzeniu.</p>`;
+  if (!store.foldersReady) h += `<div class="card muted">${store.fireError ? 'Nie udało się połączyć z bazą. Sprawdź połączenie z internetem.' : 'Wczytuję konta…'}</div>`;
+  else h += `<section class="plan">${FOLDERS.map(f => `<button class="dayrow plan-link" data-act="folderOpen" data-id="${esc(f.id)}"><div class="dn">${esc(f.name)}</div>${svg('chev','i s chev')}</button>`).join('') || '<div class="dayrow"><span class="muted">Nie ma jeszcze żadnych kont. Dodaj pierwsze poniżej.</span></div>'}</section>`;
   h += newFolderField();
   return `<div class="wrap stack">${h}</div>`;
 }
@@ -1963,7 +1963,7 @@ const SHEETS = {
       <div class="field"><label class="lbl" for="st-pw">Treningów w tygodniu (cel serii na mapie mięśni)</label><select class="input" id="st-pw" data-bind="setting" data-f="perWeek">${[1, 2, 3, 4, 5, 6].map(v => `<option value="${v}" ${perWeek() === v ? 'selected' : ''}>${v} · cel ${WK_TARGET[v]} serii na partię</option>`).join('')}</select></div>
       <div class="field"><label class="lbl" for="st-bar">Gryf do kalkulatora talerzy</label><select class="input" id="st-bar" data-bind="setting" data-f="bar">${[20, 15, 10].map(v => `<option value="${v}" ${+st.bar === v ? 'selected' : ''}>${v} kg</option>`).join('')}</select></div>
       <h3 class="h3">Zapis danych</h3>
-      <p class="note">${store.mode === 'fire' ? `Plany i historia folderu „${esc(FOLDER ? FOLDER.name : '')}” zapisują się w internecie. Otworzysz je na każdym urządzeniu, wybierając ten sam folder.` : store.mode === 'cloud' ? 'Plany i historia zapisują się na twoim koncie claude.ai, więc widzisz je na telefonie i na komputerze.' : 'Plany i historia zapisują się tylko w tej przeglądarce. Zrób kopię zapasową poniżej.'}</p>
+      <p class="note">${store.mode === 'fire' ? `Plany i historia folderu „${esc(FOLDER ? FOLDER.name : '')}” zapisują się w internecie. Otworzysz je na każdym urządzeniu, wybierając to samo konto.` : store.mode === 'cloud' ? 'Plany i historia zapisują się na twoim koncie claude.ai, więc widzisz je na telefonie i na komputerze.' : 'Plany i historia zapisują się tylko w tej przeglądarce. Zrób kopię zapasową poniżej.'}</p>
       <h3 class="h3">Kopia zapasowa</h3>
       <p class="note">Skopiuj dane jako tekst, żeby je zachować albo przenieść później do aplikacji na iPhone'a.</p>
       <div class="row"><button class="btn sm" data-act="exportCopy">Kopiuj dane</button></div>
@@ -2013,17 +2013,17 @@ const SHEETS = {
   },
   folders(){
     let h = sheetHead('Kto ćwiczy?') + `<section class="plan">${FOLDERS.map(f => { const cur = FOLDER && f.id === FOLDER.id; return `<button class="dayrow plan-link" data-act="folderOpen" data-id="${esc(f.id)}"><div><div class="dn">${esc(f.name)}</div>${cur ? '<div class="dm">otwarty teraz</div>' : ''}</div>${cur ? svg('check','i s') : svg('chev','i s chev')}</button>`; }).join('')}</section>` + newFolderField();
-    if (FOLDER) h += `<h3 class="h3">Folder „${esc(FOLDER.name)}”</h3>
+    if (FOLDER) h += `<h3 class="h3">Konto „${esc(FOLDER.name)}”</h3>
       <div class="field"><label class="lbl" for="rnfolder">Zmień nazwę</label><div class="row" style="flex-wrap:nowrap"><input class="input" id="rnfolder" maxlength="40" value="${esc(FOLDER.name)}" autocomplete="off"><button class="btn" data-act="folderRename">Zapisz</button></div></div>
-      <div class="row"><button class="btn danger sm" data-act="folderDelete">${svg('trash','i s')}Usuń ten folder</button></div>`;
+      <div class="row"><button class="btn danger sm" data-act="folderDelete">${svg('trash','i s')}Usuń to konto</button></div>`;
     return h;
   },
   pin(s){
     const m = pinMode(s); s.shown = m;
-    if (m === 'wait') return sheetHead(s.name) + '<div class="card muted">Sprawdzam folder…</div>';
-    const txt = m === 'enter' ? `Podaj 4-cyfrowy PIN do folderu „${esc(s.name)}”. Na tym urządzeniu wystarczy zrobić to raz.`
-      : m === 'new' ? `Ustaw 4-cyfrowy PIN do nowego folderu „${esc(s.name)}”. Bez niego nikt inny nie zobaczy ani nie usunie planów i treningów.`
-      : `Folder „${esc(s.name)}” nie ma jeszcze PIN-u. Ustaw 4 cyfry – od teraz otworzy go tylko ktoś, kto zna PIN. Plany i treningi zostają bez zmian.`;
+    if (m === 'wait') return sheetHead(s.name) + '<div class="card muted">Sprawdzam konto…</div>';
+    const txt = m === 'enter' ? `Podaj 4-cyfrowy PIN do konta „${esc(s.name)}”. Na tym urządzeniu wystarczy zrobić to raz.`
+      : m === 'new' ? `Ustaw 4-cyfrowy PIN do nowego konta „${esc(s.name)}”. Bez niego nikt inny nie zobaczy ani nie usunie planów i treningów.`
+      : `Konto „${esc(s.name)}” nie ma jeszcze PIN-u. Ustaw 4 cyfry – od teraz otworzy go tylko ktoś, kto zna PIN. Plany i treningi zostają bez zmian.`;
     const inp = (id, lbl) => `<div class="field"><label class="lbl" for="${id}">${lbl}</label><input class="input" id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.4em;font-size:1.3em;max-width:9em"></div>`;
     return sheetHead(m === 'enter' ? 'Podaj PIN' : 'Ustaw PIN') + `<p style="margin:0">${txt}</p>`
       + inp('pin1', m === 'enter' ? 'PIN' : 'Nowy PIN') + (m === 'enter' ? '' : inp('pin2', 'Powtórz PIN'))
@@ -2275,10 +2275,10 @@ const ACT = {
   },
   folderCreate(){
     const inp = $('#newfolder'); const name = (inp && inp.value || '').trim();
-    if (!name){ toast('Wpisz imię albo nazwę folderu.'); inp && inp.focus(); return; }
+    if (!name){ toast('Wpisz imię albo nazwę konta.'); inp && inp.focus(); return; }
     if (activeBlocksSwitch()) return;
     const same = FOLDERS.find(f => norm(f.name) === norm(name));
-    if (same){ toast(`Folder „${same.name}” już istnieje.`); sheets.length = 0; renderSheet(); requestFolder(same); return; }
+    if (same){ toast(`Konto „${same.name}” już istnieje.`); sheets.length = 0; renderSheet(); requestFolder(same); return; }
     askPin({id:uid() + uid(), name}, true);
   },
   async pinGo(){
@@ -2304,7 +2304,7 @@ const ACT = {
       }
     } catch (e){
       store.creating = false;
-      if (e && e.code === 'permission-denied') return fail(m === 'enter' ? 'Zły PIN. Spróbuj jeszcze raz.' : m === 'set' ? 'Ktoś przed chwilą ustawił PIN do tego folderu. Wpisz go.' : 'Nie udało się utworzyć folderu.');
+      if (e && e.code === 'permission-denied') return fail(m === 'enter' ? 'Zły PIN. Spróbuj jeszcze raz.' : m === 'set' ? 'Ktoś przed chwilą ustawił PIN do tego konta. Wpisz go.' : 'Nie udało się utworzyć konta.');
       return fail('Nie udało się połączyć z bazą. Sprawdź internet i spróbuj ponownie.');
     }
     store.creating = false;
@@ -2312,7 +2312,7 @@ const ACT = {
     const f = {id:s.id, name:s.name};
     if (m === 'new' && !FOLDERS.find(x => x.id === f.id)) FOLDERS = [...FOLDERS, {...f, pin:true}];
     sheets.length = 0; renderSheet(); openFolder(f); if (location.hash !== '#trening') location.hash = 'trening'; scrollTo(0, 0);
-    toast(m === 'enter' ? `Otwarto folder „${f.name}”.` : 'PIN ustawiony. Folder jest chroniony.');
+    toast(m === 'enter' ? `Otwarto konto „${f.name}”.` : 'PIN ustawiony. Konto jest chronione.');
   },
   folderRename(){
     const name = ($('#rnfolder').value || '').trim(); if (!name || !FOLDER) return;
@@ -2322,7 +2322,7 @@ const ACT = {
   folderDelete(){
     if (ACTIVE){ toast('Najpierw zakończ albo odrzuć trening w toku.'); return; }
     const f = FOLDER;
-    confirmBox(`Usunąć folder „${f.name}”?`, 'Znikną wszystkie plany i cała historia treningów tej osoby, na wszystkich urządzeniach. Tej operacji nie można cofnąć.', 'Usuń folder', async () => {
+    confirmBox(`Usunąć konto „${f.name}”?`, 'Znikną wszystkie plany i cała historia treningów tej osoby, na wszystkich urządzeniach. Tej operacji nie można cofnąć.', 'Usuń konto', async () => {
       const ids = SESS.map(x => x.id);
       closeFolder(); sheets.length = 0; renderSheet(); render();
       try {
@@ -2333,7 +2333,7 @@ const ACT = {
         await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'secret', 'pin')).catch(() => {});
         if (FB.uid) await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid)).catch(() => {});
         LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`);
-        toast('Usunięto folder.');
+        toast('Usunięto konto.');
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
     });
   },

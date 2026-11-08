@@ -10,7 +10,7 @@ kalkulator talerzy oraz historia z wykresami postępów.
 Działa na każdym telefonie i komputerze, bez logowania i bez internetu (po pierwszym otwarciu):
 https://kiwwi0.github.io/dziennik-silowni/
 
-Każda osoba wybiera swój folder (imię) i jej plany oraz historia zapisują się w bazie
+Każda osoba wybiera swoje konto (imię, chronione 4-cyfrowym PIN-em) i jej plany oraz historia zapisują się w bazie
 Firebase (Firestore, projekt `dziennik-silowni`), więc są dostępne z każdego urządzenia.
 Konfiguracja: `firebase-config.json`, reguły bazy: `firestore.rules`.
 Na iPhonie otwórz stronę w Safari i wybierz Udostępnij → Do ekranu początkowego.
