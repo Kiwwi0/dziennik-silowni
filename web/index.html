@@ -2036,6 +2036,7 @@ async function pinHash(fid, pin){
   return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 function pinMode(s){
+  if (s.del) return 'del';
   if (s.isNew) return 'new';
   const f = FOLDERS.find(x => x.id === s.id);
   if (f) return f.pin ? 'enter' : 'set';
@@ -3295,6 +3296,10 @@ const SHEETS = {
   pin(s){
     const m = pinMode(s); s.shown = m;
     if (m === 'wait') return sheetHead(s.name) + '<div class="card muted">Sprawdzam konto…</div>';
+    if (m === 'del') return sheetHead('Potwierdź PIN-em') + `<p style="margin:0">Wpisz PIN konta „${esc(s.name)}”, żeby je <b>na zawsze usunąć</b> razem z planami i historią treningów.</p>`
+      + `<div class="field"><label class="lbl" for="pin1">PIN</label><input class="input" id="pin1" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.4em;font-size:1.3em;max-width:9em"></div>`
+      + (s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : '')
+      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn danger fill" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : 'Usuń konto'}</button></div>`;
     const txt = m === 'enter' ? `Podaj 4-cyfrowy PIN do konta „${esc(s.name)}”. Na tym urządzeniu wystarczy zrobić to raz.`
       : m === 'new' ? `Ustaw 4-cyfrowy PIN do nowego konta „${esc(s.name)}”. Bez niego nikt inny nie zobaczy ani nie usunie planów i treningów.`
       : `Konto „${esc(s.name)}” nie ma jeszcze PIN-u. Ustaw 4 cyfry – od teraz otworzy go tylko ktoś, kto zna PIN. Plany i treningi zostają bez zmian.`;
@@ -3561,14 +3566,15 @@ const ACT = {
     const a = ($('#pin1')?.value || '').trim(), b = ($('#pin2')?.value || '').trim();
     const fail = msg => { s.busy = false; s.err = msg; renderSheet(); setTimeout(() => $('#pin1')?.focus(), 50); };
     if (!/^\d{4}$/.test(a)) return fail('PIN to dokładnie 4 cyfry.');
-    if (m !== 'enter' && a !== b) return fail('PIN-y się różnią. Wpisz ten sam dwa razy.');
+    if (m !== 'enter' && m !== 'del' && a !== b) return fail('PIN-y się różnią. Wpisz ten sam dwa razy.');
     if (!FB.uid) return fail('Brak połączenia z bazą. Sprawdź internet i spróbuj ponownie.');
-    if (m !== 'new' && activeBlocksSwitch()) return;
+    if (m !== 'new' && m !== 'del' && activeBlocksSwitch()) return;
     s.busy = true; s.err = ''; renderSheet();
     const hash = await pinHash(s.id, a), now = Date.now();
     const fRef = FB.doc(FB.db, 'folders', s.id), mRef = FB.doc(FB.db, 'folders', s.id, 'members', FB.uid), pRef = FB.doc(FB.db, 'folders', s.id, 'secret', 'pin');
     try {
-      if (m === 'enter') await withTimeout(FB.setDoc(mRef, {hash, at:now}));
+      // Przy usuwaniu baza sama sprawdza PIN: wpis urządzenia przejdzie tylko z prawidłowym skrótem.
+      if (m === 'enter' || m === 'del') await withTimeout(FB.setDoc(mRef, {hash, at:now}));
       else {
         const bt = FB.writeBatch(FB.db);
         if (m === 'new'){ store.creating = true; bt.set(fRef, {name:s.name, createdAt:now, updatedAt:now, pin:true}); }
@@ -3578,10 +3584,11 @@ const ACT = {
       }
     } catch (e){
       store.creating = false;
-      if (e && e.code === 'permission-denied') return fail(m === 'enter' ? 'Zły PIN. Spróbuj jeszcze raz.' : m === 'set' ? 'Ktoś przed chwilą ustawił PIN do tego konta. Wpisz go.' : 'Nie udało się utworzyć konta.');
+      if (e && e.code === 'permission-denied') return fail(m === 'enter' || m === 'del' ? 'Zły PIN. Spróbuj jeszcze raz.' : m === 'set' ? 'Ktoś przed chwilą ustawił PIN do tego konta. Wpisz go.' : 'Nie udało się utworzyć konta.');
       return fail('Nie udało się połączyć z bazą. Sprawdź internet i spróbuj ponownie.');
     }
     store.creating = false;
+    if (m === 'del'){ const f = FOLDER && FOLDER.id === s.id ? FOLDER : {id:s.id, name:s.name}; ACT.folderDeleteGo(f); return; }
     LS.set(accKey(s.id), true);
     const f = {id:s.id, name:s.name};
     if (m === 'new' && !FOLDERS.find(x => x.id === f.id)) FOLDERS = [...FOLDERS, {...f, pin:true}];
@@ -3596,7 +3603,12 @@ const ACT = {
   folderDelete(){
     if (ACTIVE){ toast('Najpierw zakończ albo odrzuć trening w toku.'); return; }
     const f = FOLDER;
-    confirmBox(`Usunąć konto „${f.name}”?`, 'Znikną wszystkie plany i cała historia treningów tej osoby, na wszystkich urządzeniach. Tej operacji nie można cofnąć.', 'Usuń konto', async () => {
+    confirmBox(`Usunąć konto „${f.name}”?`, 'Znikną wszystkie plany i cała historia treningów tej osoby, na wszystkich urządzeniach. Tej operacji nie można cofnąć. W następnym kroku potwierdzisz to PIN-em.', 'Dalej', () => {
+      openSheet({type:'pin', id:f.id, name:f.name, del:true, err:'', busy:false});
+      setTimeout(() => $('#pin1')?.focus(), 80);
+    });
+  },
+  async folderDeleteGo(f){
       const ids = SESS.map(x => x.id);
       closeFolder(); sheets.length = 0; renderSheet(); render();
       try {
@@ -3609,7 +3621,6 @@ const ACT = {
         LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`);
         toast('Usunięto konto.');
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
-    });
   },
   closeSheet(){ closeSheet(); },
   confirmOk(){ const s = topSheet(); sheets.pop(); s.run(); renderSheet(); },
