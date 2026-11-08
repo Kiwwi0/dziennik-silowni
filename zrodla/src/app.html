@@ -2276,8 +2276,8 @@ function wCard(x, i, cur){
   // szybka zmiana najbliższej niezrobionej serii (przechodzi na kolejne)
   const nj = x.sets.findIndex(s => !s.done);
   if (nj >= 0){ const ns = x.sets[nj], f2 = t ? 'sec' : 'reps', v2 = ns[f2] ?? (t ? ns.tSec : ns.tReps);
-    h += `<div class="qstep"><span class="qn">Szybka zmiana · seria ${nj + 1}${nj < x.sets.length - 1 ? ' i dalsze' : ''}</span><span class="stepper">kg<button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="kg" data-d="-1" aria-label="Mniej kg">−</button><b>${ns.kg != null ? fmtN(ns.kg) : '–'}</b><button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="kg" data-d="1" aria-label="Więcej kg">+</button></span>
-      <span class="stepper">${t ? 's' : 'powt.'}<button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="${f2}" data-d="-1" aria-label="${t ? 'Krócej' : 'Mniej powtórzeń'}">−</button><b>${v2 != null ? v2 : '–'}</b><button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="${f2}" data-d="1" aria-label="${t ? 'Dłużej' : 'Więcej powtórzeń'}">+</button></span></div>`; }
+    h += `<div class="qstep"><span class="qn">Szybka zmiana · seria ${nj + 1}${nj < x.sets.length - 1 ? ' i dalsze' : ''}</span><span class="stepper">kg<button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="kg" data-d="-1" aria-label="Mniej kg">−</button><b data-qf="kg">${ns.kg != null ? fmtN(ns.kg) : '–'}</b><button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="kg" data-d="1" aria-label="Więcej kg">+</button></span>
+      <span class="stepper">${t ? 's' : 'powt.'}<button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="${f2}" data-d="-1" aria-label="${t ? 'Krócej' : 'Mniej powtórzeń'}">−</button><b data-qf="${f2}">${v2 != null ? v2 : '–'}</b><button class="iconbtn sm" data-act="wStep" data-i="${i}" data-f="${f2}" data-d="1" aria-label="${t ? 'Dłużej' : 'Więcej powtórzeń'}">+</button></span></div>`; }
   h += `${platesHTML(i)}<div class="wex-f"><button class="btn sm" data-act="wAddSet" data-i="${i}">${svg('plus','i s')}Seria</button><button class="btn sm" data-act="wDelSet" data-i="${i}" ${x.sets.length > 1 ? '' : 'disabled'}>Usuń serię</button>
     <span class="stepper">Przerwa<button class="iconbtn sm" data-act="wRest" data-i="${i}" data-d="-15" aria-label="Krótsza przerwa">−</button><b>${fmtRest(x.rest)}</b><button class="iconbtn sm" data-act="wRest" data-i="${i}" data-d="15" aria-label="Dłuższa przerwa">+</button></span></div></article>`;
   return h;
@@ -2770,6 +2770,9 @@ const BIND = {
     // ciężar / powtórzenia / sekundy od razu w kolejnych, jeszcze niezrobionych seriach (piramida: zmień serię 3 → zmieniają się 3, 4, 5…)
     const f = t.dataset.f, x = ACTIVE.ex[i], j = +t.dataset.j;
     if (!s.done){ x.sets.forEach((q, k) => { if (k <= j || q.done) return; q[f] = s[f]; const inp = $(`#w-${x.key}-${k}-${f}`); if (inp && inp !== document.activeElement) inp.value = f === 'kg' ? fmtN(s[f]) : (s[f] ?? ''); }); saveActive(); }
+    // pasek „Szybka zmiana” pokazuje najbliższą niezrobioną serię: odśwież liczbę na bieżąco
+    const nj = x.sets.findIndex(q => !q.done), qb = $(`#wex-${x.key} .qstep [data-qf="${f}"]`);
+    if (qb && nj >= 0){ const v = x.sets[nj][f] ?? (f === 'reps' ? x.sets[nj].tReps : f === 'sec' ? x.sets[nj].tSec : null); qb.textContent = v != null ? (f === 'kg' ? fmtN(v) : v) : '–'; }
     if (f === 'kg'){ const p = $(`[data-plates="${i}"]`); if (p) p.outerHTML = platesHTML(i); } },
   progEx(t){ ui.progEx = t.value; render(); },
   setting(t){ const f = t.dataset.f; S.settings[f] = t.type === 'checkbox' ? t.checked : num(t.value); persist(); },
@@ -2822,6 +2825,18 @@ document.addEventListener('click', e => {
 const onBind = e => { const t = e.target; if (t.dataset && t.dataset.bind && BIND[t.dataset.bind]){ if (e.type === 'change' && t.type !== 'checkbox' && t.tagName !== 'SELECT') return; if (e.type === 'input' && (t.type === 'checkbox' || t.tagName === 'SELECT')) return; BIND[t.dataset.bind](t, e); } };
 document.addEventListener('input', onBind);
 document.addEventListener('change', onBind);
+// pola liczbowe (serie w treningu i w planie): po stuknięciu puste, stara wartość jako szara podpowiedź.
+// iPhone stawia kursor za liczbą, więc cyfry się doklejały. Wyjście bez wpisania = wraca stara wartość.
+const CLEAR_SEL = 'input[data-bind="wset"], input[data-bind="pset"]';
+document.addEventListener('focusin', e => {
+  const t = e.target; if (!t.matches || !t.matches(CLEAR_SEL) || t.dataset.old != null || t.value === '') return;
+  t.dataset.old = t.value; t.dataset.ph = t.placeholder; t.placeholder = t.value; t.value = '';
+});
+document.addEventListener('focusout', e => {
+  const t = e.target; if (!t.matches || !t.matches(CLEAR_SEL) || t.dataset.old == null) return;
+  const old = t.dataset.old; t.placeholder = t.dataset.ph; delete t.dataset.old; delete t.dataset.ph;
+  if (t.value.trim() === ''){ t.value = old; t.dispatchEvent(new Event('input', {bubbles:true})); }   // nic nie wpisane → przywróć (także w kolejnych seriach)
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && topSheet()) closeSheet();
   if (e.key === 'Enter' && e.target && e.target.id === 'newfolder'){ e.preventDefault(); ACT.folderCreate(); }
