@@ -1966,8 +1966,12 @@ const FB = {};
 let unsubState = null, unsubSess = null;
 async function initFirebase(){
   const v = '10.14.1', base = `https://www.gstatic.com/firebasejs/${v}/`;
-  const [appMod, fs] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-firestore.js')]);
+  const [appMod, fs, au] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-firestore.js'), import(base + 'firebase-auth.js')]);
   const app = appMod.initializeApp(FIREBASE_CONFIG);
+  // Anonimowe konto urządzenia: baza wpuszcza do folderu tylko urządzenia, które podały jego PIN.
+  const auth = au.getAuth(app);
+  FB.uid = await new Promise(res => { const off = au.onAuthStateChanged(auth, u => { off(); res(u ? u.uid : null); }); });
+  if (!FB.uid){ try { FB.uid = (await au.signInAnonymously(auth)).user.uid; } catch { FB.uid = null; } }
   let db;
   try { db = fs.initializeFirestore(app, {localCache:fs.persistentLocalCache({tabManager:fs.persistentMultipleTabManager()})}); }
   catch { db = fs.getFirestore(app); }
@@ -1983,7 +1987,7 @@ function watchFolders(){
       if (!f && !snap.metadata.fromCache && !snap.metadata.hasPendingWrites && !store.creating){ closeFolder(); toast('Ten folder został usunięty.'); }
     }
     render();
-    if (topSheet() && topSheet().type === 'folders') renderSheet();
+    if (topSheet() && (topSheet().type === 'folders' || (topSheet().type === 'pin' && !topSheet().busy && pinMode(topSheet()) !== topSheet().shown))) renderSheet();
   }, () => { store.fireError = true; render(); });
 }
 function closeFolder(){
@@ -2007,7 +2011,11 @@ function openFolder(f){
     const inc = normalize(snap.data());
     if (JSON.stringify(inc) !== JSON.stringify(S)){ S = inc; LS.set(lsKey('state'), S); render(); }
     else if (first) render();
-  }, () => toast('Nie udało się wczytać planów z bazy.'));
+  }, err => {
+    if (err && err.code === 'permission-denied' && FOLDER && FOLDER.id === fid){
+      LS.del(accKey(fid)); const f = FOLDER; closeFolder(); render(); requestFolder(f, true);
+    } else toast('Nie udało się wczytać planów z bazy.');
+  });
   unsubSess = FB.onSnapshot(FB.query(FB.collection(FB.db, 'folders', fid, 'sessions'), FB.orderBy('date', 'desc'), FB.limit(1000)), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
     if (snap.metadata.fromCache && snap.empty && SESS.length) return;
@@ -2018,6 +2026,36 @@ function openFolder(f){
   watchActive(fid);
   render();
 }
+/* ---------- PIN folderu ----------
+   folders/{id}.pin = true, gdy folder ma PIN; skrót PIN-u w folders/{id}/secret/pin (nikt go nie odczyta).
+   Urządzenie dostaje dostęp, zapisując folders/{id}/members/{uid} z tym samym skrótem – reguły bazy porównują go z sekretem.
+   Reset (zapomniany PIN): w konsoli Firebase usuń dokument secret/pin i pole pin w folderze – wtedy można ustawić nowy. */
+const accKey = fid => `dz.acc.${fid}`;
+async function pinHash(fid, pin){
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`dziennik-silowni:${fid}:${pin}`));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+function pinMode(s){
+  if (s.isNew) return 'new';
+  const f = FOLDERS.find(x => x.id === s.id);
+  if (f) return f.pin ? 'enter' : 'set';
+  return store.foldersReady ? 'set' : 'wait';
+}
+function askPin(f, isNew=false){
+  sheets.length = 0; openSheet({type:'pin', id:f.id, name:f.name, isNew, err:'', busy:false});
+  setTimeout(() => $('#pin1')?.focus(), 80);
+}
+async function requestFolder(f, skipCheck=false){
+  if (!skipCheck && LS.get(accKey(f.id), false)){ openFolder(f); return; }
+  if (!skipCheck && FB.uid){
+    try {
+      const m = await FB.getDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid));
+      if (m.exists()){ LS.set(accKey(f.id), true); openFolder(f); return; }
+    } catch {}
+  }
+  askPin(f);
+}
+const withTimeout = (p, ms=12000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej({code:'timeout'}), ms))]);
 function maybeMoveLocalData(){
   if (LS.get('dz.movedLocal', false) || hasData(S) || SESS.length) return;
   const st = normalize(LS.get('dz.state', null)), ss = LS.get('dz.sessions', []) || [];
@@ -2041,7 +2079,7 @@ async function initStore(){
     try { await initFirebase(); }
     catch { store.fireError = true; render(); return; }
     watchFolders();
-    if (FOLDER) openFolder(FOLDER);
+    if (FOLDER){ const f = FOLDER; if (LS.get(accKey(f.id), false)) openFolder(f); else { closeFolder(); render(); requestFolder(f); } }
     return;
   }
   let db = null, user = null;
@@ -3254,6 +3292,19 @@ const SHEETS = {
       <div class="row"><button class="btn danger sm" data-act="folderDelete">${svg('trash','i s')}Usuń ten folder</button></div>`;
     return h;
   },
+  pin(s){
+    const m = pinMode(s); s.shown = m;
+    if (m === 'wait') return sheetHead(s.name) + '<div class="card muted">Sprawdzam folder…</div>';
+    const txt = m === 'enter' ? `Podaj 4-cyfrowy PIN do folderu „${esc(s.name)}”. Na tym urządzeniu wystarczy zrobić to raz.`
+      : m === 'new' ? `Ustaw 4-cyfrowy PIN do nowego folderu „${esc(s.name)}”. Bez niego nikt inny nie zobaczy ani nie usunie planów i treningów.`
+      : `Folder „${esc(s.name)}” nie ma jeszcze PIN-u. Ustaw 4 cyfry – od teraz otworzy go tylko ktoś, kto zna PIN. Plany i treningi zostają bez zmian.`;
+    const inp = (id, lbl) => `<div class="field"><label class="lbl" for="${id}">${lbl}</label><input class="input" id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.4em;font-size:1.3em;max-width:9em"></div>`;
+    return sheetHead(m === 'enter' ? 'Podaj PIN' : 'Ustaw PIN') + `<p style="margin:0">${txt}</p>`
+      + inp('pin1', m === 'enter' ? 'PIN' : 'Nowy PIN') + (m === 'enter' ? '' : inp('pin2', 'Powtórz PIN'))
+      + (s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : '')
+      + (m === 'enter' ? '<p class="note" style="margin:0">Nie pamiętasz PIN-u? Właściciel aplikacji może go wyzerować – dane zostaną.</p>' : '<p class="note" style="margin:0">Zapamiętaj go – przyda się na każdym nowym telefonie lub przeglądarce.</p>')
+      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn primary" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : m === 'enter' ? 'Otwórz' : 'Ustaw PIN'}</button></div>`;
+  },
   confirm(s){
     return sheetHead(s.title) + `<p style="margin:0">${esc(s.text)}</p><div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn ${s.danger ? 'danger fill' : 'primary'}" data-act="confirmOk">${esc(s.ok)}</button></div>`;
   },
@@ -3493,19 +3544,49 @@ const ACT = {
   folderOpen(el){
     const f = FOLDERS.find(x => x.id === el.dataset.id); if (!f) return;
     if (!(FOLDER && f.id === FOLDER.id) && activeBlocksSwitch()) return;
-    sheets.length = 0; renderSheet(); openFolder(f); if (location.hash !== '#trening') location.hash = 'trening'; scrollTo(0, 0);
+    if (FOLDER && f.id === FOLDER.id){ sheets.length = 0; renderSheet(); return; }
+    sheets.length = 0; renderSheet(); requestFolder(f).then(() => { if (FOLDER && FOLDER.id === f.id){ if (location.hash !== '#trening') location.hash = 'trening'; scrollTo(0, 0); } });
   },
   folderCreate(){
     const inp = $('#newfolder'); const name = (inp && inp.value || '').trim();
     if (!name){ toast('Wpisz imię albo nazwę folderu.'); inp && inp.focus(); return; }
     if (activeBlocksSwitch()) return;
     const same = FOLDERS.find(f => norm(f.name) === norm(name));
-    if (same){ toast(`Folder „${same.name}” już istnieje. Otwieram go.`); sheets.length = 0; renderSheet(); openFolder(same); return; }
-    const id = uid(); store.creating = true;
-    FB.setDoc(FB.doc(FB.db, 'folders', id), {name, createdAt:Date.now(), updatedAt:Date.now()})
-      .catch(() => toast('Nie udało się utworzyć folderu. Sprawdź internet.')).finally(() => { store.creating = false; });
-    FOLDERS = [...FOLDERS, {id, name}];
-    sheets.length = 0; renderSheet(); openFolder({id, name}); if (location.hash !== '#trening') location.hash = 'trening';
+    if (same){ toast(`Folder „${same.name}” już istnieje.`); sheets.length = 0; renderSheet(); requestFolder(same); return; }
+    askPin({id:uid() + uid(), name}, true);
+  },
+  async pinGo(){
+    const s = topSheet(); if (!s || s.type !== 'pin' || s.busy) return;
+    const m = pinMode(s); if (m === 'wait') return;
+    const a = ($('#pin1')?.value || '').trim(), b = ($('#pin2')?.value || '').trim();
+    const fail = msg => { s.busy = false; s.err = msg; renderSheet(); setTimeout(() => $('#pin1')?.focus(), 50); };
+    if (!/^\d{4}$/.test(a)) return fail('PIN to dokładnie 4 cyfry.');
+    if (m !== 'enter' && a !== b) return fail('PIN-y się różnią. Wpisz ten sam dwa razy.');
+    if (!FB.uid) return fail('Brak połączenia z bazą. Sprawdź internet i spróbuj ponownie.');
+    if (m !== 'new' && activeBlocksSwitch()) return;
+    s.busy = true; s.err = ''; renderSheet();
+    const hash = await pinHash(s.id, a), now = Date.now();
+    const fRef = FB.doc(FB.db, 'folders', s.id), mRef = FB.doc(FB.db, 'folders', s.id, 'members', FB.uid), pRef = FB.doc(FB.db, 'folders', s.id, 'secret', 'pin');
+    try {
+      if (m === 'enter') await withTimeout(FB.setDoc(mRef, {hash, at:now}));
+      else {
+        const bt = FB.writeBatch(FB.db);
+        if (m === 'new'){ store.creating = true; bt.set(fRef, {name:s.name, createdAt:now, updatedAt:now, pin:true}); }
+        else bt.update(fRef, {pin:true, updatedAt:now});
+        bt.set(pRef, {hash}); bt.set(mRef, {hash, at:now});
+        await withTimeout(bt.commit());
+      }
+    } catch (e){
+      store.creating = false;
+      if (e && e.code === 'permission-denied') return fail(m === 'enter' ? 'Zły PIN. Spróbuj jeszcze raz.' : m === 'set' ? 'Ktoś przed chwilą ustawił PIN do tego folderu. Wpisz go.' : 'Nie udało się utworzyć folderu.');
+      return fail('Nie udało się połączyć z bazą. Sprawdź internet i spróbuj ponownie.');
+    }
+    store.creating = false;
+    LS.set(accKey(s.id), true);
+    const f = {id:s.id, name:s.name};
+    if (m === 'new' && !FOLDERS.find(x => x.id === f.id)) FOLDERS = [...FOLDERS, {...f, pin:true}];
+    sheets.length = 0; renderSheet(); openFolder(f); if (location.hash !== '#trening') location.hash = 'trening'; scrollTo(0, 0);
+    toast(m === 'enter' ? `Otwarto folder „${f.name}”.` : 'PIN ustawiony. Folder jest chroniony.');
   },
   folderRename(){
     const name = ($('#rnfolder').value || '').trim(); if (!name || !FOLDER) return;
@@ -3523,7 +3604,9 @@ const ACT = {
         await Promise.all([...new Set([...ids, ...snap.docs.map(d => d.id)])].map(id => FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'sessions', id))));
         await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'data', 'state'));
         await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id));
-        LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`);
+        await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'secret', 'pin')).catch(() => {});
+        if (FB.uid) await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid)).catch(() => {});
+        LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`);
         toast('Usunięto folder.');
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
     });
@@ -3729,6 +3812,7 @@ document.addEventListener('change', onBind);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && topSheet()) closeSheet();
   if (e.key === 'Enter' && e.target && e.target.id === 'newfolder'){ e.preventDefault(); ACT.folderCreate(); }
+  if (e.key === 'Enter' && e.target && (e.target.id === 'pin1' || e.target.id === 'pin2')){ e.preventDefault(); if (e.target.id === 'pin1' && $('#pin2')) $('#pin2').focus(); else ACT.pinGo(); }
   if (e.key === 'Enter' && e.target && e.target.id === 'rnfolder'){ e.preventDefault(); ACT.folderRename(); }
 });
 

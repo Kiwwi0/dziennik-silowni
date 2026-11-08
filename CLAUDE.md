@@ -17,6 +17,9 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
   Workflow „Zbuduj aplikację na iPhone'a” rusza tylko przy zmianach w `DziennikSilowni/`, `Resources/`, `project.yml`
   (albo ręcznie w Actions). Strona wdraża się workflow „Strona siłownia” (`pages.yml`).
 - `firebase-config.json`, `firestore.rules` – baza Firebase (plany i treningi każdej osoby w osobnym folderze).
+  Każdy folder ma 4-cyfrowy PIN: logowanie anonimowe Firebase, skrót PIN-u w `folders/{id}/secret/pin` (nieczytelny),
+  dostęp urządzenia = `folders/{id}/members/{uid}` (reguły porównują skrót). W app.html: `pinHash`, `requestFolder`, `askPin`,
+  `SHEETS.pin`, ACT `pinGo`. Reguły wkleja Olek ręcznie w konsoli Firebase (nie wdrażają się same).
 
 ## Budowanie, test, wdrożenie (z katalogu repozytorium)
 - Strona: `python3 -I zrodla/build_web.py .` → `web/` (wstawia bazę ćwiczeń, Firebase, manekina 3D, wersję service workera).
