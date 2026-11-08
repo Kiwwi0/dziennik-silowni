@@ -280,6 +280,11 @@ main{padding-block:2px 28px}
 .wex-h .nm{font-weight:700;line-height:1.2;background:none;border:0;padding:0;text-align:left}
 .wex-h .meta{font-size:12.5px;color:var(--muted);margin-top:2px}
 .wex.alldone .wex-h .nm{color:var(--muted)}
+.wex.mini{padding-top:10px;padding-bottom:10px}
+.wex.mini .wex-h{align-items:center}
+.wex.mini .meta{display:flex;align-items:center;gap:4px;color:var(--good);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wex.mini.skipped .meta{color:var(--muted)}
+.wex.mini.skipped .nm{text-decoration:line-through}
 .last{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .cal{display:grid;gap:8px}
 .sum-lead{margin:0;font-weight:600}
@@ -3454,10 +3459,27 @@ function syncWorkout(){
   if (!ACTIVE || !ui.showWorkout){ if (!el.hidden){ el.hidden = true; el.innerHTML = ''; } lockBody(); return; }
   if (el.hidden || !el.firstChild) renderWorkout();
 }
+// ćwiczenie „otwarte” = nie pominięte i ma niezrobione serie; „zakończone” = pominięte albo wszystkie serie zrobione
+const exOpen = x => !!x && !x.skip && x.sets.some(s => !s.done);
+const exFin = x => !!x && (x.skip || (x.sets.length > 0 && x.sets.every(s => s.done)));
+// czeka pytanie o zapas po ostatniej serii: karta zostaje na miejscu i rozwinięta, aż padnie odpowiedź albo następna seria
+const rirPending = x => !x.skip && ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key && x.sets[ACTIVE.rirAsk.j] && x.sets[ACTIVE.rirAsk.j].rir == null;
+// zakończone ćwiczenia (całe superserie razem) na górę listy, reszta w dotychczasowej kolejności.
+// Zmienia kolejność w ACTIVE.ex, więc indeksy minutnika przeliczamy po kluczach. Zwraca true, gdy coś się przesunęło.
+function floatDone(){
+  const L = ACTIVE.ex, groups = [];
+  for (let i = 0; i < L.length;){ const b = ssRange(L, i)[1]; groups.push(L.slice(i, b + 1)); i = b + 1; }
+  const fin = g => g.every(x => exFin(x) && !rirPending(x)), order = [...groups.filter(fin), ...groups.filter(g => !fin(g))].flat();
+  if (order.every((x, k) => x === L[k])) return false;
+  const T = ACTIVE.timer, fKey = T && T.focus != null ? L[T.focus]?.key : null, wKey = T && T.kind === 'work' ? L[T.i]?.key : null;
+  ACTIVE.ex = order;
+  if (fKey) T.focus = order.findIndex(x => x.key === fKey); if (wKey) T.i = order.findIndex(x => x.key === wKey);
+  return true;
+}
 function curIndex(){
-  if (ACTIVE.timer && ACTIVE.timer.focus != null && ACTIVE.ex[ACTIVE.timer.focus]?.sets.some(s => !s.done)) return ACTIVE.timer.focus;
-  if (ACTIVE.focusKey){ const f = ACTIVE.ex.findIndex(x => x.key === ACTIVE.focusKey); if (f >= 0 && ACTIVE.ex[f].sets.some(s => !s.done)) return f; }
-  return ACTIVE.ex.findIndex(x => x.sets.some(s => !s.done));
+  if (ACTIVE.timer && ACTIVE.timer.focus != null && exOpen(ACTIVE.ex[ACTIVE.timer.focus])) return ACTIVE.timer.focus;
+  if (ACTIVE.focusKey){ const f = ACTIVE.ex.findIndex(x => x.key === ACTIVE.focusKey); if (f >= 0 && exOpen(ACTIVE.ex[f])) return f; }
+  return ACTIVE.ex.findIndex(x => exOpen(x));
 }
 const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
 function platesHTML(i){
@@ -3505,9 +3527,10 @@ function progHint(x, i, last){
 const rirTxt = v => v >= 3 ? '3+' : String(v);
 // postęp treningu: serie zrobione / wszystkie i szacunek czasu do końca (jak planTime: ~40 s na serię, przerwy, ~30 s na przejście)
 function woProgress(){
-  let tot = 0, done = 0, sec = 0; const open = ACTIVE.ex.filter(x => x.sets.some(s => !s.done)), lastOpen = open[open.length - 1];
+  let tot = 0, done = 0, sec = 0; const open = ACTIVE.ex.filter(x => exOpen(x)), lastOpen = open[open.length - 1];
   for (const x of ACTIVE.ex){
-    const o = x.sets.filter(s => !s.done); tot += x.sets.length; done += x.sets.length - o.length; if (!o.length) continue;
+    const o = x.skip ? [] : x.sets.filter(s => !s.done), d = x.sets.filter(s => s.done).length;   // pominięte: liczą się tylko zrobione serie
+    tot += x.skip ? d : x.sets.length; done += d; if (!o.length) continue;
     sec += x.mode === 'time' ? o.reduce((a, s) => a + (+(s.sec ?? s.tSec) || 30), 0) : o.length * 40;
     if (!x.ssNext) sec += (+x.rest || 0) * (o.length - 1) + (x !== lastOpen ? (+x.restAfter || 0) : 0);
     sec += 30;
@@ -3520,11 +3543,18 @@ function wCard(x, i, cur){
   const last = lastFor(x.exId); const t = x.mode === 'time';
   const W = ACTIVE.timer && ACTIVE.timer.kind === 'work' && !ACTIVE.timer.fired ? ACTIVE.timer : null;
   const sp = ssPos(ACTIVE.ex, i);
+  // zakończone / pominięte: zwinięta karta (rozwija się na „Pokaż”; zostaje rozwinięta, póki czeka pytanie o zapas)
+  if (exFin(x) && !(ui.wOpen && ui.wOpen[x.key]) && !rirPending(x)){
+    const sum = x.sets.filter(s => s.done).map(s => t ? (s.sec ?? 0) + ' s' : (s.kg ? fmtN(s.kg) + '×' : '') + (s.reps ?? 0)).join(' · ');
+    return `<article class="wex alldone mini${x.skip ? ' skipped' : ''}" id="wex-${x.key}"><div class="wex-h">${thumb(x.exId)}
+      <div><span class="nm">${esc(ex.name)}</span><div class="meta">${x.skip ? 'Pominięte' + (doneN ? ` · ${doneN} z ${x.sets.length} serii` : '') : `${svg('check','i s')} ${esc(sum)}`}</div></div>
+      <button class="btn sm" data-act="${x.skip ? 'wUnskip' : 'wOpenCard'}" data-i="${i}">${x.skip ? 'Przywróć' : 'Pokaż'}</button></div></article>`;
+  }
   let h = `${sp && sp.k === 0 ? `<div class="ss-wlbl">Superseria · robisz na zmianę, przerwa po rundzie</div>` : ''}<article class="wex ${i === cur ? 'cur' : ''} ${all ? 'alldone' : ''}${sp ? ' ss' + (sp.k < sp.n - 1 ? ' ss-link' : '') : ''}" id="wex-${x.key}">
     <div class="wex-h"><button class="iconbtn plain" style="width:auto;height:auto;padding:0" data-act="exInfo" data-id="${esc(x.exId)}" aria-label="Technika: ${esc(ex.name)}">${thumb(x.exId)}</button>
       <div><button class="nm" data-act="exInfo" data-id="${esc(x.exId)}">${esc(ex.name)}</button><div class="meta">${doneN} z ${x.sets.length} serii${x.note ? ' · ' + esc(x.note) : ''}</div></div>
-      <button class="iconbtn sm plain" data-act="wMenu" data-i="${i}" aria-label="Opcje ćwiczenia" aria-expanded="${ui.wMenu === x.key}">${svg('more','i s')}</button></div>`;
-  if (ui.wMenu === x.key) h += `<div class="row"><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="1" ${i === ACTIVE.ex.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><button class="btn sm" data-act="wSwap" data-i="${i}">Zamień</button><button class="btn sm" data-act="wNoteOpen" data-i="${i}">Notatka</button>${i < ACTIVE.ex.length - 1 ? `<button class="btn sm" data-act="wSS" data-i="${i}">${x.ssNext ? 'Rozłącz superserię' : 'Superseria z następnym'}</button>` : ''}<span class="spacer"></span><button class="btn sm danger" data-act="wDelEx" data-i="${i}">${svg('trash','i s')}Usuń</button></div>`;
+      ${all && ui.wOpen && ui.wOpen[x.key] ? `<button class="btn sm" data-act="wOpenCard" data-i="${i}">Zwiń</button>` : ''}<button class="iconbtn sm plain" data-act="wMenu" data-i="${i}" aria-label="Opcje ćwiczenia" aria-expanded="${ui.wMenu === x.key}">${svg('more','i s')}</button></div>`;
+  if (ui.wMenu === x.key) h += `<div class="row"><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="wMove" data-i="${i}" data-dir="1" ${i === ACTIVE.ex.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><button class="btn sm" data-act="wSwap" data-i="${i}">Zamień</button><button class="btn sm" data-act="wNoteOpen" data-i="${i}">Notatka</button>${!all ? `<button class="btn sm" data-act="wSkip" data-i="${i}">Pomiń</button>` : ''}${i < ACTIVE.ex.length - 1 ? `<button class="btn sm" data-act="wSS" data-i="${i}">${x.ssNext ? 'Rozłącz superserię' : 'Superseria z następnym'}</button>` : ''}<span class="spacer"></span><button class="btn sm danger" data-act="wDelEx" data-i="${i}">${svg('trash','i s')}Usuń</button></div>`;
   if (x.wnote != null && (ui.wNote === x.key || x.wnote)) h += `<textarea class="input wnote" maxlength="300" rows="2" data-bind="wnote" data-i="${i}" placeholder="Notatka do tego ćwiczenia, np. ustawienie siedziska 4" aria-label="Notatka do ćwiczenia">${esc(x.wnote)}</textarea>`;
   const rec = last ? recordFor(x.exId, x.mode) : null;
   if (last) h += `<div class="last">Ostatni trening: ${fmtDate(last.date)}${rec ? ` · rekord: <b>${esc(recText(rec, x.mode))}</b>` : ''}${last.note ? ` · <i>„${esc(last.note)}”</i>` : ''}</div>`;
@@ -3559,6 +3589,7 @@ function wCard(x, i, cur){
 function renderWorkout(){
   const el = $('#workout');
   if (!ACTIVE || !ui.showWorkout){ el.hidden = true; el.innerHTML = ''; lockBody(); return; }
+  const moved = floatDone(); if (moved) saveActive();
   const top = el.scrollTop; const cur = curIndex();
   el.hidden = false;
   const P = woProgress();
@@ -3571,6 +3602,7 @@ function renderWorkout(){
     <div class="tbar idle" id="tbar"><div class="wrap"><div><div class="tb-lbl" id="tb-lbl"></div><div class="tb-time" id="tb-time">0:00</div></div><div class="tb-btns" id="tb-btns"></div><div class="tb-prog"><i id="tb-fill"></i></div></div></div>`;
   el.scrollTop = top; tbState = ''; updateTimer(); lockBody();
   if (ui.ssJump){ const c = $('#wex-' + ui.ssJump); ui.ssJump = null; if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); }
+  else if (moved && cur >= 0){ const c = $('#wex-' + ACTIVE.ex[cur].key); if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); }   // zrobione poszły na górę: pokaż bieżące
 }
 let tbState = '';
 function updateTimer(){
@@ -3599,7 +3631,7 @@ function startTimer(kind, sec, label, focus, extra={}){
   if (!(sec > 0)){ ACTIVE.timer = null; return; }
   ACTIVE.timer = {kind, total:sec, endsAt:Date.now() + sec * 1000, label, focus, fired:false, ...extra};
 }
-function nextUndone(after){ let k = ACTIVE.ex.findIndex((x, n) => n > after && x.sets.some(s => !s.done)); if (k < 0) k = ACTIVE.ex.findIndex(x => x.sets.some(s => !s.done)); return k; }
+function nextUndone(after){ let k = ACTIVE.ex.findIndex((x, n) => n > after && exOpen(x)); if (k < 0) k = ACTIVE.ex.findIndex(x => exOpen(x)); return k; }
 function afterSetDone(i){
   const x = ACTIVE.ex[i]; ACTIVE.focusKey = null; ACTIVE.lastSetAt = Date.now();
   const sp = ssPos(ACTIVE.ex, i);
@@ -3607,9 +3639,9 @@ function afterSetDone(i){
     const round = x.sets.filter(s => s.done).length;
     for (let d = 1; d < sp.n; d++){
       const k = sp.a + (i - sp.a + d) % sp.n, y = ACTIVE.ex[k];
-      if (y.sets.filter(s => s.done).length < round && y.sets.some(s => !s.done)){ ACTIVE.timer = null; ACTIVE.focusKey = y.key; ui.ssJump = y.key; toast('Superseria · teraz: ' + getEx(y.exId).name); return; }
+      if (y.sets.filter(s => s.done).length < round && exOpen(y)){ ACTIVE.timer = null; ACTIVE.focusKey = y.key; ui.ssJump = y.key; toast('Superseria · teraz: ' + getEx(y.exId).name); return; }
     }
-    const first = [...Array(sp.n).keys()].map(d => sp.a + d).find(k => ACTIVE.ex[k].sets.some(s => !s.done));
+    const first = [...Array(sp.n).keys()].map(d => sp.a + d).find(k => exOpen(ACTIVE.ex[k]));
     if (first != null){ if (S.settings.autoRest) startTimer('rest', x.rest, 'Przerwa po rundzie superserii', first); else { ACTIVE.timer = null; ACTIVE.focusKey = ACTIVE.ex[first].key; } return; }
     const k = nextUndone(sp.b);
     if (k < 0 || (k >= sp.a && k <= sp.b)){ ACTIVE.timer = null; allDoneAsk(); return; }
@@ -3998,6 +4030,18 @@ const ACT = {
   wDelSet(el){ const x = ACTIVE.ex[+el.dataset.i]; if (x.sets.length <= 1) return; let k = -1; for (let n = x.sets.length - 1; n >= 0; n--) if (!x.sets[n].done){ k = n; break; } x.sets.splice(k < 0 ? x.sets.length - 1 : k, 1); saveActive(); renderWorkout(); },
   wRest(el){ const x = ACTIVE.ex[+el.dataset.i]; x.rest = Math.max(0, Math.min(600, x.rest + +el.dataset.d)); saveActive(); renderWorkout(); },
   wMenu(el){ const k = ACTIVE.ex[+el.dataset.i].key; ui.wMenu = ui.wMenu === k ? null : k; renderWorkout(); },
+  wOpenCard(el){ const k = ACTIVE.ex[+el.dataset.i].key; ui.wOpen = ui.wOpen || {}; ui.wOpen[k] = !ui.wOpen[k]; renderWorkout(); },
+  // pominięcie: ćwiczenie idzie na górę jako „Pominięte”, zrobione serie zostają, niezrobione nie trafiają do zapisu
+  wSkip(el){
+    const i = +el.dataset.i, x = ACTIVE.ex[i], T = ACTIVE.timer; x.skip = true; ui.wMenu = null;
+    if (ACTIVE.focusKey === x.key) ACTIVE.focusKey = null;
+    if (ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key) ACTIVE.rirAsk = null;
+    if (T && T.kind === 'work' && T.i === i) ACTIVE.timer = null;
+    else if (T && T.focus === i){ const k = nextUndone(i); if (k >= 0) T.focus = k; else ACTIVE.timer = null; }
+    saveActive(); renderWorkout(); toast(getEx(x.exId).name + ': pominięte.');
+    if (!ACTIVE.ex.some(exOpen) && ACTIVE.ex.some(y => y.sets.some(s => s.done))) allDoneAsk();
+  },
+  wUnskip(el){ const x = ACTIVE.ex[+el.dataset.i]; delete x.skip; saveActive(); renderWorkout(); },
   wSS(el){ const x = ACTIVE.ex[+el.dataset.i]; x.ssNext = !x.ssNext; ui.wMenu = null; saveActive(); renderWorkout(); },
   wSwap(el){ const x = ACTIVE.ex[+el.dataset.i]; ui.wMenu = null; openSheet({type:'swap', ctx:'w', key:x.key, exId:x.exId}); },
   itemSwap(el){ const {p, it} = itemRef(el); openSheet({type:'swap', ctx:'p', plan:p.id, item:it.id, exId:it.exId}); },
