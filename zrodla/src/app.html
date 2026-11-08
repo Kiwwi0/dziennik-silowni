@@ -2278,7 +2278,7 @@ function wCard(x, i, cur, curR){
     const meta = x.skip ? 'Pominięte' + (doneN ? ` · ${doneN} z ${x.sets.length} serii` : '') : fin ? `${svg('check','i s')} ${esc(sum)}` : `${doneN} z ${x.sets.length} · ${esc(sum)}`;
     return `<article class="wex mini${fin ? ' alldone' : ' todo'}${x.skip ? ' skipped' : ''}${sp ? ' ss' + (sp.k < sp.n - 1 ? ' ss-link' : '') : ''}" id="wex-${x.key}"><div class="wex-h">${thumb(x.exId)}
       <div><span class="nm">${esc(ex.name)}</span><div class="meta">${meta}</div></div>
-      <button class="btn sm" data-act="${x.skip ? 'wUnskip' : 'wOpenCard'}" data-i="${i}">${x.skip ? 'Przywróć' : 'Pokaż'}</button></div></article>`;
+      <button class="btn sm" data-act="${x.skip ? 'wUnskip' : 'wOpenCard'}" data-i="${i}">${x.skip ? 'Przywróć' : 'Pokaż'}</button><button class="iconbtn sm plain" data-act="wDelEx" data-i="${i}" aria-label="Usuń ćwiczenie z treningu: ${esc(ex.name)}">${svg('trash','i s')}</button></div></article>`;
   }
   let h = `${sp && sp.k === 0 ? `<div class="ss-wlbl">Superseria · robisz na zmianę, przerwa po rundzie</div>` : ''}<article class="wex ${i === cur ? 'cur' : ''} ${all ? 'alldone' : ''}${sp ? ' ss' + (sp.k < sp.n - 1 ? ' ss-link' : '') : ''}" id="wex-${x.key}">
     <div class="wex-h"><button class="iconbtn plain" style="width:auto;height:auto;padding:0" data-act="exInfo" data-id="${esc(x.exId)}" aria-label="Technika: ${esc(ex.name)}">${thumb(x.exId)}</button>
@@ -2804,7 +2804,7 @@ const ACT = {
     move(ACTIVE.ex, i, +el.dataset.dir);
     if (fKey) T.focus = ACTIVE.ex.findIndex(x => x.key === fKey); if (wKey) T.i = ACTIVE.ex.findIndex(x => x.key === wKey);
     saveActive(); renderWorkout(); },
-  wDelEx(el){ const i = +el.dataset.i; const x = ACTIVE.ex[i]; confirmBox('Usunąć ćwiczenie z treningu?', getEx(x.exId).name + ' zniknie z dzisiejszego treningu. Plan się nie zmieni.', 'Usuń', () => { ssUnlink(ACTIVE.ex, i); ACTIVE.ex.splice(i, 1); ACTIVE.timer = null; ui.wMenu = null; saveActive(); renderWorkout(); }); },
+  wDelEx(el){ const i = +el.dataset.i; const x = ACTIVE.ex[i]; confirmBox('Usunąć ćwiczenie z treningu?', getEx(x.exId).name + ' zniknie z dzisiejszego treningu. Plan się nie zmieni.', 'Usuń', () => { ssUnlink(ACTIVE.ex, i); ACTIVE.ex.splice(i, 1); ACTIVE.timer = null; ui.wMenu = null; if (ui.wOpen) delete ui.wOpen[x.key]; if (ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key) ACTIVE.rirAsk = null; if (ACTIVE.focusKey === x.key) ACTIVE.focusKey = null; saveActive(); renderWorkout(); toast(getEx(x.exId).name + ': usunięte z treningu.'); }); },
   wAddEx(){ openSheet({type:'pick', target:{kind:'workout'}, q:'', group:'', sel:[]}); },
   tbStart(){ audioUnlock(); const i = Math.max(0, curIndex()); const x = ACTIVE.ex[i]; startTimer('rest', x ? x.rest : S.settings.restSet, 'Przerwa między seriami', i); saveActive(); updateTimer(); },
   tbAdj(el){ const T = ACTIVE.timer; if (!T) return; T.endsAt += +el.dataset.d * 1000; T.total = Math.max(1, T.total + +el.dataset.d); if (T.endsAt <= Date.now()){ T.fired = true; ACTIVE.timer = null; } saveActive(); updateTimer(); },
