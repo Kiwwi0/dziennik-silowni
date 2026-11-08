@@ -319,6 +319,9 @@ main{padding-block:2px 28px}
 .tpl-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tpl-days{display:grid;gap:6px;font-size:13px;color:var(--muted)}
 .tpl-days b{color:var(--ink);font-weight:600;margin-right:6px}
+.share-code{font:700 34px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.12em;text-align:center;padding:16px 8px;border:1px dashed var(--line);border-radius:12px;background:var(--surface);color:var(--ink);user-select:all}
+.share-list{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px}
+.share-list span{color:var(--muted)}
 .bodymap.wk .m.h-rec{fill:var(--hl)} .bodymap.wk .m.h-ok{fill:var(--good)} .bodymap.wk .m.h-low{fill:var(--wk-low)}
 .wk-card{display:grid;gap:10px}
 .wk-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -507,6 +510,7 @@ const TABS = [
 const ICON = {
   gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>', check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>', chev:'<path d="M9 6l6 6-6 6"/>',
+  share:'<path d="M12 15V4M8 7.5l4-4 4 4"/><path d="M7 11H6v9.5h12V11h-1"/>',
   back:'<path d="M15 6l-6 6 6 6"/>', down:'<path d="M6 9l6 6 6-6"/>', up:'<path d="M6 15l6-6 6 6"/>',
   plus:'<path d="M12 5v14M5 12h14"/>', trash:'<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
@@ -603,6 +607,7 @@ async function flush(){
     store.dirty = false;
     // Firestore zapisuje od razu lokalnie i wysyła na serwer, gdy jest internet.
     FB.setDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'state'), clone(S)).catch(() => toast('Nie udało się zapisać zmian w bazie.'));
+    syncShares();
     return;
   }
   if (store.mode !== 'cloud' || !store.dirty) return;
@@ -727,25 +732,26 @@ function watchFolders(){
 }
 function closeFolder(){
   if (unsubState) unsubState(); if (unsubSess) unsubSess(); if (unsubActive) unsubActive(); unsubState = unsubSess = unsubActive = null;
-  FOLDER = null; LS.del('dz.folder'); S = blankState(); SESS = []; ui.planId = null;
+  FOLDER = null; LS.del('dz.folder'); S = blankState(); SESS = []; ui.planId = null; shareKnown = null; shareSent.clear();
 }
 function openFolder(f){
   if (unsubState) unsubState(); if (unsubSess) unsubSess();
   FOLDER = {id:f.id, name:f.name}; LS.set('dz.folder', FOLDER);
   S = normalize(LS.get(lsKey('state'), null)); SESS = sortSess(LS.get(lsKey('sessions'), []));
-  store.ready = false; store.dirty = false; ui.planId = null; ui.openItem = null;
+  store.ready = false; store.dirty = false; ui.planId = null; ui.openItem = null; shareKnown = null; shareSent.clear();
   const fid = f.id;
   unsubState = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'state'), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
     if (!snap.exists()){
-      if (!snap.metadata.fromCache){ store.ready = true; render(); maybeMoveLocalData(); }
+      if (!snap.metadata.fromCache){ store.ready = true; shareSeen(); render(); maybeMoveLocalData(); }
       return;
     }
     const first = !store.ready; store.ready = true;
     if (store.dirty) return;
     const inc = normalize(snap.data());
-    if (JSON.stringify(inc) !== JSON.stringify(S)){ S = inc; LS.set(lsKey('state'), S); render(); }
-    else if (first) render();
+    if (JSON.stringify(inc) !== JSON.stringify(S)){ S = inc; LS.set(lsKey('state'), S); shareSeen(); render(); }
+    else if (first){ shareSeen(); render(); }
+    if (first && topSheet() && topSheet().type === 'shareImp') renderSheet();
   }, err => {
     if (err && err.code === 'permission-denied' && FOLDER && FOLDER.id === fid){
       LS.del(accKey(fid)); const f = FOLDER; closeFolder(); render(); requestFolder(f, true);
@@ -760,6 +766,73 @@ function openFolder(f){
   }, () => {});
   watchActive(fid);
   render();
+  if (SHARE_PENDING){ const c = SHARE_PENDING; SHARE_PENDING = null; setTimeout(() => openShareImport(c), 300); }
+}
+/* ---------- udostępnianie planów kodem: shares/{KOD} ----------
+   Kod powstaje dopiero po „Udostępnij” i zostaje przy planie (p.share). Dokument trzyma kopię planu i użyte w nim własne
+   ćwiczenia; aktualizuje się po każdej zmianie planu (syncShares w flush), znika po „Przestań udostępniać”, usunięciu planu
+   albo konta. Odczyt: każdy, kto zna dokładny kod (bez listy kodów). Zapis: tylko urządzenia z dostępem do konta (reguły). */
+const SHARE_ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';   // bez 0/O, 1/I/L – łatwo przepisać
+const SHARE_RE = /^[2-9A-HJKMNP-Z]{6}$/;
+const shareFmt = c => c.slice(0, 3) + '-' + c.slice(3);
+const shareClean = s => String(s || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+const shareLink = c => location.origin + location.pathname + '?plan=' + c;
+function shareNewCode(){ return [...crypto.getRandomValues(new Uint8Array(6))].map(x => SHARE_ABC[x % SHARE_ABC.length]).join(''); }
+let SHARE_PENDING = null, shareBusy = false, shareKnown = null;
+const shareSent = new Map();   // kod → treść ostatnio wysłana do bazy
+try {
+  const q = new URLSearchParams(location.search).get('plan');
+  if (q){ SHARE_PENDING = shareClean(q); history.replaceState(null, '', location.pathname + location.hash); }
+} catch {}
+function sharePayload(p){
+  const items = p.items.map(({id, ...it}) => it);
+  const ids = new Set(items.map(i => i.exId));
+  return clone({fid:FOLDER.id, from:FOLDER.name, plan:{name:p.name || '', items}, custom:S.custom.filter(c => ids.has(c.id)), updatedAt:Date.now()});
+}
+const shareKey = d => JSON.stringify([d.from, d.plan, d.custom]);
+function shareSeen(){   // stan przyszedł z bazy – kody w nim są już zsynchronizowane
+  if (!FOLDER) return;
+  shareKnown = new Set();
+  for (const p of S.plans) if (p.share){ shareKnown.add(p.share); shareSent.set(p.share, shareKey(sharePayload(p))); }
+}
+function syncShares(){
+  if (!fireOn() || !store.ready) return;
+  const now = new Set();
+  for (const p of S.plans){
+    if (!p.share || now.has(p.share)) continue;
+    now.add(p.share);
+    const d = sharePayload(p), k = shareKey(d);
+    if (shareSent.get(p.share) === k) continue;
+    shareSent.set(p.share, k);
+    FB.setDoc(FB.doc(FB.db, 'shares', p.share), d).catch(() => shareSent.delete(p.share));
+  }
+  for (const c of shareKnown || []) if (!now.has(c)){ shareSent.delete(c); FB.deleteDoc(FB.doc(FB.db, 'shares', c)).catch(() => {}); }
+  shareKnown = now;
+}
+// dane z cudzego kodu – nie ufamy im: tylko znane pola, rozsądne długości i limity
+function shareSanitize(d){
+  if (!d || typeof d !== 'object' || !d.plan || !Array.isArray(d.plan.items)) return null;
+  const str = (v, n) => String(v ?? '').slice(0, n);
+  const num = (v, a, b, def) => Number.isFinite(+v) && v !== null && v !== '' ? Math.min(b, Math.max(a, +v)) : def;
+  const strs = v => Array.isArray(v) ? v.slice(0, 30).map(x => str(x, 300)) : [];
+  const custom = (Array.isArray(d.custom) ? d.custom : []).filter(c => c && /^c_[a-z0-9]{1,30}$/.test(c.id)).slice(0, 60).map(c => ({
+    id:c.id, name:str(c.name, 80) || 'Ćwiczenie', group:str(c.group, 40), equipment:str(c.equipment, 40), mode:c.mode === 'time' ? 'time' : 'reps',
+    steps:strs(c.steps), tips:strs(c.tips), primary:strs(c.primary), secondary:strs(c.secondary), custom:true, level:str(c.level, 20)}));
+  const items = d.plan.items.filter(it => it && typeof it.exId === 'string').slice(0, 60).map(it => ({
+    exId:str(it.exId, 120), mode:it.mode === 'time' ? 'time' : 'reps',
+    rest:num(it.rest, 0, LIM.sec, S.settings.restSet), restAfter:num(it.restAfter, 0, LIM.sec, S.settings.restEx), note:str(it.note, 500), ssNext:!!it.ssNext,
+    sets:clampSets((Array.isArray(it.sets) ? it.sets : []).slice(0, MAX_SETS).filter(t => t && typeof t === 'object')
+      .map(t => it.mode === 'time' ? {sec:num(t.sec, 0, LIM.sec, 30), kg:num(t.kg, 0, LIM.kg, null)} : {reps:num(t.reps, 0, LIM.reps, 10), kg:num(t.kg, 0, LIM.kg, null)}))}));
+  if (!items.length) return null;
+  return {from:str(d.from, 40), name:str(d.plan.name, 60), items, custom};
+}
+function shareExName(d, id){
+  const c = d.custom.find(x => x.id === id) || S.custom.find(x => x.id === id);
+  return c ? c.name : EXMAP.has(id) ? getEx(id).name : 'Nieznane ćwiczenie';
+}
+function openShareImport(code){
+  sheets.length = 0; openSheet({type:'shareImp', code:code || '', err:'', busy:false, d:null});
+  if (code) ACT.shareFind(); else setTimeout(() => $('#shcode')?.focus(), 80);
 }
 /* ---------- PIN folderu ----------
    folders/{id}.pin = true, gdy folder ma PIN; skrót PIN-u w folders/{id}/secret/pin (nikt go nie odczyta).
@@ -915,7 +988,7 @@ function vHome(){
   } else if (!S.plans.length){
     h += `<div class="empty"><h2>Zacznij od planu</h2>
       <p>Plan to lista ćwiczeń z seriami, powtórzeniami i ciężarem, np. „Plan A” i „Plan B”. Potem tutaj uruchamiasz trening z timerem przerw.</p>
-      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Utwórz plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div></div>`;
+      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Utwórz plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div></div>`;
   } else {
     if (SESS.length) h += weekCard();
     h += `<h2 class="sec-h">Wybierz plan</h2><section class="plan">`;
@@ -960,20 +1033,22 @@ function vPlans(){
   let h = '';
   if (!S.plans.length){
     h += `<div class="empty"><h2>Brak planów</h2><p>Utwórz własny plan albo wczytaj dwa przykładowe plany całego ciała (FBW A i FBW B) i dopasuj je do siebie.</p>
-      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div></div>`;
+      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div></div>`;
   } else {
     h += `<section class="plan">`;
     for (const p of S.plans){
       h += `<button class="dayrow plan-link" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div>${planBadge(p)}</div>${svg('chev','i s chev')}</button>`;
     }
-    h += `</section><div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button></div>`;
+    h += `</section><div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div>`;
     h += coverageCard(null);
   }
   return `<div class="wrap stack">${h}</div>`;
 }
+const shareImpBtn = () => FIRE ? `<button class="btn" data-act="shareImpOpen">Plan z kodu</button>` : '';
 function vPlanEditor(p){
   const pi = S.plans.indexOf(p);
-  let h = `<div class="row"><button class="btn sm ghost" data-act="closePlan">${svg('back','i s')}Wszystkie plany</button></div>
+  const shareBtn = FIRE ? `<span class="spacer"></span><button class="btn sm" data-act="planShare" data-plan="${p.id}">${svg('share','i s')}${p.share ? 'Kod ' + shareFmt(p.share) : 'Udostępnij'}</button>` : '';
+  let h = `<div class="row"><button class="btn sm ghost" data-act="closePlan">${svg('back','i s')}Wszystkie plany</button>${shareBtn}</div>
     <div class="field"><label class="lbl" for="pn-${p.id}">Nazwa planu</label><input class="input" id="pn-${p.id}" maxlength="60" data-bind="planName" data-plan="${p.id}" value="${esc(p.name)}" placeholder="np. Plan A"></div>
     <section class="day">`;
   if (!p.items.length) h += `<p class="muted small" style="margin:12px 0">Brak ćwiczeń w tym planie.</p>`;
@@ -1904,6 +1979,29 @@ const SHEETS = {
     if (!s.noAdd) h += `<div class="sheet-f"><button class="btn primary" data-act="exAddToPlan" data-id="${esc(e.id)}">${svg('plus','i s')}Dodaj do planu</button></div>`;
     return h;
   },
+  share(s){
+    const p = planById(s.plan);
+    if (!p || !p.share) return sheetHead('Udostępnij plan') + `<p class="muted" style="margin:0">Ten plan nie jest już udostępniany.</p>`;
+    return sheetHead('Udostępnij plan') + `<p class="muted" style="margin:0">Podaj ten kod osobie, która ma dostać plan „${esc(p.name || 'bez nazwy')}”. Wpisze go w zakładce Plany → „Plan z kodu” albo otworzy wysłany link.</p>
+      <div class="share-code" aria-label="Kod planu">${shareFmt(p.share)}</div>
+      <div class="row"><button class="btn primary" data-act="shareSend" data-plan="${p.id}">${svg('share','i s')}Wyślij</button><button class="btn" data-act="shareCopy" data-plan="${p.id}">Kopiuj kod</button></div>
+      <p class="note">Druga osoba dostaje kopię: ćwiczenia, serie, ciężary, przerwy i notatki z planu. Twoja historia treningów zostaje u Ciebie. Gdy zmienisz plan, kod będzie dawał nową wersję, a kto dodał plan wcześniej, ma swoją kopię.</p>
+      <div class="row"><button class="btn danger sm" data-act="shareStop" data-plan="${p.id}">Przestań udostępniać</button></div>`;
+  },
+  shareImp(s){
+    let h = sheetHead('Plan z kodu') + `<div class="field"><label class="lbl" for="shcode">Kod planu od innej osoby</label><div class="row" style="flex-wrap:nowrap"><input class="input" id="shcode" maxlength="9" placeholder="np. K7P-2QX" value="${esc(s.code ? shareFmt(s.code) : '')}" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn primary" data-act="shareFind" ${s.busy ? 'disabled' : ''}>Szukaj</button></div></div>`;
+    if (s.busy) return h + `<p class="muted" style="margin:0">Szukam planu…</p>`;
+    if (s.err) return h + `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>`;
+    const d = s.d; if (!d) return h;
+    const nSets = d.items.reduce((a, it) => a + it.sets.length, 0);
+    const setTxt = it => { const t = it.sets[0]; if (!t) return ''; return `${it.sets.length} × ${it.mode === 'time' ? t.sec + ' s' : t.reps}`; };
+    h += `<div class="tpl"><div class="tpl-h"><b>${esc(d.name || 'Plan bez nazwy')}</b></div>
+      <p class="muted small" style="margin:0">${d.from ? 'Od: ' + esc(d.from) + ' · ' : ''}${d.items.length} ${pl(d.items.length, 'ćwiczenie', 'ćwiczenia', 'ćwiczeń')} · ${nSets} ${pl(nSets, 'seria', 'serie', 'serii')}</p>
+      <ol class="share-list">${d.items.map(it => `<li>${esc(shareExName(d, it.exId))} <span>${setTxt(it)}</span></li>`).join('')}</ol></div>
+      <p class="note">Plan dodam jako nowy – Twoje obecne plany się nie zmienią.${d.custom.length ? ` Dodam też własne ćwiczenia tej osoby użyte w planie (${d.custom.length}).` : ''}</p>
+      <div class="sheet-f"><button class="btn primary" data-act="shareAdd" ${store.ready ? '' : 'disabled'}>${store.ready ? 'Dodaj do moich planów' : 'Wczytuję Twoje plany…'}</button></div>`;
+    return h;
+  },
   templates(){
     let h = sheetHead('Gotowe plany') + `<p class="muted" style="margin:0">Wybierz zestaw. Dodam go do Twoich planów, a ciężary i ćwiczenia zmienisz potem w edycji planu.</p>`;
     let g = '';
@@ -2377,8 +2475,11 @@ const ACT = {
   },
   async folderDeleteGo(f){
       const ids = SESS.map(x => x.id);
+      const codes = S.plans.filter(p => p.share).map(p => p.share);
       closeFolder(); sheets.length = 0; renderSheet(); render();
       try {
+        // najpierw udostępnione kody (reguły wymagają jeszcze dostępu do konta)
+        await Promise.all(codes.map(c => FB.deleteDoc(FB.doc(FB.db, 'shares', c)).catch(() => {})));
         const snap = await FB.getDocs(FB.collection(FB.db, 'folders', f.id, 'sessions'));
         await Promise.all([...new Set([...ids, ...snap.docs.map(d => d.id)])].map(id => FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'sessions', id))));
         await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'data', 'state'));
@@ -2400,7 +2501,73 @@ const ACT = {
   planMove(el){ const p = planById(el.dataset.plan); move(S.plans, S.plans.indexOf(p), +el.dataset.dir); commit(); },
   editPlan(el){ ui.planId = el.dataset.plan; ui.openItem = null; if (ui.tab !== 'plany') location.hash = 'plany'; else render(); scrollTo(0, 0); },
   closePlan(){ ui.planId = null; render(); },
-  planDel(el){ const p = planById(el.dataset.plan); confirmBox('Usunąć plan?', `Plan „${p.name || 'bez nazwy'}” zniknie. Historia treningów zostanie.`, 'Usuń plan', () => { S.plans = S.plans.filter(x => x !== p); ui.planId = null; commit(); }); },
+  /* udostępnianie planu kodem */
+  async planShare(el){
+    const id = el.dataset.plan, p = planById(id); if (!p) return;
+    if (p.share){ openSheet({type:'share', plan:id}); return; }
+    if (!fireOn()){ toast('Udostępnianie działa po wejściu na konto.'); return; }
+    if (!p.items.length){ toast('Najpierw dodaj ćwiczenia do tego planu.'); return; }
+    if (!store.ready || shareBusy) return;
+    shareBusy = true; toast('Tworzę kod…');
+    try {
+      let code = null;
+      for (let k = 0; k < 5 && !code; k++){ const c = shareNewCode(); if (!(await FB.getDoc(FB.doc(FB.db, 'shares', c))).exists()) code = c; }
+      if (!code) throw new Error('kod');
+      const cur = planById(id); if (!cur) return;
+      const d = sharePayload(cur);
+      await FB.setDoc(FB.doc(FB.db, 'shares', code), d);
+      const q = planById(id); if (!q) { FB.deleteDoc(FB.doc(FB.db, 'shares', code)).catch(() => {}); return; }
+      q.share = code; shareSent.set(code, shareKey(d)); (shareKnown ||= new Set()).add(code);
+      commit(); openSheet({type:'share', plan:id});
+    } catch { toast('Nie udało się utworzyć kodu. Sprawdź internet i spróbuj ponownie.'); }
+    finally { shareBusy = false; }
+  },
+  shareCopy(el){
+    const p = planById(el.dataset.plan); if (!p || !p.share) return;
+    try { navigator.clipboard.writeText(shareFmt(p.share)).then(() => toast('Skopiowano kod.'), () => toast('Zaznacz kod i skopiuj go ręcznie.')); } catch { toast('Zaznacz kod i skopiuj go ręcznie.'); }
+  },
+  shareSend(el){
+    const p = planById(el.dataset.plan); if (!p || !p.share) return;
+    const text = `Plan „${p.name || 'bez nazwy'}” do Dziennika siłowni. Kod: ${shareFmt(p.share)}`;
+    if (navigator.share) navigator.share({title:'Plan treningowy', text, url:shareLink(p.share)}).catch(() => {});
+    else { try { navigator.clipboard.writeText(text + '\n' + shareLink(p.share)).then(() => toast('Skopiowano kod i link.'), () => {}); } catch {} }
+  },
+  shareStop(el){
+    const p = planById(el.dataset.plan); if (!p || !p.share) return;
+    confirmBox('Przestać udostępniać?', `Kod ${shareFmt(p.share)} przestanie działać. Osoby, które już dodały ten plan, zachowają swoje kopie.`, 'Przestań', () => {
+      const q = planById(p.id); if (q) delete q.share; sheets.length = 0; commit(); toast('Plan nie jest już udostępniany.');
+    });
+  },
+  shareImpOpen(){ openShareImport(''); },
+  async shareFind(){
+    const s = topSheet(); if (!s || s.type !== 'shareImp' || s.busy) return;
+    const inp = $('#shcode'); if (inp) s.code = shareClean(inp.value);
+    s.d = null; s.err = '';
+    if (!SHARE_RE.test(s.code)){ s.err = 'Kod ma 6 znaków (litery i cyfry), np. K7P-2QX.'; renderSheet(); return; }
+    if (!FB.db){ s.err = 'Brak połączenia z bazą. Sprawdź internet.'; renderSheet(); return; }
+    s.busy = true; renderSheet();
+    let snap = null; try { snap = await FB.getDoc(FB.doc(FB.db, 'shares', s.code)); } catch {}
+    s.busy = false;
+    if (!snap) s.err = 'Nie udało się sprawdzić kodu. Sprawdź internet.';
+    else if (!snap.exists()) s.err = 'Nie ma planu z tym kodem. Sprawdź, czy dobrze go przepisano – albo właściciel przestał go udostępniać.';
+    else if (!(s.d = shareSanitize(snap.data()))) s.err = 'Ten plan jest pusty albo uszkodzony.';
+    if (topSheet() === s) renderSheet();
+  },
+  shareAdd(){
+    const s = topSheet(); if (!s || !s.d) return;
+    if (!store.ready){ toast('Chwila, wczytuję Twoje plany…'); return; }
+    const d = s.d, names = new Set(S.plans.map(p => p.name));
+    let name = d.name || 'Plan';
+    if (names.has(name)) name = d.from ? `${name} · ${d.from}` : name + ' (kopia)';
+    for (let k = 2; names.has(name); k++) name = `${d.name || 'Plan'} (${k})`;
+    for (const c of d.custom) if (!S.custom.some(x => x.id === c.id)) S.custom.push(c);
+    const p = {id:uid(), name:name.slice(0, 60), items:d.items.map(it => ({id:uid(), ...it}))};
+    S.plans.push(p); sheets.length = 0; renderSheet();
+    ui.planId = p.id; ui.openItem = null; commit();
+    if (location.hash !== '#plany') location.hash = 'plany'; scrollTo(0, 0);
+    toast(`Dodano plan „${p.name}”.`);
+  },
+  planDel(el){ const p = planById(el.dataset.plan); confirmBox('Usunąć plan?', `Plan „${p.name || 'bez nazwy'}” zniknie. Historia treningów zostanie.${p.share ? ` Kod ${shareFmt(p.share)} przestanie działać.` : ''}`, 'Usuń plan', () => { S.plans = S.plans.filter(x => x !== p); ui.planId = null; commit(); }); },
   toggleItem(el){ ui.openItem = ui.openItem === el.dataset.item ? null : el.dataset.item; render(); },
   itemMode(el){ const {it} = itemRef(el); const m = el.dataset.mode; if (it.mode === m) return; it.mode = m; it.sets = it.sets.map(s => m === 'time' ? {sec:30, kg:s.kg ?? null} : {reps:10, kg:s.kg ?? null}); commit(); },
   psetAdd(el){ const {it} = itemRef(el); if (it.sets.length >= MAX_SETS){ toast(`Maksymalnie ${MAX_SETS} serii w ćwiczeniu.`); return; } const l = it.sets[it.sets.length - 1]; it.sets.push(l ? {...l} : it.mode === 'time' ? {sec:30, kg:null} : {reps:10, kg:null}); commit(); },
@@ -2475,7 +2642,7 @@ const ACT = {
     let d; try { d = JSON.parse($('#imp').value); } catch { toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (!d || d.app !== 'dziennik-silowni' || !d.state){ toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi z kopii zostaną dodane do historii.', 'Przywróć', async () => {
-      S = normalize(d.state); commit();
+      S = normalize(d.state); S.plans.forEach(p => { delete p.share; }); commit();   // kody udostępnień zostają przy oryginałach
       const have = new Set(SESS.map(s => s.id));
       for (const s of sortSess((d.sessions || []).filter(s => s && s.id && !have.has(s.id)))) await saveSession(s);
       sheets.length = 0; renderSheet(); render(); toast('Przywrócono dane.');
@@ -2602,6 +2769,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target && e.target.id === 'newfolder'){ e.preventDefault(); ACT.folderCreate(); }
   if (e.key === 'Enter' && e.target && (e.target.id === 'pin1' || e.target.id === 'pin2')){ e.preventDefault(); if (e.target.id === 'pin1' && $('#pin2')) $('#pin2').focus(); else ACT.pinGo(); }
   if (e.key === 'Enter' && e.target && e.target.id === 'rnfolder'){ e.preventDefault(); ACT.folderRename(); }
+  if (e.key === 'Enter' && e.target && e.target.id === 'shcode'){ e.preventDefault(); ACT.shareFind(); }
 });
 
 function route(){

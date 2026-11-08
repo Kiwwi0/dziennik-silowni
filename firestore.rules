@@ -12,6 +12,25 @@ service cloud.firestore {
         && d.name is string && d.name.size() > 0 && d.name.size() <= 40
         && (!('pin' in d) || d.pin is bool);
     }
+    function validShare(d) {
+      return d.keys().hasOnly(['fid', 'from', 'plan', 'custom', 'updatedAt'])
+        && d.fid is string && d.from is string && d.from.size() <= 40
+        && d.plan is map && d.plan.keys().hasOnly(['name', 'items'])
+        && d.plan.name is string && d.plan.name.size() <= 60
+        && d.plan.items is list && d.plan.items.size() <= 60
+        && d.custom is list && d.custom.size() <= 60
+        && d.updatedAt is int;
+    }
+
+    // Udostępnione plany: shares/{KOD}. Kto zna kod, może go odczytać (bez listy wszystkich kodów).
+    // Utworzyć, zmienić i usunąć może tylko urządzenie z dostępem (PIN) do konta-właściciela.
+    match /shares/{code} {
+      allow get: if code.matches('^[2-9A-HJKMNP-Z]{6}$');
+      allow list: if false;
+      allow create: if code.matches('^[2-9A-HJKMNP-Z]{6}$') && validShare(request.resource.data) && isMember(request.resource.data.fid);
+      allow update: if validShare(request.resource.data) && request.resource.data.fid == resource.data.fid && isMember(resource.data.fid);
+      allow delete: if isMember(resource.data.fid);
+    }
 
     match /folders/{fid} {
       allow read: if true;
