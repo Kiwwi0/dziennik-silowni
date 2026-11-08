@@ -1158,7 +1158,7 @@ const ORDER_TIERS = [
   [10, 'ciężkie wielostawowe', 'Barbell_Squat Front_Barbell_Squat Barbell_Deadlift Sumo_Deadlift Trap_Bar_Deadlift Barbell_Bench_Press_-_Medium_Grip Barbell_Incline_Bench_Press_-_Medium_Grip Decline_Barbell_Bench_Press Standing_Military_Press Bent_Over_Barbell_Row Reverse_Grip_Bent-Over_Rows T-Bar_Row_with_Handle'],
   [20, 'wielostawowe', 'Dumbbell_Bench_Press Incline_Dumbbell_Press Dips_-_Chest_Version Pullups Chin-Up Seated_Dumbbell_Press Arnold_Dumbbell_Press Romanian_Deadlift Stiff-Legged_Dumbbell_Deadlift Good_Morning Barbell_Hip_Thrust Barbell_Glute_Bridge Goblet_Squat Dumbbell_Incline_Row Inverted_Row'],
   [22, 'wielostawowe, lżejsze', 'Split_Squat_with_Dumbbells Dumbbell_Lunges Barbell_Walking_Lunge Dumbbell_Rear_Lunge Dumbbell_Step_Ups One-Arm_Dumbbell_Row Pushups Bodyweight_Squat Band_Assisted_Pull-Up'],
-  [25, 'wielostawowe na maszynie', 'Machine_Bench_Press Wide-Grip_Lat_Pulldown V-Bar_Pulldown Seated_Cable_Rows Leverage_Iso_Row Machine_Shoulder_Military_Press Leg_Press Hack_Squat Smith_Machine_Squat'],
+  [25, 'wielostawowe na maszynie', 'Machine_Bench_Press Wide-Grip_Lat_Pulldown V-Bar_Pulldown Seated_Cable_Rows Lying_T-Bar_Row Leverage_Iso_Row Machine_Shoulder_Military_Press Leg_Press Hack_Squat Smith_Machine_Squat'],
   [28, 'wielostawowe na ramiona', 'Close-Grip_Barbell_Bench_Press Dips_-_Triceps_Version'],
   [30, 'izolowane, duże partie', 'Dumbbell_Flyes Incline_Dumbbell_Flyes Cable_Crossover Butterfly Straight-Arm_Dumbbell_Pullover Straight-Arm_Pulldown Hyperextensions_Back_Extensions Side_Lateral_Raise Standing_Low-Pulley_Deltoid_Raise Front_Dumbbell_Raise Reverse_Flyes Reverse_Machine_Flyes Upright_Barbell_Row Leg_Extensions Lying_Leg_Curls Seated_Leg_Curl Single_Leg_Glute_Bridge One-Legged_Cable_Kickback Thigh_Abductor Thigh_Adductor'],
   [40, 'izolowane, małe partie', 'Barbell_Curl EZ-Bar_Curl Dumbbell_Alternate_Bicep_Curl Hammer_Curls Incline_Dumbbell_Curl Preacher_Curl Concentration_Curls Standing_Biceps_Cable_Curl Triceps_Pushdown Triceps_Pushdown_-_Rope_Attachment Cable_Rope_Overhead_Triceps_Extension EZ-Bar_Skullcrusher Standing_Dumbbell_Triceps_Extension Tricep_Dumbbell_Kickback Bench_Dips Standing_Calf_Raises Seated_Calf_Raise Calf_Press_On_The_Leg_Press_Machine Barbell_Shrug Dumbbell_Shrug'],
@@ -1223,10 +1223,12 @@ function vOrderHint(p){
 
 /* ---------- ĆWICZENIA ---------- */
 function allEx(){ return [...EX, ...S.custom]; }
+// dodatkowe hasła do wyszukiwarki (inne nazwy, po angielsku)
+const EX_ALIAS = {Lying_Leg_Curls:'prone leg curl leg curl', 'Lying_T-Bar_Row':'chest supported t-bar row podparcie'};
 function filterEx(q, group, equip){
   const nq = norm(q).trim();
   return allEx().filter(e => (!group || e.group === group) && (!equip || e.equipment === equip) &&
-    (!nq || norm([e.name, e.en, e.group, e.equipment, ...(e.primary || [])].join(' ')).includes(nq)));
+    (!nq || norm([e.name, e.en, e.group, e.equipment, EX_ALIAS[e.id] || '', ...(e.primary || [])].join(' ')).includes(nq)));
 }
 function groupedRows(list, rowFn){
   let h = '';

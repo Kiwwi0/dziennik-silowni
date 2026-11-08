@@ -161,6 +161,12 @@ def('Dumbbell_Incline_Row', {
   hl:['torso', 'ua'], ph:PULL, trail:'gripR',
   f:[{hip:[0, 52, 0], torso:45, neck:10, legs:{ik:[-26, 4, 14], pole:[1, -0.2, 0]}, arms:{a:-90, a2:-90, b:6, b2:6}}, {arms:{ik:[10, 38, 22], rel:'t', pole:[-0.4, 1, 0.3]}}],
   props:(P, t, K) => [K.pad([0, 52, 0], 45, 62, {side:-1, d:-150}), K.post([10, 40, 0], [10, 0, 0], {w:6}), K.box([-8, 40, 0], [22, 7, 28], 0, 'a-pad', {d:-160}), K.dumbbells(P, {axis:'n'})]});
+def('Lying_T-Bar_Row', { // T-bar z podparciem klatki: leżenie przodem na poduszce, dźwignia z talerzami
+  hl:['torso', 'ua'], ph:PULL,
+  f:[{hip:[0, 84, 0], torso:42, neck:10, legs:{ik:[-34, 12, 14], pole:[1, 0, 0]}, arms:{a:-90, a2:-90, b:6, b2:6}}, {arms:{ik:[10, 38, 22], rel:'t', pole:[-0.4, 1, 0.3]}}],
+  props:(P, t, K) => { const m = mid(P), piv = [130, 4, 0], dv = unit(sub(m, piv)), d = K.depth(m);
+    return [K.pad([0, 84, 0], 42, 62, {side:-1, d:-150}), K.post([12, 70, 0], [12, 0, 0], {w:6}), K.box([-30, 7, 0], [44, 10, 34], 0, 'a-pad', {d:-160}),
+      K.line(piv, add(m, mul(dv, -4)), 4, 'a-eq', {d:d - 2}), K.disc(add(piv, mul(sub(m, piv), 0.55)), dv, 18, 'a-pl', {d:d - 1.5}), K.line(P.gripL, P.gripR, 3.5, 'a-eq', {d:d + 0.3})]; }});
 def('Barbell_Deadlift', {
   hl:['glute', 'thigh', 'torso'], view:{yaw:22}, ph:['Podnoszenie', 'Opuszczanie'], trail:'bar',
   f:[{...STAND, torso:30, legs:{a:-22, a2:-110, b:6}, arms:{ik:[10, 22, 24], pole:[-0.3, -1, 0]}}, {torso:92, legs:{a:-90, a2:-90, b:4}, arms:{ik:[8, 74, 24], pole:[-0.3, -1, 0]}}],

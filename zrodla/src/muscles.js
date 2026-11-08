@@ -52,6 +52,7 @@ const MUSCLE_EX = {
   'One-Arm_Dumbbell_Row':{p:['lats'], s:['teres','trapsM','deltP','biceps']},
   Seated_Cable_Rows:{p:['lats','trapsM'], s:['teres','deltP','biceps','brachiorad','erectors']},
   'T-Bar_Row_with_Handle':{p:['lats','trapsM'], s:['teres','deltP','biceps','erectors']},
+  'Lying_T-Bar_Row':{p:['lats','trapsM'], s:['teres','deltP','biceps']},
   Leverage_Iso_Row:{p:['lats','trapsM'], s:['teres','deltP','biceps']},
   Inverted_Row:{p:['trapsM','lats'], s:['deltP','teres','biceps','abs']},
   Dumbbell_Incline_Row:{p:['trapsM','lats'], s:['deltP','infra','teres','biceps']},
