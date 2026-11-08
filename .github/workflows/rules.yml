@@ -1,0 +1,42 @@
+name: Reguły bazy Firebase
+
+# Wgrywa firestore.rules do projektu dziennik-silowni przy każdej zmianie reguł (albo ręcznie w Actions).
+# Wymaga sekretu FIREBASE_SERVICE_ACCOUNT (cały plik JSON klucza konta serwisowego z konsoli Firebase).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firestore-rules
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sprawdź klucz
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::error::Brak sekretu FIREBASE_SERVICE_ACCOUNT – dodaj go w Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Wgraj reguły
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: npx --yes firebase-tools@13 deploy --only firestore:rules --project dziennik-silowni --non-interactive
+      - name: Usuń klucz z dysku
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"
