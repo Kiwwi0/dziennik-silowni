@@ -198,6 +198,14 @@ main{padding-block:2px 28px}
 .plan > .dayrow:first-child,.day > .item:first-child{border-top:0}
 .plan-link{width:100%;border:0;border-top:1px solid var(--line);background:none;text-align:left}
 .dayrow .dm{font-size:12.5px;color:var(--muted)}
+/* przesuń w lewo, żeby usunąć plan */
+.sw{position:relative;overflow:hidden;border-top:1px solid var(--line)}
+.plan > .sw:first-child{border-top:0}
+.sw > .plan-link{position:relative;z-index:1;border-top:0;background:var(--surface);touch-action:pan-y;transition:transform .2s ease}
+.sw.drag > .plan-link{transition:none}
+.sw-del{position:absolute;top:0;right:0;bottom:0;width:88px;border:0;background:var(--bad);color:#fff;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.sw-del .i{stroke:#fff}
+@media (prefers-reduced-motion: reduce){.sw > .plan-link{transition:none}}
 .day{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:4px 14px 14px}
 .day-h{display:flex;gap:6px;align-items:center;padding-block:10px}
 .day-h .input{font-weight:700}
@@ -2262,7 +2270,7 @@ function vHome(){
   } else if (!S.plans.length){
     h += `<div class="empty"><h2>Zacznij od planu</h2>
       <p>Plan to lista ćwiczeń z seriami, powtórzeniami i ciężarem, np. „Plan A” i „Plan B”. Potem tutaj uruchamiasz trening z timerem przerw.</p>
-      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Utwórz plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div></div>`;
+      <div class="row"><button class="btn primary" data-act="newPlanOpen">${svg('plus','i s')}Utwórz plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div></div>`;
   } else {
     if (SESS.length) h += weekCard();
     h += `<h2 class="sec-h">Wybierz plan</h2><section class="plan">`;
@@ -2307,13 +2315,13 @@ function vPlans(){
   let h = '';
   if (!S.plans.length){
     h += `<div class="empty"><h2>Brak planów</h2><p>Utwórz własny plan albo wczytaj dwa przykładowe plany całego ciała (FBW A i FBW B) i dopasuj je do siebie.</p>
-      <div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div></div>`;
+      <div class="row"><button class="btn primary" data-act="newPlanOpen">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div></div>`;
   } else {
     h += `<section class="plan">`;
     for (const p of S.plans){
-      h += `<button class="dayrow plan-link" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div>${planBadge(p)}</div>${svg('chev','i s chev')}</button>`;
+      h += `<div class="sw"><button class="sw-del" data-act="planDel" data-plan="${p.id}" tabindex="-1" aria-hidden="true">${svg('trash','i s')}Usuń</button><button class="dayrow plan-link" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div>${planBadge(p)}</div>${svg('chev','i s chev')}</button></div>`;
     }
-    h += `</section><div class="row"><button class="btn primary" data-act="newPlan">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div>`;
+    h += `</section><p class="muted small" style="margin:-4px 0 0">Przesuń plan w lewo, żeby go usunąć.</p><div class="row"><button class="btn primary" data-act="newPlanOpen">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div>`;
     h += coverageCard(null);
   }
   return `<div class="wrap stack">${h}</div>`;
@@ -3276,6 +3284,14 @@ const SHEETS = {
       <div class="sheet-f"><button class="btn primary" data-act="shareAdd" ${store.ready ? '' : 'disabled'}>${store.ready ? 'Dodaj do moich planów' : 'Wczytuję Twoje plany…'}</button></div>`;
     return h;
   },
+  newPlan(){
+    const opt = (act, icon, title, sub) => `<button class="dayrow plan-link" data-act="${act}"><div><div class="dn">${svg(icon,'i s')} ${title}</div><div class="dm">${sub}</div></div>${svg('chev','i s chev')}</button>`;
+    return sheetHead('Nowy plan') + `<section class="plan">
+      ${opt('newPlan', 'plus', 'Pusty plan', 'Ułożysz go sam z ćwiczeń z biblioteki.')}
+      ${opt('npTemplates', 'check', 'Gotowy plan', 'FBW albo plan na partie, potem dopasujesz go do siebie.')}
+      ${FIRE ? opt('npCode', 'share', 'Plan z kodu', 'Wpisz kod planu, który ktoś Ci udostępnił.') : ''}
+    </section>`;
+  },
   templates(){
     let h = sheetHead('Gotowe plany') + `<p class="muted" style="margin:0">Wybierz zestaw. Dodam go do Twoich planów, a ciężary i ćwiczenia zmienisz potem w edycji planu.</p>`;
     let g = '';
@@ -3767,7 +3783,10 @@ const ACT = {
   closeSheet(){ closeSheet(); },
   confirmOk(){ const s = topSheet(); sheets.pop(); s.run(); renderSheet(); },
   /* plany */
-  newPlan(){ const p = {id:uid(), name:nextPlanName(), items:[]}; S.plans.push(p); ui.planId = p.id; ui.openItem = null; location.hash = 'plany'; commit(); setTimeout(() => $('#pn-' + p.id)?.select(), 50); },
+  newPlanOpen(){ openSheet({type:'newPlan'}); },
+  npTemplates(){ sheets.length = 0; openSheet({type:'templates'}); },
+  npCode(){ openShareImport(''); },
+  newPlan(){ if (sheets.length){ sheets.length = 0; renderSheet(); } const p = {id:uid(), name:nextPlanName(), items:[]}; S.plans.push(p); ui.planId = p.id; ui.openItem = null; location.hash = 'plany'; commit(); setTimeout(() => $('#pn-' + p.id)?.select(), 50); },
   openTemplates(){ openSheet({type:'templates'}); },
   tplAdd(el){ const t = TEMPLATES.find(q => q.id === el.dataset.id); if (!t) return; const ps = templatePlans(t); S.plans.push(...ps); commit(); sheets.length = 0; renderSheet(); ui.planId = null;
     if (location.hash !== '#trening') location.hash = 'trening'; else render(); scrollTo(0, 0); toast(`Dodano ${ps.length} ${pl(ps.length, 'plan', 'plany', 'planów')}: ${t.name}. Wpisz swoje ciężary w edycji planu.`); },
@@ -4031,6 +4050,45 @@ const BIND = {
   cf(t){ topSheet().f[t.dataset.f] = t.value; },
   finUpd(t){ topSheet().upd = t.checked; },
 };
+/* ---------- przesunięcie planu w lewo: przycisk „Usuń” (z potwierdzeniem) ---------- */
+const SW = {el:null, x0:0, y0:0, dx:0, on:false, id:null, open:null, eat:false};
+const SW_W = 88;
+function swSet(el, x){ el.querySelector('.plan-link').style.transform = x ? `translateX(${x}px)` : ''; }
+function swClose(){ if (SW.open && SW.open.isConnected) swSet(SW.open, 0); SW.open = null; }
+document.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.sw'); if (!el || e.target.closest('.sw-del') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  SW.el = el; SW.x0 = e.clientX; SW.y0 = e.clientY; SW.dx = 0; SW.on = false; SW.id = e.pointerId;
+});
+document.addEventListener('pointermove', e => {
+  if (!SW.el || e.pointerId !== SW.id) return;
+  const dx = e.clientX - SW.x0, dy = e.clientY - SW.y0;
+  if (!SW.on){
+    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)){ SW.el = null; return; }   // przewijanie w pionie
+    if (Math.abs(dx) < 10) return;
+    SW.on = true; SW.el.classList.add('drag'); if (SW.open && SW.open !== SW.el) swClose();
+  }
+  const base = SW.open === SW.el ? -SW_W : 0;
+  SW.dx = Math.max(-SW_W - 30, Math.min(0, base + dx));
+  swSet(SW.el, SW.dx);
+});
+const swEnd = e => {
+  if (!SW.el || e.pointerId !== SW.id) return;
+  const el = SW.el; SW.el = null;
+  if (!SW.on) return;
+  el.classList.remove('drag'); SW.eat = true; setTimeout(() => SW.eat = false, 350);
+  if (SW.dx < -SW_W / 2){ swSet(el, -SW_W); SW.open = el; el.querySelector('.sw-del').tabIndex = 0; el.querySelector('.sw-del').removeAttribute('aria-hidden'); }
+  else { swSet(el, 0); if (SW.open === el) SW.open = null; }
+};
+document.addEventListener('pointerup', swEnd);
+document.addEventListener('pointercancel', swEnd);
+// po przesunięciu nie otwieraj planu; stuknięcie gdziekolwiek (poza „Usuń”) zamyka odsłonięty przycisk
+document.addEventListener('click', e => {
+  if (SW.eat){ SW.eat = false; if (!e.target.closest('.sw-del')){ e.preventDefault(); e.stopPropagation(); return; } }
+  if (SW.open && !SW.open.isConnected) SW.open = null;
+  if (!SW.open) return;
+  if (e.target.closest('.sw-del')){ SW.open = null; return; }   // „Usuń” → okno potwierdzenia
+  e.preventDefault(); e.stopPropagation(); swClose();
+}, true);
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]'); if (!t || t.disabled) return;
   const fn = ACT[t.dataset.act]; if (fn){ e.preventDefault(); fn(t, e); }
