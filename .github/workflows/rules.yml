@@ -30,6 +30,7 @@ jobs:
             exit 1
           fi
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          echo "Konto serwisowe: $(jq -r .client_email "$RUNNER_TEMP/sa.json")"
       - uses: actions/setup-node@v4
         with:
           node-version: 20
