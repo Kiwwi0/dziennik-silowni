@@ -419,6 +419,17 @@ z małą kreską pod kropką), stuknięcie kropki przenosi na ten dzień; średn
 Stan zwinięcia w `LS` (nie w bazie).
 **Test:** wpisy w 4 dniach tygodnia o znanych sumach → średnie i licznik w celu; tydzień przełomu miesiąca; dzień bez wpisów nie zaniża średniej.
 
+#### Stan etapu 3.4 (zbudowane, 9.11.2026)
+- **Dane:** brak nowych pól w bazie – wszystko liczone z już wczytanych dni (`DAYS`), celów (`goalsFor`) i wagi (`wtTrend`). Stan zwinięcia karty: `LS` `dz.dtWeek` (domyślnie zwinięta).
+- **Liczenie:** `dietWeek(k)` – tydzień pon–nd z dniem `k`; dni przyszłe i starsze niż `dietMinKey()` (niewczytane) pomijane. Średnie z dni z wpisami, kcal do całości, B/W/T do 0,1;
+  cele średnie B/W/T = średnia z `goalsFor` tych dni. Dzień „w celu” = kcal w ±10% `goalsFor(dzień).k`; dzień bez celu kcal nie liczy się ani w celu, ani poza,
+  więc w „N/M dni w celu” M = dni z wpisami **i** z celem kcal (bez żadnego celu pokazujemy tylko średnią). Zmiana wagi = `wtTrend` ostatniego dnia tygodnia, który już był.
+- **Wygląd:** `dietWeekCard(key)` w `vDiet` pod kartą podsumowania dnia; nagłówek „Tydzień · Śr. 2563 kcal · 3/4 dni w celu” (ACT `dietWk` rozwija), rozwinięta: 7 kropek
+  (w celu = akcent, poza = ostrzegawcza, bez celu = szara pełna, bez wpisów = pusta, przyszłość = wyszarzona), kreska pod kropką = dzień treningowy, ACT `dietWkDay` przenosi na dzień,
+  średnie B/W/T z celami, linia z wagą. CSS `.dt-wk*`.
+- **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – 64 sprawdzenia, bez `pageerror`, bez przewijania w bok: 4 dni o znanych sumach (2500/2700/2800/2250 → śr. 2563, 3/4 w celu,
+  granica ±10% włącznie), dzień bez wpisów nie zaniża średniej, przełom miesiąca (28.09–4.10), brak celu, tydzień bez wpisów, zmiana wagi, odświeżenie (stan zwinięcia zostaje), przyszłe dni wyszarzone.
+
 ### Etap 3.5 – kopiowanie i moje gotowe posiłki
 (Olek: kopiowanie całego dnia i posiłku + możliwość zapisania często jedzonego posiłku i dodawania go jednym stuknięciem.)
 **Kopiowanie:**

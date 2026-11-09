@@ -95,6 +95,26 @@ svg.i.s{width:18px;height:18px}
 .dt-m .t{display:grid;gap:1px;color:var(--muted)}
 .dt-m .t b{color:var(--ink);font-size:13.5px;white-space:nowrap}
 .dt-m .t b.dt-warn{color:var(--warn)}
+.card.dt-wk{display:grid;gap:0;padding:0;overflow:hidden}
+.dt-wk-h{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:48px;padding:10px 14px;background:none;border:0;color:var(--ink);text-align:left;font:inherit}
+.dt-wk-h b{font-family:var(--f-display);font-weight:800;font-size:15px;text-transform:uppercase;letter-spacing:.03em;margin-right:8px}
+.dt-wk-h .sm{font-size:13.5px;color:var(--ink-2);min-width:0}
+.dt-wk-h .i{flex:none;transition:transform .2s}
+.dt-wk-h[aria-expanded=true] .i{transform:rotate(90deg)}
+.dt-wk-b{display:grid;gap:14px;padding:2px 14px 14px}
+.dt-wk-d{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+.dt-wk-d button{position:relative;display:grid;justify-items:center;gap:4px;padding:2px 0;background:none;border:0;color:var(--muted);font:inherit;font-size:11.5px;min-height:44px}
+.dt-wk-d button:disabled{opacity:.4}
+.dt-wk-d .dot{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);box-sizing:border-box}
+.dt-wk-d .dot.ok{background:var(--accent);border-color:var(--accent)}
+.dt-wk-d .dot.bad{background:var(--warn);border-color:var(--warn)}
+.dt-wk-d .dot.nog{background:var(--muted);border-color:var(--muted)}
+.dt-wk-d .sel .dot{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ink)}
+.dt-wk-d .sel{color:var(--ink);font-weight:700}
+.dt-wk-d .tr{width:14px;height:3px;border-radius:2px;background:var(--ink-2)}
+.dt-wk-d .tr.off{background:transparent}
+.dt-wk-m{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dt-wk-w{font-size:13.5px;color:var(--ink-2);margin:0}
 .dt-meal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .dt-meal-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:12px 14px 8px}
 .dt-meal-h h2{margin:0;font-family:var(--f-display);font-weight:800;font-size:21px;line-height:1;text-transform:uppercase;letter-spacing:.02em}
@@ -3429,6 +3449,47 @@ function dietBar(val, goal, sm){
   const over = goal > 0 && val > goal + 1e-9, pct = goal > 0 ? Math.min(100, Math.round(val / goal * 100)) : 0;
   return `<div class="dt-meter${sm ? ' sm' : ''}${over ? ' over' : ''}" role="img" aria-label="${goal > 0 ? pct + '% celu' + (over ? ', cel przekroczony' : '') : 'brak celu'}"><i style="width:${pct}%"></i></div>`;
 }
+/* ---------- podsumowanie tygodnia (etap 3.4) ---------- */
+const WK_DAYS = ['Pn','Wt','Śr','Cz','Pt','So','Nd'];
+const DWK_KEY = 'dz.dtWeek';
+// tydzień pon–nd zawierający dzień k: sumy z dni z wpisami (dni przyszłe pomijane), dzień „w celu” = kcal w granicach ±10% celu dnia
+function dietWeek(k){
+  const today = dietToday(), minK = dietMinKey(), idx = (keyToDate(k).getDay() + 6) % 7, mon = shiftKey(k, -idx);
+  const days = [];
+  for (let i = 0; i < 7; i++){
+    const key = shiftKey(mon, i), future = key > today, old = key < minK;
+    const n = (future || old) ? 0 : Object.values(dayOf(key).meals).flat().length;
+    const tot = n ? dayTotals(key) : null, G = goalsFor(key);
+    const st = !n ? 'empty' : !G.k ? 'nog' : Math.abs(tot.k - G.k) <= G.k * 0.1 + 1e-9 ? 'ok' : 'bad';
+    days.push({key, i, future, old, n, tot, G, st, tr:!future && isTrainDay(key)});
+  }
+  const used = days.filter(d => d.n), cnt = used.length;
+  const avg = f => cnt ? used.reduce((a, d) => a + d.tot[f], 0) / cnt : null;
+  const gAvg = f => { const g = used.filter(d => d.G[f] > 0); return g.length ? g.reduce((a, d) => a + d.G[f], 0) / g.length : null; };
+  const goalDays = used.filter(d => d.st === 'ok' || d.st === 'bad');
+  const last = days.filter(d => !d.future).pop();
+  return {days, cnt, k:avg('k'), b:avg('b'), w:avg('w'), t:avg('t'), gk:gAvg('k'), gb:gAvg('b'), gw:gAvg('w'), gt:gAvg('t'),
+    inGoal:used.filter(d => d.st === 'ok').length, goalN:goalDays.length, dTrend:last ? wtTrend(last.key) : null};
+}
+function dietWeekCard(sel){
+  const W = dietWeek(sel), open = LS.get(DWK_KEY, false) === true;
+  const line = !W.cnt ? 'Brak wpisów w tym tygodniu' : `Śr. ${fmtG(W.k)} kcal${W.goalN ? ` · ${W.inGoal}/${W.goalN} ${W.goalN === 1 ? 'dzień' : 'dni'} w celu` : ''}`;
+  let h = `<section class="card dt-wk" aria-label="Podsumowanie tygodnia"><button class="dt-wk-h" data-act="dietWk" aria-expanded="${open}"><span style="min-width:0"><b>Tydzień</b><span class="sm num">${esc(line)}</span></span>${svg('chev', 'i s')}</button>`;
+  if (open){
+    const nm = {ok:'w celu', bad:'poza celem', nog:'bez celu kalorii', empty:'bez wpisów'};
+    h += `<div class="dt-wk-b"><div class="dt-wk-d" role="group" aria-label="Dni tygodnia">${W.days.map(d => {
+      const dd = keyToDate(d.key), lab = `${WK_DAYS[d.i]} ${dd.getDate()}.${dd.getMonth() + 1}: ${d.future ? 'jeszcze nie było' : d.old ? 'dzień nie wczytany' : nm[d.st]}${d.tr ? ', trening' : ''}`;
+      return `<button data-act="dietWkDay" data-d="${d.key}" ${d.future || d.old ? 'disabled' : ''} class="${d.key === sel ? 'sel' : ''}" aria-label="${esc(lab)}"><span>${WK_DAYS[d.i]}</span><i class="dot ${d.n ? d.st : ''}"></i><i class="tr${d.tr ? '' : ' off'}"></i></button>`;
+    }).join('')}</div>`;
+    if (W.cnt){
+      h += `<div class="dt-wk-m">${[['b', 'Białko'], ['w', 'Węgle'], ['t', 'Tłuszcz']].map(([f, n]) => `<div class="dt-m"><div class="t"><span>${n} śr.</span><b class="num">${fmtN(r1(W[f]))}${W['g' + f] ? ' / ' + fmtG(W['g' + f]) : ''} g</b></div></div>`).join('')}</div>`;
+    } else h += '<p class="dt-wk-w">Dodaj wpisy, a zobaczysz tu średnie z dni z jedzeniem.</p>';
+    if (W.dTrend != null) h += `<p class="dt-wk-w num">Waga (średnia 7 dni): ${W.dTrend === 0 ? 'bez zmian' : fmtKg(r1(W.dTrend)) + ' kg w tym tygodniu'}</p>`;
+    h += '</div>';
+  }
+  return h + '</section>';
+}
+
 function vDiet(){
   const key = dietKey(), today = dietToday(), tot = dayTotals(key), G = goalsFor(key), hasGoal = !!(G.k || G.b || G.w || G.t);
   const lbl = key === today ? 'Dziś' : key === shiftKey(today, -1) ? 'Wczoraj' : fmtDate(keyToDate(key).toISOString(), {weekday:'long'});
@@ -3443,6 +3504,7 @@ function vDiet(){
     ${G.k ? dietBar(tot.k, G.k) : ''}
     <div class="dt-macros">${[['b', 'Białko'], ['w', 'Węgle'], ['t', 'Tłuszcz']].map(([f, nm]) => `<div class="dt-m"><div class="t"><span>${nm}</span><b class="num${G[f] && tot[f] > G[f] ? ' dt-warn' : ''}">${fmtG(tot[f])}${G[f] ? ' / ' + fmtG(G[f]) : ''} g</b></div>${G[f] ? dietBar(tot[f], G[f], true) : ''}</div>`).join('')}</div>
     ${hasGoal ? '' : `<div class="row"><span class="muted small" style="flex:1;min-width:0">Ustaw dzienne cele, żeby widzieć postęp.</span><button class="btn sm" data-act="dietGoals">Ustaw cel</button></div>`}</section>`;
+  h += dietWeekCard(key);
   const dm = dayOf(key).meals, orphan = Object.keys(dm).filter(m => dm[m].length && !MEALS.some(x => x[0] === m)).map(m => [m, 'Inny posiłek']);
   for (const [m, nm] of [...MEALS, ...orphan]){
     const list = dm[m] || [], s = sumOf(list), known = MEALS.some(x => x[0] === m);
@@ -3777,6 +3839,8 @@ const sDay = s => (s && s.day) || dietKey();   // dzień, na którym otwarto ark
 Object.assign(ACT, {
   dietDay(el){ const k = shiftKey(dietKey(), +el.dataset.d); if (k > dietToday() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
   dietToday(){ if (ui.dietDay){ ui.dietDay = null; render(); } },
+  dietWk(){ LS.set(DWK_KEY, !(LS.get(DWK_KEY, false) === true)); render(); },
+  dietWkDay(el){ const k = el.dataset.d; if (!k || k > dietToday() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
   dietAdd(el){ openSheet({type:'dietAdd', meal:el.dataset.meal, q:'', day:dietKey()}); },
   dietScan(el){ openSheet({type:'dietScan', meal:el.dataset.meal, day:sDay(topSheet()), ean:'', busy:false}); },
   scanGo(){ const i = $('#scan-ean'); scanLookup(i ? i.value : '', true); },
