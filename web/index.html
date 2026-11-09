@@ -4748,7 +4748,7 @@ function persistDay(k, put = [], del = [], tr, x){   // x: dodatkowe pola dnia (
     e[x.id] = ent;
   }
   for (const id of del) e[id] = FB.deleteField();
-  const data = {date:k, e};
+  const data = {date:k}; if (Object.keys(e).length) data.e = e;   // pusta mapa przy merge ZASTĘPUJE całe e (kasuje wpisy dnia) – wysyłamy e tylko, gdy coś w nim jest
   if (tr !== undefined) data.tr = tr === null ? FB.deleteField() : tr;
   if (x) for (const [f, v] of Object.entries(x)){
     if (v === null) data[f] = FB.deleteField();
@@ -4884,7 +4884,7 @@ function dietWaterCard(key){
   const wa = dayOf(key).wa || 0, wg = DIET.wg;
   return `<section class="card dt-water" aria-label="Woda"><div class="dt-wa-h"><b>Woda</b><button class="dt-wa-v num" data-act="dietWaterEdit" aria-label="Woda: ${fmtL(wa)}${wg ? ' z ' + fmtL(wg) : ''} litra. Stuknij, aby wpisać dokładną ilość">${fmtL(wa)}${wg ? ' / ' + fmtL(wg) : ''} l</button></div>
     ${wg ? dietBar(wa, wg, true) : ''}
-    <div class="row"><button class="btn sm" data-act="waAdd" data-v="250">+250 ml</button><button class="btn sm" data-act="waAdd" data-v="500">+500 ml</button><button class="btn sm" data-act="waAdd" data-v="-250" aria-label="Odejmij 250 mililitrów" ${wa ? '' : 'disabled'}>−</button></div></section>`;
+    <div class="row"><button class="btn sm" data-act="waAdd" data-v="250">+250 ml</button><button class="btn sm" data-act="waAdd" data-v="500">+500 ml</button><button class="btn sm" data-act="waCustom">+ własna</button><button class="btn sm" data-act="waAdd" data-v="-250" aria-label="Odejmij 250 mililitrów" ${wa ? '' : 'disabled'}>−</button></div></section>`;
 }
 function dietSupCard(key){
   const L = supList(); if (!L.length) return '';
@@ -5087,7 +5087,7 @@ SHEETS.dietMeals = s => {
     ${n < MEAL_MAX ? `<div class="field"><label class="lbl" for="dm-new">Nowy posiłek</label><div class="row" style="flex-wrap:nowrap"><input class="input" style="flex:1;min-width:0" id="dm-new" maxlength="${MEAL_NAME_MAX}" placeholder="np. Drugie śniadanie" autocomplete="off"><button class="btn" data-act="dmAdd">Dodaj</button></div></div>` : '<p class="note">Osiągnięto największą liczbę posiłków.</p>'}
     ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}`;
 };
-SHEETS.dietWater = s => sheetHead('Woda') + `<div class="field"><label class="lbl" for="dw-v">Ilość wypitej wody (ml)</label><input class="input" id="dw-v" inputmode="numeric" value="${esc(s.v)}" placeholder="0" autocomplete="off"></div>
+SHEETS.dietWater = s => sheetHead(s.add ? 'Dodaj wodę' : 'Woda') + `<div class="field"><label class="lbl" for="dw-v">${s.add ? 'Ile dodać (ml)' : 'Ilość wypitej wody (ml)'}</label><input class="input" id="dw-v" inputmode="numeric" value="${esc(s.v)}" placeholder="0" autocomplete="off"></div>
   <p class="note">Napoje dodane jako produkty nie liczą się do wody.</p>${errLine(s)}
   <div class="sheet-f"><button class="btn primary" data-act="dwSave">Zapisz</button></div>`;
 SHEETS.dietSup = s => {
@@ -5608,11 +5608,13 @@ Object.assign(ACT, {
     if (!dietCanEdit()) return;
     const key = dietKey(); setWater(key, (dayOf(key).wa || 0) + +el.dataset.v, true); render();
   },
+  waCustom(){ if (dietCanEdit()) openSheet({type:'dietWater', add:true, v:'', day:dietKey(), err:''}); },
   dietWaterEdit(){ if (dietCanEdit()) openSheet({type:'dietWater', v:String(dayOf(dietKey()).wa || ''), day:dietKey(), err:''}); },
   dwSave(){
     const s = topSheet(), el = $('#dw-v'), v = num(el ? el.value : s.v);
     if (v != null && (v < 0 || v > WATER_MAX)){ s.v = el.value; s.err = `Od 0 do ${WATER_MAX} ml.`; renderSheet(); return; }
-    setWater(s.day, v || 0); sheets.length = 0; renderSheet(); render();
+    if (s.add){ if (!(v > 0)){ s.v = el ? el.value : ''; s.err = 'Wpisz ilość większą od 0.'; renderSheet(); return; } setWater(s.day, (dayOf(s.day).wa || 0) + v, true); }
+    else setWater(s.day, v || 0); sheets.length = 0; renderSheet(); render();
   },
   supTake(el){
     if (!dietCanEdit()) return;
