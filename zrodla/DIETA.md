@@ -314,6 +314,27 @@ Trend: różnica średniej 7-dniowej dziś i 7 dni temu (kg/tydz.), pokazywana, 
 **Test:** dodaj 10 pomiarów na różne dni (przez `wtAdd` i bezpośrednio w `DIET.wt` + `render()`), sprawdź średnią 7-dniową
 na znanych liczbach, edycję, usunięcie, zakresy wykresu, odświeżenie.
 
+#### Stan etapu 3.1 (zbudowane, 9.11.2026)
+- **Dane:** `DIET.wt` (`cleanWt` w `normalizeDiet`: dni `RRRR-MM-DD`, 30–300 kg, zaokrąglenie 0,1; stary dokument → `{}`), stałe `WT_MIN/WT_MAX`.
+  Kolejka `wtPut`/`wtDel` (dni); `persistDiet(put, del, goals, meals, wp, wd)` – dwa nowe parametry; `flushDiet` wysyła
+  `{wt:{[dzień]:kg | deleteField()}}` z merge (stary format v:1 – cały `wt` w pełnym zapisie), przy błędzie dni wracają do kolejki;
+  snapshot nakłada oczekujące dni, podpis porównania zawiera `wt`; `dietOpen`/`dietClose` czyszczą kolejkę.
+  `dietRefresh` odświeża też zakładkę Historia, a pierwsze wczytanie diety z bazy przerysowuje Historię (włącza przycisk „Waga”).
+- **Import kopii:** brakujące dni pomiarów dochodzą, istniejące zostają (tekst potwierdzenia uzupełniony). Eksport – `wt` jest w `diet`.
+- **Liczenie:** `wtAvg7(day)`, `wtTrend(day)` (dziś vs 7 dni temu), `wtDays()`, `fmtKg` (zawsze 1 miejsce po przecinku, minus „−”).
+- **Wygląd:** `wtCard()` w `vHistory`, widok „Treningi”: nad kalendarzem (wykresy treningowe są w „Postępach”, więc karta stoi
+  na górze „Treningów”); przy braku treningów – pod komunikatem „Jeszcze pusto”. Kafelki „Ostatni · data” i „Średnia 7 dni”,
+  linia trendu, przełącznik `ui.wtRange` (30 / 90 dni / wszystko, ACT `wtRange`), wykres `drawWt` (wywoływany z `drawChart`
+  dla `type:'wt'`; oś X według dat, kropki = pomiary, linia = średnia 7 dni, podpowiedź po dotknięciu), przycisk „Pomiary · N”.
+  Klasy CSS `.wt-card`, `.wt-h`, `.wt-tr`, `.wt-f`, `.wt-row`. `dietReady()` – stan przycisku bez komunikatu.
+- **Arkusze:** `SHEETS.wtAdd` (data `type=date` z `max` = dziś, kg z podpowiedzią ostatniego pomiaru, napis o zastąpieniu
+  istniejącego pomiaru i „Usuń” odświeżane przez `wtHint()` po zmianie daty), `SHEETS.wtList` (do 120 ostatnich, różnica do
+  poprzedniego pomiaru, stuknięcie = edycja). ACT `wtAdd` (`data-d` = dzień), `wtSave`, `wtDel` (z potwierdzeniem), `wtList`; BIND `wtf`.
+  Kod arkuszy i akcji jest przed `route()` na końcu skryptu.
+- **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – bez `pageerror`, bez przewijania w bok; średnia 7 dni na znanych
+  liczbach (80,317 / 81,0 → trend −0,7), walidacja (20 kg, data jutro), edycja z listy, usunięcie, zakresy, odświeżenie strony,
+  karta z treningami nad kalendarzem. Zapis do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+
 ### Etap 3.2 – kalkulator zapotrzebowania (arkusz celów)
 **Dane:** pole `prof` w dokumencie diety: `{sex:'m'|'k', by:rok urodzenia, h:wzrost cm, pal:1.2|1.375|1.55|1.725|1.9, goal:'red'|'utr'|'masa'}`
 (zapisywane jako całe pole – małe). Limity: wzrost 120–230, rok urodzenia: wiek 14–100.

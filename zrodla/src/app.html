@@ -487,6 +487,15 @@ main{padding-block:2px 28px}
 .tile .v small{font-size:13px;font-weight:600;color:var(--muted)}
 .chart-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 12px 8px}
 .chart-card h3{margin:0 0 6px;font-size:14px;font-weight:700}
+.wt-card{display:grid;gap:8px}
+.wt-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wt-h h3{margin:0}
+.wt-tr{margin:0}
+.wt-f{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-bottom:4px}
+.wt-row{display:grid;grid-template-columns:minmax(0,1fr) auto 3.6em;gap:10px;align-items:center;width:100%;padding:12px;border:0;border-top:1px solid var(--line);background:none;text-align:left;color:inherit;font:inherit}
+.exlist > .wt-row:first-child{border-top:0}
+.wt-row b{font-variant-numeric:tabular-nums}
+.wt-row .small{text-align:right;font-variant-numeric:tabular-nums}
 .chart{position:relative;width:100%;touch-action:pan-y}
 .chart svg{display:block;max-width:100%}
 .chart .grid line{stroke:var(--line);stroke-width:1}
@@ -645,7 +654,7 @@ let S = normalize(lsKey('state') ? LS.get(lsKey('state'), null) : null);
 let SESS = sortSess(lsKey('sessions') ? LS.get(lsKey('sessions'), []) : []);
 let ACTIVE = LS.get('dz.active', null);
 if (ACTIVE && Array.isArray(ACTIVE.ex)) ACTIVE.ex.forEach(x => { x.sets = clampSets(x.sets); });
-const ui = {tab:'trening', planId:null, openItem:null, exQ:'', exGroup:'', exEquip:'', hist:'treningi', progEx:null, progRange:'all', showWorkout:false, wMenu:null};
+const ui = {tab:'trening', planId:null, openItem:null, exQ:'', exGroup:'', exEquip:'', hist:'treningi', progEx:null, progRange:'all', wtRange:'30', showWorkout:false, wMenu:null};
 const sheets = [];
 const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, uid:null, ref:null, col:null, dirty:false, writing:false, t:null, foldersReady:false, fireError:false};
 
@@ -1917,10 +1926,11 @@ function vHistory(){
   if (ui.hist === 'tydzien') return `<div class="wrap stack">${h}${vWeek()}</div>`;
   if (!SESS.length){
     h += `<div class="empty"><h2>Jeszcze pusto</h2><p>Po zapisaniu pierwszego treningu zobaczysz tu jego przebieg, a w zakładce Postępy wykresy ciężarów dla każdego ćwiczenia.</p></div>`;
+    if (ui.hist === 'treningi') h += wtCard();
     return `<div class="wrap stack">${h}</div>`;
   }
   if (ui.hist === 'treningi'){
-    h += calendarCard();
+    h += wtCard() + calendarCard();
     let month = '';
     let list = '';
     for (const s of SESS){
@@ -2019,6 +2029,7 @@ function niceTicks(lo, hi, count){
 const fmtTick = v => Math.abs(v) >= 10000 ? fmtN(Math.round(v / 100) / 10) + ' tys.' : fmtN(v);
 function drawCharts(){ $$('[data-chart]').forEach(h => { const s = CHARTS.get(h.dataset.chart); if (s) drawChart(h, s); }); }
 function drawChart(host, spec){
+  if (spec.type === 'wt') return drawWt(host, spec);
   const W = Math.max(260, Math.floor(host.clientWidth || 320)), H = 196, m = {l:46, r:16, t:22, b:26};
   const iw = W - m.l - m.r, ih = H - m.t - m.b, n = spec.pts.length, ys = spec.pts.map(p => p.y);
   let lo = spec.type === 'bar' ? 0 : Math.min(...ys), hi = Math.max(...ys);
@@ -2063,6 +2074,70 @@ function drawChart(host, spec){
   };
   const hide = () => { tip.hidden = true; xh.setAttribute('visibility', 'hidden'); hl.setAttribute('visibility', 'hidden'); };
   host.onpointermove = show; host.onpointerdown = show; host.onpointerleave = hide;
+}
+/* ---------- masa ciała (dane w dokumencie diety: DIET.wt) ---------- */
+const WT_RANGES = [['30', '30 dni', 30], ['90', '90 dni', 90], ['all', 'Wszystko', 0]];
+const wtDays = () => Object.keys(DIET.wt).sort();
+const dietReady = () => !fireOn() || dietLoaded;   // jak dietCanEdit, ale bez komunikatu (do wyglądu przycisków)
+// średnia pomiarów z 7 dni kończących się na day (tylko dni z pomiarem)
+function wtAvg7(day){ let s = 0, n = 0; for (let i = 0; i < 7; i++){ const v = DIET.wt[shiftKey(day, -i)]; if (v != null){ s += v; n++; } } return n ? s / n : null; }
+function wtTrend(day){ const a = wtAvg7(day), b = wtAvg7(shiftKey(day, -7)); return a != null && b != null ? a - b : null; }
+const fmtKg = v => (v < 0 ? '−' : '') + Math.abs(v).toLocaleString('pl-PL', {minimumFractionDigits:1, maximumFractionDigits:1});
+function wtCard(){
+  const days = wtDays(), ok = dietReady();
+  const add = `<button class="btn sm primary" data-act="wtAdd" ${ok ? '' : 'disabled'}>${svg('plus','i s')}Waga</button>`;
+  let h = `<section class="chart-card wt-card"><div class="wt-h"><h3>Masa ciała</h3>${add}</div>`;
+  if (!days.length) return h + `<p class="note" style="margin:0 0 4px">Waż się rano, po toalecie – średnia z tygodnia pokaże trend.</p></section>`;
+  const today = dietToday(), last = days[days.length - 1], avg = wtAvg7(today), tr = wtTrend(today);
+  const tile = (l, v) => `<div class="tile"><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  h += `<div class="tiles">${tile('Ostatni · ' + esc(fmtDate(keyToDate(last))), fmtKg(DIET.wt[last]) + ' <small>kg</small>')}${tile('Średnia 7 dni', avg != null ? fmtKg(avg) + ' <small>kg</small>' : '–')}</div>`;
+  h += `<p class="small wt-tr">${tr != null ? `Trend: <b>${tr > 0 ? '+' : ''}${fmtKg(Math.round(tr * 10) / 10)} kg/tydz.</b> <span class="muted">(średnia 7 dni dziś i tydzień temu)</span>` : '<span class="muted">Trend pokażę, gdy będą pomiary z tego i poprzedniego tygodnia.</span>'}</p>`;
+  const rg = WT_RANGES.find(r => r[0] === ui.wtRange) || WT_RANGES[0];
+  const from = rg[2] ? shiftKey(today, -(rg[2] - 1)) : days[0], inR = days.filter(k => k >= from);
+  h += `<div class="prog-rg"><div class="seg" role="group" aria-label="Okres wykresu masy ciała">${WT_RANGES.map(r => `<button data-act="wtRange" data-v="${r[0]}" aria-pressed="${r === rg}">${r[1]}</button>`).join('')}</div></div>`;
+  if (inR.length){
+    const id = 'c' + (++chartSeq);
+    CHARTS.set(id, {type:'wt', unit:'kg', from, to:rg[2] ? today : days[days.length - 1], pts:inR.map(k => ({x:k, y:DIET.wt[k], a:wtAvg7(k)}))});
+    h += `<div class="chart" data-chart="${id}" role="img" aria-label="Wykres masy ciała"></div>`;
+  } else h += `<p class="note">W tym okresie nie ma pomiarów. Wybierz dłuższy okres.</p>`;
+  h += `<div class="wt-f"><button class="btn sm" data-act="wtList">Pomiary · ${days.length}</button><span class="small muted">kropki – pomiary, linia – średnia 7 dni</span></div></section>`;
+  return h;
+}
+// wykres masy: oś X według dat (dni bez pomiaru zostają przerwą), kropki = pomiary, linia = średnia 7-dniowa
+function drawWt(host, spec){
+  const W = Math.max(260, Math.floor(host.clientWidth || 320)), H = 196, m = {l:46, r:16, t:22, b:26};
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, P = spec.pts, n = P.length;
+  const t0 = keyToDate(spec.from).getTime(), t1 = keyToDate(spec.to).getTime(), span = t1 - t0;
+  const X = k => span > 0 ? m.l + (keyToDate(k).getTime() - t0) / span * iw : m.l + iw / 2;
+  const ys = P.flatMap(p => [p.y, p.a]).filter(v => v != null);
+  let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max(0.5, (hi - lo) * 0.2); lo -= pad; hi += pad;
+  const ticks = niceTicks(lo, hi, 4), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const Y = v => m.t + ih - (v - y0) / (y1 - y0) * ih;
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><g class="grid">`;
+  s += ticks.map(t => `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}"/>`).join('') + '</g>';
+  s += ticks.map(t => `<text x="${m.l - 8}" y="${(Y(t) + 4).toFixed(1)}" text-anchor="end">${fmtTick(t)}</text>`).join('');
+  const nl = span > 0 ? Math.max(2, Math.min(Math.floor(iw / 72), Math.round(span / 864e5) + 1)) : 1, lab = [];
+  for (let k = 0; k < nl; k++) lab.push(nl === 1 ? spec.from : shiftKey(spec.from, Math.round(k * span / 864e5 / (nl - 1))));
+  s += [...new Set(lab)].map((k, i, a) => `<text x="${X(k).toFixed(1)}" y="${H - 6}" text-anchor="${a.length === 1 ? 'middle' : i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${fmtDate(keyToDate(k))}</text>`).join('');
+  s += `<line class="xh" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" visibility="hidden"/>`;
+  s += P.map(p => `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="3.5" fill="var(--accent)" fill-opacity=".3" stroke="var(--accent)" stroke-opacity=".6" stroke-width="1.2"/>`).join('');
+  const A = P.filter(p => p.a != null);
+  if (A.length > 1) s += `<path d="${A.map((p, i) => (i ? 'L' : 'M') + X(p.x).toFixed(1) + ',' + Y(p.a).toFixed(1)).join('')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const lp = A[A.length - 1];
+  if (lp){ const lx = X(lp.x), ly = Y(lp.a); s += `<text class="end" x="${Math.min(lx, W - 2).toFixed(1)}" y="${(ly - 9 < m.t - 6 ? ly + 18 : ly - 9).toFixed(1)}" text-anchor="end">${fmtKg(lp.a)}</text>`; }
+  s += `<circle class="hl" r="6" fill="none" stroke="var(--ink)" stroke-width="2" visibility="hidden"/></svg><div class="ctip" hidden></div>`;
+  host.innerHTML = s;
+  const tip = $('.ctip', host), xh = $('.xh', host), hl = $('.hl', host);
+  host.onpointermove = host.onpointerdown = e => {
+    const px = e.clientX - host.getBoundingClientRect().left;
+    let i = 0, best = Infinity; for (let k = 0; k < n; k++){ const d = Math.abs(X(P[k].x) - px); if (d < best){ best = d; i = k; } }
+    const p = P[i], x = X(p.x), y = Y(p.y);
+    xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.setAttribute('visibility', 'visible');
+    hl.setAttribute('cx', x); hl.setAttribute('cy', y); hl.setAttribute('visibility', 'visible');
+    tip.hidden = false; tip.innerHTML = `<b>${fmtKg(p.y)} kg</b>${p.a != null ? ` · średnia ${fmtKg(p.a)}` : ''}<br>${fmtDate(keyToDate(p.x), {weekday:'short', day:'numeric', month:'short'})}`;
+    tip.style.left = Math.min(Math.max(x, 70), W - 70) + 'px'; tip.style.top = Math.max(y, 40) + 'px';
+  };
+  host.onpointerleave = () => { tip.hidden = true; xh.setAttribute('visibility', 'hidden'); hl.setAttribute('visibility', 'hidden'); };
 }
 let rzT; addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(drawCharts, 150); });
 
@@ -2831,7 +2906,7 @@ const ACT = {
     let d; try { d = JSON.parse($('#imp').value); } catch { toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (!d || d.app !== 'dziennik-silowni' || !d.state){ toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (d.diet && !dietCanEdit()) return;
-    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety i „Moje produkty” z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
+    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty” i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
       S = normalize(d.state); S.plans.forEach(p => { delete p.share; }); commit();   // kody udostępnień zostają przy oryginałach
       const have = new Set(SESS.map(s => s.id));
       for (const s of sortSess((d.sessions || []).filter(s => s && s.id && !have.has(s.id)))) await saveSession(s);
@@ -2843,7 +2918,9 @@ const ACT = {
         if (anyGoal) DIET.goals = g;
         const addM = Array.isArray(d.diet.meals) ? cleanMeals(d.diet.meals).filter(x => !DIET.meals.some(y => y.id === x.id)).slice(0, MEAL_MAX - DIET.meals.length) : [];
         DIET.meals.push(...addM); syncMeals();
-        persistDiet(add, [], anyGoal, addM.length > 0);
+        const addW = Object.keys(inc.wt).filter(k => !(k in DIET.wt));   // pomiary masy: brakujące dni dochodzą, istniejące zostają
+        for (const k of addW) DIET.wt[k] = inc.wt[k];
+        persistDiet(add, [], anyGoal, addM.length > 0, addW);
       }
       if (d.dietDays && typeof d.dietDays === 'object'){   // dni scalane po wpisach: brakujące dochodzą, istniejące zostają
         const inc = normalizeDays(d.dietDays);
@@ -3108,7 +3185,14 @@ function normalizeDiet(d){
   const raw = d && d.mine, list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.entries(raw).map(([id, x]) => x && typeof x === 'object' ? {...x, id} : null) : [];
   for (const p of list){ const c = cleanProd(p); if (c && !seen.has(c.id)){ seen.add(c.id); mine.push(c); } }
   mine.sort(byId);
-  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), v:1};
+  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), wt:cleanWt(d && d.wt), v:1};
+}
+// masa ciała: {'RRRR-MM-DD': kg}, jeden pomiar na dzień, 30–300 kg co 0,1
+const WT_MIN = 30, WT_MAX = 300;
+function cleanWt(o){
+  const out = {};
+  if (o && typeof o === 'object' && !Array.isArray(o)) for (const [k, v] of Object.entries(o)){ const n = +v; if (dayKeyOk(k) && v !== null && Number.isFinite(n) && n >= WT_MIN && n <= WT_MAX) out[k] = r1(n); }
+  return out;
 }
 // o = kolejność w posiłku (czas dodania); id służy jako klucz pola w bazie, więc tylko bezpieczne znaki
 function cleanEntry(e, i = 0){
@@ -3140,6 +3224,7 @@ let dietLoaded = false;          // dokument data/diet przyszedł już z bazy (a
 // Zmiany w „Moich produktach” i celach czekają na wysłanie: produkty (id) do zapisu / usunięcia i znacznik celów.
 // Zapis scala pola dokumentu (merge), więc dwa urządzenia nie nadpisują się nawzajem.
 const dietPut = new Set(), dietDel = new Set();
+const wtPut = new Set(), wtDel = new Set();   // dni pomiarów masy ciała do zapisu / usunięcia
 let dietGoalsDirty = false, dietMealsDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
 const DAY_OLD = new Set();       // dni zapisane w bazie starym formatem {meals} – przy najbliższym zapisie przechodzą na nowy
 const dayOf = k => DAYS[k] || blankDay();
@@ -3164,14 +3249,17 @@ const dayW = k => DAYS[k] || (DAYS[k] = blankDay());
 
 /* ---------- zapis ---------- */
 // put = id produktów dodanych/zmienionych, del = id usuniętych, goals = zmieniono cele
-function persistDiet(put = [], del = [], goals = false, meals = false){
+// wp / wd = dni pomiarów masy ciała dodanych/zmienionych / usuniętych
+function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], wd = []){
   const k = lsKey('diet'); if (k) LS.set(k, DIET);
   if (!fireOn()) return;
   for (const id of put){ dietPut.add(id); dietDel.delete(id); }
   for (const id of del){ dietDel.add(id); dietPut.delete(id); }
   if (goals) dietGoalsDirty = true;
   if (meals) dietMealsDirty = true;
-  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietMealsDirty) return;
+  for (const k of wp){ wtPut.add(k); wtDel.delete(k); }
+  for (const k of wd){ wtDel.add(k); wtPut.delete(k); }
+  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietMealsDirty && !wtPut.size && !wtDel.size) return;
   dietDirty = true; clearTimeout(dietT); dietT = setTimeout(flushDiet, 600);
 }
 function flushDiet(){
@@ -3179,12 +3267,13 @@ function flushDiet(){
   if (!dietDirty || !fireOn()) return;
   dietDirty = false;
   const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, meals = dietMealsDirty, old = DIET_OLD, G = DIET.goals;
-  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false;
+  const wp = [...wtPut], wd = [...wtDel];
+  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false; wtPut.clear(); wtDel.clear();
   const ref = FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'diet'), gdoc = {k:G.k ?? null, b:G.b ?? null, w:G.w ?? null, t:G.t ?? null};
   let job;
   if (old){   // stary format: jednorazowo cały dokument w nowym kształcie (mapa produktów)
     const mine = {}; for (const x of DIET.mine) mine[x.id] = clone(x);
-    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, mine, meals:clone(DIET.meals)});
+    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, mine, meals:clone(DIET.meals), wt:{...DIET.wt}});
   } else {
     const data = {v:2}, mine = {};
     if (goals) data.goals = gdoc;
@@ -3192,10 +3281,15 @@ function flushDiet(){
     for (const id of put){ const x = DIET.mine.find(p => p.id === id); if (x) mine[id] = clone(x); }
     for (const id of del) mine[id] = FB.deleteField();
     if (Object.keys(mine).length) data.mine = mine;
+    const wt = {};
+    for (const k of wp) if (DIET.wt[k] != null) wt[k] = DIET.wt[k];
+    for (const k of wd) wt[k] = FB.deleteField();
+    if (Object.keys(wt).length) data.wt = wt;   // zagnieżdżona mapa z merge: zmieniają się tylko te dni
     job = FB.setDoc(ref, data, {merge:true});
   }
   job.catch(() => {   // nie poszło: zmiany wracają do kolejki
     put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (meals) dietMealsDirty = true; if (old) DIET_OLD = true;
+    wp.forEach(k => { if (!wtDel.has(k)) wtPut.add(k); }); wd.forEach(k => { if (!wtPut.has(k)) wtDel.add(k); });
     toast('Nie udało się zapisać diety w bazie.');
   });
 }
@@ -3223,13 +3317,15 @@ function dietCanEdit(){
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDiet(); });
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
-function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
+function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
-  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false;
+  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; wtPut.clear(); wtDel.clear();
   DIET = normalizeDiet(LS.get(lsKey('diet'), null)); syncMeals(); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
   unsubDiet = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'diet'), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
+    const wasLoaded = dietLoaded;
     if (snap.exists() || !snap.metadata.fromCache) dietLoaded = true;
+    if (!wasLoaded && dietLoaded && ui.tab === 'historia') render();   // włącza przycisk „Waga” w karcie masy ciała
     if (!snap.exists()) return;
     const raw = snap.data() || {}; DIET_OLD = raw.v !== 2;
     const inc = normalizeDiet(raw);
@@ -3238,8 +3334,10 @@ function dietOpen(fid){
     if (dietDel.size) inc.mine = inc.mine.filter(p => !dietDel.has(p.id));
     if (dietGoalsDirty) inc.goals = DIET.goals;
     if (dietMealsDirty) inc.meals = DIET.meals;
+    for (const k of wtPut) if (DIET.wt[k] != null) inc.wt[k] = DIET.wt[k];
+    for (const k of wtDel) delete inc.wt[k];
     inc.mine.sort(byId);
-    const sig = d => JSON.stringify([d.goals, d.mine.slice().sort(byId), d.meals]);
+    const sig = d => JSON.stringify([d.goals, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort()]);
     if (sig(inc) !== sig(DIET)){ DIET = inc; syncMeals(); LS.set(lsKey('diet'), DIET); dietRefresh(); }
   }, () => {});
   const q = FB.query(FB.collection(FB.db, 'folders', fid, 'diet'), FB.where('date', '>=', dietMinKey()));
@@ -3257,7 +3355,7 @@ function dietOpen(fid){
   }, () => {});
 }
 // dane przyszły z bazy: odśwież widok diety (arkusze rysują się osobno, więc otwarty arkusz zostaje bez zmian)
-function dietRefresh(){ if (ui.tab === 'dieta') render(); }
+function dietRefresh(){ if (ui.tab === 'dieta' || ui.tab === 'historia') render(); }
 
 /* ---------- produkty i przeliczanie ---------- */
 const prodOf = id => DIET.mine.find(p => p.id === id) || (FOODMAP.has(id) ? {...FOODMAP.get(id), brand:'', src:'gen', ean:'', star:false, uses:0, last:0} : SCAN_CACHE.get(id) || null);
@@ -3776,6 +3874,55 @@ Object.assign(BIND, {
   dp(t){ const s = topSheet(); s.f[t.dataset.f] = t.value; prodWarn(); },
   dg(t){ topSheet().f[t.dataset.f] = t.value; goalsHint(); },
 });
+
+/* ---------- masa ciała: arkusze i akcje (karta i wykres przy wykresach historii) ---------- */
+SHEETS.wtAdd = s => {
+  const today = dietToday(), d = s.f.d, has = DIET.wt[d] != null, days = wtDays(), last = days.length ? DIET.wt[days[days.length - 1]] : null;
+  return sheetHead(has && s.edit ? 'Edytuj pomiar' : 'Dodaj pomiar') + `
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-start"><div class="field" style="flex:1.3;min-width:0"><label class="lbl" for="wt-d">Data</label><input class="input" id="wt-d" type="date" max="${today}" value="${esc(d)}" data-bind="wtf" data-f="d"></div>
+    <div class="field" style="flex:1;min-width:0"><label class="lbl" for="wt-kg">Masa (kg)</label><input class="input" id="wt-kg" inputmode="decimal" data-bind="wtf" data-f="kg" value="${esc(s.f.kg)}" placeholder="${last != null ? esc(fmtKg(last)) : 'np. 75,4'}" autocomplete="off" autofocus></div></div>
+    <p class="note" id="wt-hint" aria-live="polite">${has ? `Na ten dzień jest już pomiar: ${fmtKg(DIET.wt[d])} kg. Zapis go zastąpi.` : 'Jeden pomiar na dzień. Najlepiej rano, po toalecie.'}</p>
+    ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}
+    <div class="sheet-f"><button class="btn danger" data-act="wtDel" id="wt-del" style="flex:none" ${has ? '' : 'hidden'}>Usuń</button><button class="btn primary" data-act="wtSave">Zapisz</button></div>`;
+};
+function wtHint(){
+  const s = topSheet(); if (!s || s.type !== 'wtAdd') return;
+  const v = DIET.wt[s.f.d], el = $('#wt-hint'), del = $('#wt-del');
+  if (el) el.textContent = v != null ? `Na ten dzień jest już pomiar: ${fmtKg(v)} kg. Zapis go zastąpi.` : 'Jeden pomiar na dzień. Najlepiej rano, po toalecie.';
+  if (del) del.hidden = v == null;
+}
+SHEETS.wtList = () => {
+  const days = wtDays().reverse(), show = days.slice(0, 120);
+  return sheetHead('Pomiary masy ciała') + (days.length ? `<div class="exlist">${show.map((k, i) => {
+    const v = DIET.wt[k], prev = days[i + 1], d = prev ? r1(v - DIET.wt[prev]) : null;
+    return `<button class="wt-row" data-act="wtAdd" data-d="${k}"><span>${esc(fmtDate(keyToDate(k), {weekday:'short', day:'numeric', month:'short', year:'numeric'}))}</span><b>${fmtKg(v)} kg</b><span class="small muted">${d ? (d > 0 ? '+' : '') + fmtKg(d) : ''}</span></button>`;
+  }).join('')}</div>${days.length > show.length ? `<p class="note">Pokazuję ${show.length} ostatnich z ${days.length} pomiarów.</p>` : ''}` : '<p class="note">Brak pomiarów.</p>') +
+  `<div class="sheet-f"><button class="btn primary" data-act="wtAdd" data-d="">${svg('plus','i s')}Waga</button></div>`;
+};
+Object.assign(ACT, {
+  wtRange(el){ ui.wtRange = el.dataset.v; render(); },
+  wtList(){ openSheet({type:'wtList'}); },
+  wtAdd(el){
+    if (!dietCanEdit()) return;
+    const d = el && el.dataset.d && dayKeyOk(el.dataset.d) ? el.dataset.d : dietToday(), v = DIET.wt[d];
+    openSheet({type:'wtAdd', edit:v != null, f:{d, kg:v != null ? fmtKg(v) : ''}});
+  },
+  wtSave(){
+    const s = topSheet(); if (!s || !dietCanEdit()) return;
+    const d = s.f.d, kg = num(s.f.kg);
+    if (!dayKeyOk(d) || d > dietToday()){ s.err = 'Wybierz datę – nie później niż dziś.'; renderSheet(); return; }
+    if (kg == null || kg < WT_MIN || kg > WT_MAX){ s.err = `Masa: od ${WT_MIN} do ${WT_MAX} kg.`; renderSheet(); return; }
+    DIET.wt[d] = r1(kg); persistDiet([], [], false, false, [d]);
+    sheets.pop(); renderSheet(); render(); toast('Zapisano pomiar.');
+  },
+  wtDel(){
+    const s = topSheet(); if (!s || !dietCanEdit()) return; const d = s.f.d; if (DIET.wt[d] == null) return;
+    confirmBox('Usunąć pomiar?', `${fmtDate(keyToDate(d), {day:'numeric', month:'long', year:'numeric'})}: ${fmtKg(DIET.wt[d])} kg.`, 'Usuń', () => {
+      delete DIET.wt[d]; persistDiet([], [], false, false, [], [d]); sheets.pop(); render(); toast('Usunięto pomiar.');
+    });
+  },
+});
+Object.assign(BIND, { wtf(t){ const s = topSheet(); if (!s) return; s.f[t.dataset.f] = t.value; if (t.dataset.f === 'd') wtHint(); } });
 
 function route(){
   const h = location.hash.replace('#', '');
