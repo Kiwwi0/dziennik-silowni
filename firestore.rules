@@ -62,8 +62,11 @@ service cloud.firestore {
         allow read, write: if docId in ['state', 'diet'] && isMember(fid);
       }
       // Dziennik diety: jeden dokument na dzień (RRRR-MM-DD).
+      // Odczyt bez warunku na id dnia: zapytanie o listę dni (ostatnie 60, usuwanie konta) nie zna id z góry,
+      // a warunek na id w regule `list` odrzuciłby całe zapytanie.
       match /diet/{day} {
-        allow read, write: if isMember(fid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+        allow read: if isMember(fid);
+        allow write: if isMember(fid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
       }
       match /sessions/{sessionId} {
         allow read, write: if isMember(fid);

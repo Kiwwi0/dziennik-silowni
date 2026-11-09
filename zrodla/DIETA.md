@@ -43,9 +43,14 @@ Dieta **nie** wchodzi do `S` (dokument `state` jest zapisywany w całości przy 
 - `DIET = {goals:{k, b, w, t}, mine:[…], v:1}` – cele i „Moje produkty”.
   - Firebase: `folders/{fid}/data/diet`; localStorage: `lsKey('diet')`.
 - Dni: `DAYS = {'2026-11-09': {meals:{sn:[], ob:[], ko:[], pr:[]}}, …}` – osobny dokument na dzień.
-  - Firebase: `folders/{fid}/diet/{RRRR-MM-DD}`; localStorage: `lsKey('dietDays')` (cały obiekt).
+  - Firebase: `folders/{fid}/diet/{RRRR-MM-DD}` w formacie `{date, e:{[id wpisu]:{…wpis, m:'sn'|'ob'|'ko'|'pr'}}}`,
+    zapis `setDoc(…, {merge:true})` tylko zmienionych wpisów (usunięcie: `deleteField()`), więc zapis nigdy nie nadpisuje
+    wpisów z innych urządzeń ani dni spoza wczytanych 60 (poprawka po przeglądzie części 1). `normalizeDay` czyta też
+    stary format `{meals}`; taki dzień przy pierwszym zapisie przechodzi na nowy (`DAY_OLD`). Reguła odczytu `diet/{day}`
+    bez warunku na id (inaczej zapytanie o listę dni jest odrzucane).
+  - localStorage: `lsKey('dietDays')` (cały obiekt, format `{meals}`).
   - Klucz daty: istniejąca funkcja `dayKey(d)`.
-- Wpis w posiłku: `{id:uid(), pid:id produktu|null, n:nazwa, g:gramy|null, k, b, w, t}`
+- Wpis w posiłku: `{id:uid(), pid:id produktu|null, n:nazwa, g:gramy|null, k, b, w, t, o:kolejność (czas dodania)}`
   (makro już przeliczone na zjedzoną ilość, zaokrąglone do 0,1; `pid:null` = szybki wpis samych liczb).
 - Produkt w `mine`: `{id, n, brand:'', u, k, b, w, t, f, pg, po, src:'gen'|'own'|'scan', ean:'', star:false, uses:0, last:0}`.
   Produkt z bazy ogólnej trafia do `mine` z tym samym `id` i `src:'gen'`; własny dostaje `id:'o-'+uid()`.
@@ -56,6 +61,7 @@ Dieta **nie** wchodzi do `S` (dokument `state` jest zapisywany w całości przy 
 - `firestore.rules`: w `match /data/{docId}` dopuść `docId in ['state', 'diet']`; dodaj
   `match /diet/{day} { allow read, write: if isMember(fid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }`.
   Reguły wgrywa sam workflow `.github/workflows/rules.yml` po pushu zmian w `firestore.rules`.
+- `DIET` zapisuje się w całości, dlatego zmiany produktów i celów czekają, aż dokument przyjdzie z bazy (`dietLoaded`, `dietCanEdit`).
 - Kopia zapasowa (`exportCopy` / `importAsk`, segment 5): dołącz `diet` i `dietDays`, zachowując zgodność
   ze starymi kopiami (brak pól = pusta dieta).
 

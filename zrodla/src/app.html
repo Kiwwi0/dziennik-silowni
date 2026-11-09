@@ -2812,7 +2812,14 @@ const ACT = {
       const have = new Set(SESS.map(s => s.id));
       for (const s of sortSess((d.sessions || []).filter(s => s && s.id && !have.has(s.id)))) await saveSession(s);
       if (d.diet){ DIET = normalizeDiet(d.diet); persistDiet(); }   // stare kopie nie mają diety: wtedy zostaje obecna
-      if (d.dietDays && typeof d.dietDays === 'object'){ const inc = normalizeDays(d.dietDays); for (const k of Object.keys(inc)) if (!DAYS[k]){ DAYS[k] = inc[k]; persistDay(k); } }
+      if (d.dietDays && typeof d.dietDays === 'object'){   // dni scalane po wpisach: brakujące dochodzą, istniejące zostają
+        const inc = normalizeDays(d.dietDays);
+        for (const k of Object.keys(inc)){
+          const day = dayW(k), have = new Set(MEALS.flatMap(([m]) => day.meals[m].map(x => x.id))), add = [];
+          for (const [m] of MEALS) for (const x of inc[k].meals[m]) if (!have.has(x.id)){ day.meals[m].push(x); add.push(x.id); }
+          if (add.length){ for (const [m] of MEALS) day.meals[m].sort((a, b) => a.o - b.o); persistDay(k, add); }
+        }
+      }
       sheets.length = 0; renderSheet(); render(); toast('Przywrócono dane.');
     }, false);
   },
@@ -3050,14 +3057,23 @@ function normalizeDiet(d){
   for (const p of Array.isArray(d && d.mine) ? d.mine : []){ const c = cleanProd(p); if (c && !seen.has(c.id)){ seen.add(c.id); mine.push(c); } }
   return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, v:1};
 }
-function cleanEntry(e){
+// o = kolejność w posiłku (czas dodania); id służy jako klucz pola w bazie, więc tylko bezpieczne znaki
+function cleanEntry(e, i = 0){
   if (!e || typeof e !== 'object') return null;
-  return {id:String(e.id || uid()), pid:e.pid ? String(e.pid) : null, n:String(e.n || 'Szybki wpis').slice(0, 80), g:e.g > 0 ? r1(clampN(e.g, 0, DLIM.qty)) : null,
-    k:r1(clampN(e.k, 0, 1e5)), b:r1(clampN(e.b, 0, 1e5)), w:r1(clampN(e.w, 0, 1e5)), t:r1(clampN(e.t, 0, 1e5))};
+  const id = String(e.id || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 40) || uid();
+  return {id, pid:e.pid ? String(e.pid).slice(0, 60) : null, n:String(e.n || 'Szybki wpis').slice(0, 80), g:e.g > 0 ? r1(clampN(e.g, 0, DLIM.qty)) : null,
+    k:r1(clampN(e.k, 0, 1e5)), b:r1(clampN(e.b, 0, 1e5)), w:r1(clampN(e.w, 0, 1e5)), t:r1(clampN(e.t, 0, 1e5)), o:Number.isFinite(+e.o) ? +e.o : i};
 }
+// Dzień w pamięci: {meals:{sn:[…], …}}. W bazie: {date, e:{[id]:{…wpis, m:posiłek}}} – każdy wpis to osobne pole,
+// więc zapis scala wpisy i nie nadpisze tych, których to urządzenie nie wczytało. Czytamy też stary format {meals}.
 function normalizeDay(d){
-  const meals = {}, m = d && typeof d === 'object' && d.meals && typeof d.meals === 'object' ? d.meals : {};
-  for (const [id] of MEALS) meals[id] = Array.isArray(m[id]) ? m[id].map(cleanEntry).filter(Boolean) : [];
+  const meals = {sn:[], ob:[], ko:[], pr:[]}, seen = new Set();
+  if (!d || typeof d !== 'object') return {meals};
+  const add = (m, x, i) => { const c = cleanEntry(x, i); if (c && !seen.has(c.id)){ seen.add(c.id); meals[m].push(c); } };
+  const old = d.meals && typeof d.meals === 'object' ? d.meals : {};
+  for (const [m] of MEALS) if (Array.isArray(old[m])) old[m].forEach((x, i) => add(m, x, i));
+  if (d.e && typeof d.e === 'object') for (const [id, x] of Object.entries(d.e)) if (x && typeof x === 'object' && MEALS.some(([m]) => m === x.m)) add(x.m, {...x, id}, 0);
+  for (const [m] of MEALS) meals[m].sort((a, b) => a.o - b.o);
   return {meals};
 }
 function normalizeDays(o){ const out = {}; if (o && typeof o === 'object') for (const k of Object.keys(o)) if (dayKeyOk(k)) out[k] = normalizeDay(o[k]); return out; }
@@ -3065,6 +3081,8 @@ function normalizeDays(o){ const out = {}; if (o && typeof o === 'object') for (
 let DIET = normalizeDiet(lsKey('diet') ? LS.get(lsKey('diet'), null) : null);
 let DAYS = normalizeDays(lsKey('dietDays') ? LS.get(lsKey('dietDays'), {}) : {});
 let unsubDiet = null, unsubDays = null, dietDirty = false, dietT = null;
+let dietLoaded = false;          // dokument data/diet przyszedł już z bazy (albo z jej pamięci na tym urządzeniu)
+const DAY_OLD = new Set();       // dni zapisane w bazie starym formatem {meals} – przy najbliższym zapisie przechodzą na nowy
 const dayOf = k => DAYS[k] || blankDay();
 const dayW = k => DAYS[k] || (DAYS[k] = blankDay());
 
@@ -3079,18 +3097,34 @@ function flushDiet(){
   dietDirty = false;
   FB.setDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'diet'), clone(DIET)).catch(() => toast('Nie udało się zapisać diety w bazie.'));
 }
-function persistDay(k){
+// put = id wpisów dodanych/zmienionych, del = id usuniętych. Zapis scala (merge), więc wpisy z innych urządzeń
+// i dni spoza wczytanych 60 dni zostają nienaruszone.
+function persistDay(k, put = [], del = []){
   const lk = lsKey('dietDays'); if (lk) LS.set(lk, DAYS);
-  if (fireOn()) FB.setDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'diet', k), {date:k, meals:clone(dayOf(k).meals)}).catch(() => toast('Nie udało się zapisać dnia w bazie.'));
+  if (!fireOn()) return;
+  const old = DAY_OLD.has(k), e = {};
+  for (const [m] of MEALS) for (const x of dayOf(k).meals[m]) if (old || put.includes(x.id)) e[x.id] = {...clone(x), m};
+  for (const id of del) e[id] = FB.deleteField();
+  const data = {date:k, e};
+  if (old){ data.meals = FB.deleteField(); DAY_OLD.delete(k); }
+  FB.setDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'diet', k), data, {merge:true}).catch(() => toast('Nie udało się zapisać dnia w bazie.'));
+}
+// zmiany w „Moich produktach” i celach zapisują cały dokument, więc najpierw musi przyjść jego wersja z bazy
+// (inaczej na nowym urządzeniu pusta lista nadpisałaby zapisane produkty i cele)
+function dietCanEdit(){
+  if (!fireOn() || dietLoaded) return true;
+  toast('Chwila, wczytuję dietę z bazy…'); return false;
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDiet(); });
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
-function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; DIET = normalizeDiet(null); DAYS = {}; ui.dietDay = null; }
+function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); DIET = normalizeDiet(null); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
-  dietUnwatch(); dietDirty = false; clearTimeout(dietT);
+  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT);
   DIET = normalizeDiet(LS.get(lsKey('diet'), null)); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
   unsubDiet = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'diet'), snap => {
-    if (!FOLDER || FOLDER.id !== fid || !snap.exists() || dietDirty) return;
+    if (!FOLDER || FOLDER.id !== fid) return;
+    if (snap.exists() || !snap.metadata.fromCache) dietLoaded = true;
+    if (!snap.exists() || dietDirty) return;
     const inc = normalizeDiet(snap.data());
     if (JSON.stringify(inc) !== JSON.stringify(DIET)){ DIET = inc; LS.set(lsKey('diet'), DIET); dietRefresh(); }
   }, () => {});
@@ -3101,14 +3135,15 @@ function dietOpen(fid){
     for (const c of snap.docChanges()){
       const k = c.doc.id; if (!dayKeyOk(k)) continue;
       if (c.type === 'removed'){ if (DAYS[k]){ delete DAYS[k]; ch = true; } continue; }
-      const inc = normalizeDay(c.doc.data());
+      const raw = c.doc.data() || {}; if (raw.meals) DAY_OLD.add(k); else DAY_OLD.delete(k);
+      const inc = normalizeDay(raw);
       if (JSON.stringify(inc) !== JSON.stringify(DAYS[k])){ DAYS[k] = inc; ch = true; }
     }
     if (ch){ LS.set(lsKey('dietDays'), DAYS); dietRefresh(); }
   }, () => {});
 }
-// dane przyszły z bazy: odśwież widok diety, o ile nie przeszkadza otwarty arkusz
-function dietRefresh(){ if (ui.tab === 'dieta' && !sheets.length) render(); }
+// dane przyszły z bazy: odśwież widok diety (arkusze rysują się osobno, więc otwarty arkusz zostaje bez zmian)
+function dietRefresh(){ if (ui.tab === 'dieta') render(); }
 
 /* ---------- produkty i przeliczanie ---------- */
 const prodOf = id => DIET.mine.find(p => p.id === id) || (FOODMAP.has(id) ? {...FOODMAP.get(id), brand:'', src:'gen', ean:'', star:false, uses:0, last:0} : null);
@@ -3255,26 +3290,27 @@ function prodWarn(){
 }
 
 /* ---------- akcje ---------- */
-const openDietQty = (o) => openSheet({type:'dietQty', meal:'sn', pid:null, entry:null, entryId:null, g:null, ...o});
+const openDietQty = (o) => openSheet({type:'dietQty', meal:'sn', pid:null, entry:null, entryId:null, g:null, day:dietKey(), ...o});
+const sDay = s => (s && s.day) || dietKey();   // dzień, na którym otwarto arkusz
 Object.assign(ACT, {
   dietDay(el){ const k = shiftKey(dietKey(), +el.dataset.d); if (k > dietToday() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
   dietToday(){ if (ui.dietDay){ ui.dietDay = null; render(); } },
-  dietAdd(el){ openSheet({type:'dietAdd', meal:el.dataset.meal, q:''}); },
+  dietAdd(el){ openSheet({type:'dietAdd', meal:el.dataset.meal, q:'', day:dietKey()}); },
   dietPick(el){
     const s = topSheet(), p = prodOf(el.dataset.id); if (!p) return;
-    openDietQty({meal:s.meal, pid:p.id, g:p.pg || 100});
+    openDietQty({meal:s.meal, pid:p.id, g:p.pg || 100, day:sDay(s)});
   },
-  dietQuick(el){ openSheet({type:'dietQuick', meal:el.dataset.meal, entryId:null, f:{n:'', k:'', b:'', w:'', t:''}}); },
-  dietNewProd(el){ openSheet({type:'dietProd', id:null, meal:el.dataset.meal, f:{n:topSheet().q || '', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''}}); },
+  dietQuick(el){ openSheet({type:'dietQuick', meal:el.dataset.meal, day:sDay(topSheet()), entryId:null, f:{n:'', k:'', b:'', w:'', t:''}}); },
+  dietNewProd(el){ openSheet({type:'dietProd', id:null, meal:el.dataset.meal, day:sDay(topSheet()), f:{n:topSheet().q || '', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''}}); },
   dietEntry(el){
     const key = dietKey(), r = findEntry(key, el.dataset.id); if (!r) return;
-    if (!r.e.pid || !(r.e.g > 0)){ const e = r.e; openSheet({type:'dietQuick', meal:r.m, entryId:e.id, f:{n:e.n === 'Szybki wpis' ? '' : e.n, k:fmtN(e.k), b:fmtN(e.b), w:fmtN(e.w), t:fmtN(e.t)}}); return; }
-    openDietQty({meal:r.m, pid:r.e.pid, entry:clone(r.e), entryId:r.e.id, g:r.e.g});
+    if (!r.e.pid || !(r.e.g > 0)){ const e = r.e; openSheet({type:'dietQuick', meal:r.m, day:key, entryId:e.id, f:{n:e.n === 'Szybki wpis' ? '' : e.n, k:fmtN(e.k), b:fmtN(e.b), w:fmtN(e.w), t:fmtN(e.t)}}); return; }
+    openDietQty({meal:r.m, pid:r.e.pid, entry:clone(r.e), entryId:r.e.id, g:r.e.g, day:key});
   },
   dqPortion(){ const s = topSheet(); s.g = s.base.pg; const i = $('#dq-g'); if (i) i.value = fmtN(s.g); qtyOut(s); },
   dqMeal(el){ const s = topSheet(); s.meal = el.dataset.meal; $$('[data-act="dqMeal"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.meal === s.meal))); },
   dqStar(){
-    const s = topSheet(), p = prodOf(s.pid); if (!p) return;
+    const s = topSheet(), p = prodOf(s.pid); if (!p || !dietCanEdit()) return;
     const m = ensureMine(p); m.star = !m.star; persistDiet(); renderSheet();
   },
   dqEditProd(){
@@ -3282,27 +3318,27 @@ Object.assign(ACT, {
     openSheet({type:'dietProd', id:p.id, f:{n:p.n, brand:p.brand, u:p.u, k:fmtN(p.k), b:fmtN(p.b), w:fmtN(p.w), t:fmtN(p.t), f:fmtN(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}});
   },
   dqSave(){
-    const s = topSheet(), g = s.g, key = dietKey();
+    const s = topSheet(), g = s.g, key = sDay(s);
     if (!(g >= 1 && g <= DLIM.qty)){ toast('Podaj ilość od 1 do 5000.'); return; }
     const m = qtyMacro(s);
     if (s.entry){
       const r = findEntry(key, s.entryId); if (!r){ toast('Tego wpisu już nie ma.'); sheets.length = 0; renderSheet(); render(); return; }
       Object.assign(r.e, {g:r1(g), ...m});
-      if (r.m !== s.meal){ const from = dayW(key).meals[r.m]; from.splice(from.findIndex(x => x.id === r.e.id), 1); dayW(key).meals[s.meal].push(r.e); }
-      persistDay(key); sheets.length = 0; renderSheet(); render(); toast('Zapisano zmiany.'); return;
+      if (r.m !== s.meal){ const from = dayW(key).meals[r.m]; from.splice(from.findIndex(x => x.id === r.e.id), 1); r.e.o = Date.now(); dayW(key).meals[s.meal].push(r.e); }
+      persistDay(key, [r.e.id]); sheets.length = 0; renderSheet(); render(); toast('Zapisano zmiany.'); return;
     }
-    const p = prodOf(s.pid); if (!p) return;
+    const p = prodOf(s.pid); if (!p || !dietCanEdit()) return;
     const mine = ensureMine(p); mine.uses++; mine.last = Date.now(); persistDiet();
-    dayW(key).meals[s.meal].push({id:uid(), pid:p.id, n:p.n, g:r1(g), ...m});
-    persistDay(key); sheets.length = 0; renderSheet(); render(); toast('Dodano: ' + p.n);
+    const id = uid(); dayW(key).meals[s.meal].push({id, pid:p.id, n:p.n, g:r1(g), ...m, o:Date.now()});
+    persistDay(key, [id]); sheets.length = 0; renderSheet(); render(); toast('Dodano: ' + p.n);
   },
   dqDelete(){
-    const s = topSheet(), key = dietKey(), r = findEntry(key, s.entryId); if (!r) return;
+    const s = topSheet(), key = sDay(s), r = findEntry(key, s.entryId); if (!r) return;
     dayW(key).meals[r.m] = dayW(key).meals[r.m].filter(x => x.id !== r.e.id);
-    persistDay(key); sheets.length = 0; renderSheet(); render(); toast('Usunięto wpis.');
+    persistDay(key, [], [r.e.id]); sheets.length = 0; renderSheet(); render(); toast('Usunięto wpis.');
   },
   dkSave(){
-    const s = topSheet(), f = s.f, key = dietKey();
+    const s = topSheet(), f = s.f, key = sDay(s);
     const v = {k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t)};
     const bad = (x, hi) => x != null && (x < 0 || x > hi);
     let err = '';
@@ -3311,19 +3347,21 @@ Object.assign(ACT, {
     if (err){ s.err = err; renderSheet(); return; }
     const e0 = {b:v.b || 0, w:v.w || 0, t:v.t || 0}, k = v.k != null ? v.k : 4 * e0.b + 4 * e0.w + 9 * e0.t;
     const ent = {pid:null, n:f.n.trim() || 'Szybki wpis', g:null, k:r1(k), b:r1(e0.b), w:r1(e0.w), t:r1(e0.t)};
-    if (s.entryId){
-      const r = findEntry(key, s.entryId); if (r) Object.assign(r.e, ent);
-    } else dayW(key).meals[s.meal].push({id:uid(), ...ent});
-    persistDay(key); sheets.length = 0; renderSheet(); render(); toast(s.entryId ? 'Zapisano zmiany.' : 'Dodano wpis.');
+    let id = s.entryId;
+    if (id){
+      const r = findEntry(key, id); if (!r){ toast('Tego wpisu już nie ma.'); sheets.length = 0; renderSheet(); render(); return; }
+      Object.assign(r.e, ent);
+    } else { id = uid(); dayW(key).meals[s.meal].push({id, ...ent, o:Date.now()}); }
+    persistDay(key, [id]); sheets.length = 0; renderSheet(); render(); toast(s.entryId ? 'Zapisano zmiany.' : 'Dodano wpis.');
   },
   dkDelete(){
-    const s = topSheet(), key = dietKey(), r = findEntry(key, s.entryId); if (!r) return;
+    const s = topSheet(), key = sDay(s), r = findEntry(key, s.entryId); if (!r) return;
     dayW(key).meals[r.m] = dayW(key).meals[r.m].filter(x => x.id !== r.e.id);
-    persistDay(key); sheets.length = 0; renderSheet(); render(); toast('Usunięto wpis.');
+    persistDay(key, [], [r.e.id]); sheets.length = 0; renderSheet(); render(); toast('Usunięto wpis.');
   },
   dpUnit(el){ const s = topSheet(); s.f.u = el.dataset.u; $$('[data-act="dpUnit"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.u === s.f.u))); },
   dpSave(){
-    const s = topSheet(), f = s.f;
+    const s = topSheet(), f = s.f; if (!dietCanEdit()) return;
     const v = {n:f.n.trim(), k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t), f:num(f.f), pg:num(f.pg)};
     let err = '';
     if (!v.n) err = 'Podaj nazwę produktu.';
@@ -3339,18 +3377,18 @@ Object.assign(ACT, {
     const i = DIET.mine.findIndex(x => x.id === rec.id);
     if (i >= 0) DIET.mine[i] = rec; else DIET.mine.push(rec);
     persistDiet();
-    if (s.meal && !s.id){ sheets.pop(); openDietQty({meal:s.meal, pid:rec.id, g:rec.pg || 100}); toast('Zapisano produkt.'); }
+    if (s.meal && !s.id){ sheets.pop(); openDietQty({meal:s.meal, pid:rec.id, g:rec.pg || 100, day:sDay(s)}); toast('Zapisano produkt.'); }
     else { sheets.pop(); renderSheet(); render(); toast('Zapisano produkt.'); }
   },
   dpDelete(){
-    const s = topSheet(), id = s.id, p = DIET.mine.find(x => x.id === id); if (!p) return;
+    const s = topSheet(), id = s.id, p = DIET.mine.find(x => x.id === id); if (!p || !dietCanEdit()) return;
     confirmBox('Usunąć z moich produktów?', `„${p.n}” zniknie z listy. Wpisy w dziennikach zostają.`, 'Usuń', () => {
       DIET.mine = DIET.mine.filter(x => x.id !== id); persistDiet(); sheets.length = 0; renderSheet(); render(); toast('Usunięto produkt.');
     });
   },
   dietGoals(){ const G = DIET.goals; openSheet({type:'dietGoals', f:{k:G.k ? fmtN(G.k) : '', b:G.b ? fmtN(G.b) : '', w:G.w ? fmtN(G.w) : '', t:G.t ? fmtN(G.t) : ''}}); goalsHint(); },
   dgSave(){
-    const s = topSheet(), f = s.f, v = {k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t)};
+    const s = topSheet(), f = s.f, v = {k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t)}; if (!dietCanEdit()) return;
     if (v.k != null && (v.k < 0 || v.k > DLIM.gk)){ s.err = `Kalorie: od 0 do ${DLIM.gk}.`; renderSheet(); goalsHint(); return; }
     if ([v.b, v.w, v.t].some(x => x != null && (x < 0 || x > DLIM.gmac))){ s.err = `Makro: od 0 do ${DLIM.gmac} g.`; renderSheet(); goalsHint(); return; }
     const g = x => x != null && x > 0 ? r1(x) : null;
