@@ -1,36 +1,33 @@
 id;nazwa;kategoria;jednostka;kcal;bialko;wegle;tluszcz;blonnik;porcja_g;porcja_opis
-piers-z-kurczaka-surowa;Pierś z kurczaka (surowa);mieso;g;99;21.5;0.0;1.3;0.0;;
-piers-z-kurczaka-gotowana;Pierś z kurczaka (gotowana);mieso;g;151;30.0;0.0;3.0;0.0;;
-piers-z-indyka-surowa;Pierś z indyka (surowa);mieso;g;84;19.2;0.0;0.7;0.0;;
-mieso-mielone-z-indyka-surowe;Mięso mielone z indyka (surowe);mieso;g;143;18.0;0.0;8.0;0.0;;
-mieso-z-ud-kurczaka-bez-skory-surowe;Mięso z ud kurczaka bez skóry (surowe);mieso;g;119;19.0;0.0;4.5;0.0;;
-poledwiczka-wieprzowa-surowa;Polędwiczka wieprzowa (surowa);mieso;g;120;21.0;0.0;4.0;0.0;;
-schab-wieprzowy-bez-kosci-surowy;Schab wieprzowy bez kości (surowy);mieso;g;152;22.0;0.0;7.0;0.0;;
-lopatka-wieprzowa-surowa;Łopatka wieprzowa (surowa);mieso;g;259;16.0;0.0;21.0;0.0;;
-boczek-wieprzowy-surowy;Boczek wieprzowy (surowy);mieso;g;321;14.0;0.0;29.0;0.0;;
-mieso-mielone-wolowe-chude-surowe;Mięso mielone wołowe chude (surowe);mieso;g;137;21.0;0.0;5.5;0.0;;
-poledwica-wolowa-surowa;Polędwica wołowa (surowa);mieso;g;113;20.0;0.0;3.5;0.0;;
-karkowka-wieprzowa-surowa;Karkówka wieprzowa (surowa);mieso;g;267;16.0;0.0;23.0;0.0;;
+piers-z-kurczaka-surowa;Pierś z kurczaka (przed gotowaniem);mieso;g;99;21.5;0.0;1.3;0.0;;
+piers-z-kurczaka-gotowana;Pierś z kurczaka (po obróbce);mieso;g;153;30.5;0.0;3.3;0.0;150;1 porcja
+piers-z-indyka-surowa;Pierś z indyka (przed gotowaniem);mieso;g;84;19.2;0.0;0.7;0.0;;
+mieso-mielone-z-indyka-surowe;Mięso mielone z indyka (przed gotowaniem);mieso;g;143;18.0;0.0;8.0;0.0;;
+mieso-z-ud-kurczaka-bez-skory-surowe;Mięso z ud kurczaka bez skóry (przed gotowaniem);mieso;g;119;19.0;0.0;4.5;0.0;;
+poledwiczka-wieprzowa-surowa;Polędwiczka wieprzowa (przed gotowaniem);mieso;g;120;21.0;0.0;4.0;0.0;;
+schab-wieprzowy-bez-kosci-surowy;Schab wieprzowy bez kości (przed gotowaniem);mieso;g;152;22.0;0.0;7.0;0.0;;
+lopatka-wieprzowa-surowa;Łopatka wieprzowa (przed gotowaniem);mieso;g;259;16.0;0.0;21.0;0.0;;
+boczek-wieprzowy-surowy;Boczek wieprzowy (przed gotowaniem);mieso;g;321;14.0;0.0;29.0;0.0;;
+mieso-mielone-wolowe-chude-surowe;Mięso mielone wołowe chude (przed gotowaniem);mieso;g;137;21.0;0.0;5.5;0.0;;
+poledwica-wolowa-surowa;Polędwica wołowa (przed gotowaniem);mieso;g;113;20.0;0.0;3.5;0.0;;
+karkowka-wieprzowa-surowa;Karkówka wieprzowa (przed gotowaniem);mieso;g;267;16.0;0.0;23.0;0.0;;
 parowki-z-szynki;Parówki z szynki;mieso;g;252;14.0;2.0;21.0;0.0;40;1 parówka
 szynka-z-piersi-kurczaka;Szynka z piersi kurczaka;mieso;g;88;17.0;2.0;1.5;0.0;15;1 plaster
 kabanosy-wieprzowe;Kabanosy wieprzowe;mieso;g;481;27.0;2.5;40.0;0.0;;
-losos-swiezy-surowy;Łosoś świeży (surowy);ryby;g;201;20.0;0.0;13.0;0.0;;
+losos-swiezy-surowy;Łosoś świeży (przed gotowaniem);ryby;g;201;20.0;0.0;13.0;0.0;;
 losos-wedzony-na-zimno;Łosoś wędzony na zimno;ryby;g;162;21.0;0.0;8.5;0.0;100;1 opakowanie
-dorsz-surowy;Dorsz (surowy);ryby;g;77;17.0;0.0;0.7;0.0;;
-pstrag-teczowy-surowy;Pstrąg tęczowy (surowy);ryby;g;119;19.0;0.0;4.5;0.0;;
+dorsz-surowy;Dorsz (przed gotowaniem);ryby;g;77;17.0;0.0;0.7;0.0;;
+pstrag-teczowy-surowy;Pstrąg tęczowy (przed gotowaniem);ryby;g;119;19.0;0.0;4.5;0.0;;
 tunczyk-w-sosie-wlasnym-odsaczony;Tuńczyk w sosie własnym (odsączony);ryby;g;96;21.0;0.0;1.0;0.0;130;1 puszka
 tunczyk-w-oleju-odsaczony;Tuńczyk w oleju (odsączony);ryby;g;165;24.0;0.0;7.5;0.0;130;1 puszka
 makrela-wedzona;Makrela wędzona;ryby;g;278;19.0;0.0;22.5;0.0;;
 sledz-solony-matias;Śledź solony (matias);ryby;g;217;16.0;0.0;17.0;0.0;100;1 filet
-mintaj-surowy;Mintaj (surowy);ryby;g;72;16.0;0.0;0.5;0.0;;
-krewetki-surowe;Krewetki (surowe);ryby;g;71;15.5;0.5;0.5;0.0;;
-jajo-kurze-cale-surowe;Jajo kurze całe (surowe);jaja;g;143;12.5;0.6;9.7;0.0;50;1 jajko M
-jajo-kurze-cale-gotowane;Jajo kurze całe (gotowane);jaja;g;155;12.6;1.1;10.6;0.0;50;1 jajko M gotowane
-bialko-jaja-kurzego-surowe;Białko jaja kurzego (surowe);jaja;g;48;10.9;0.7;0.2;0.0;35;białko z 1 jaja M
-zoltko-jaja-kurzego-surowe;Żółtko jaja kurzego (surowe);jaja;g;322;15.9;3.6;26.5;0.0;16;żółtko z 1 jaja M
+mintaj-surowy;Mintaj (przed gotowaniem);ryby;g;72;16.0;0.0;0.5;0.0;;
+krewetki-surowe;Krewetki (przed gotowaniem);ryby;g;71;15.5;0.5;0.5;0.0;;
+jajo-kurze-cale-surowe;Jajko kurze;jaja;g;143;12.5;0.6;9.7;0.0;50;1 jajko M
 mleko-krowie-2;Mleko krowie 2%;nabial;ml;50;3.3;4.8;2.0;0.0;250;1 szklanka
 mleko-krowie-3-2;Mleko krowie 3.2%;nabial;ml;61;3.2;4.7;3.2;0.0;250;1 szklanka
-napoj-owsiany;Napój owsiany;nabial;ml;42;0.3;6.5;1.5;0.8;250;1 szklanka
+napoj-owsiany;Napój owsiany;napoje;ml;42;0.3;6.5;1.5;0.8;250;1 szklanka
 twarog-poltlusty;Twaróg półtłusty;nabial;g;133;18.7;3.7;4.7;0.0;250;1 kostka
 twarog-chudy;Twaróg chudy;nabial;g;99;19.8;3.5;0.6;0.0;250;1 kostka
 ser-gouda;Ser gouda;nabial;g;356;24.9;0.1;28.4;0.0;15;1 plaster
@@ -45,30 +42,30 @@ kefir-2;Kefir 2%;nabial;ml;51;3.4;4.7;2.0;0.0;250;1 szklanka
 maslo-ekstra-82;Masło ekstra 82%;nabial;g;748;0.7;0.7;82.5;0.0;10;1 łyżeczka
 smietana-18;Śmietana 18%;nabial;g;193;2.5;3.6;18.0;0.0;20;1 łyżka
 serek-homogenizowany-naturalny;Serek homogenizowany naturalny;nabial;g;104;7.0;4.5;6.5;0.0;;
-napoj-sojowy-bez-cukru;Napój sojowy bez cukru;nabial;ml;33;3.3;0.3;1.8;0.6;250;1 szklanka
+napoj-sojowy-bez-cukru;Napój sojowy bez cukru;napoje;ml;33;3.3;0.3;1.8;0.6;250;1 szklanka
 ser-camembert;Ser camembert;nabial;g;290;21.0;0.2;23.0;0.0;120;1 krążek
 serek-mascarpone;Serek mascarpone;nabial;g;394;4.8;3.0;40.0;0.0;;
-ryz-bialy-suchy;Ryż biały (suchy);zbozowe;g;349;6.7;78.9;0.7;2.4;50;0.5 torebki
-ryz-bialy-gotowany;Ryż biały (gotowany);zbozowe;g;130;2.7;28.0;0.3;0.4;;
-ryz-basmati-suchy;Ryż basmati (suchy);zbozowe;g;348;8.5;75.0;1.0;1.5;50;0.5 torebki
-ryz-basmati-gotowany;Ryż basmati (gotowany);zbozowe;g;121;3.5;25.0;0.4;0.5;;
-ryz-brazowy-suchy;Ryż brązowy (suchy);zbozowe;g;354;7.1;73.4;1.9;8.7;50;0.5 torebki
-ryz-brazowy-gotowany;Ryż brązowy (gotowany);zbozowe;g;112;2.3;23.5;0.8;1.8;;
-kasza-gryczana-palona-sucha;Kasza gryczana palona (sucha);zbozowe;g;346;11.7;69.3;2.7;5.9;50;0.5 torebki
-kasza-gryczana-palona-gotowana;Kasza gryczana palona (gotowana);zbozowe;g;119;3.8;23.0;0.9;1.7;;
-kasza-jaglana-sucha;Kasza jaglana (sucha);zbozowe;g;346;10.5;68.4;2.9;3.2;50;0.5 torebki
-kasza-jaglana-gotowana;Kasza jaglana (gotowana);zbozowe;g;119;3.5;23.7;1.0;1.3;;
-kasza-bulgur-sucha;Kasza bulgur (sucha);zbozowe;g;342;12.3;69.0;1.3;12.5;50;0.5 torebki
-kasza-bulgur-gotowana;Kasza bulgur (gotowana);zbozowe;g;83;3.1;18.6;0.2;4.5;;
-makaron-pszenny-jasny-suchy;Makaron pszenny jasny (suchy);zbozowe;g;360;12.0;73.0;1.5;2.5;50;1 porcja
-makaron-pszenny-jasny-gotowany;Makaron pszenny jasny (gotowany);zbozowe;g;131;4.0;26.0;0.5;1.0;;
-makaron-pelnoziarnisty-suchy;Makaron pełnoziarnisty (suchy);zbozowe;g;348;14.0;65.0;2.5;8.0;50;1 porcja
-makaron-pelnoziarnisty-gotowany;Makaron pełnoziarnisty (gotowany);zbozowe;g;124;5.0;23.0;0.9;2.8;;
-platki-owsiane-gorskie-surowe;Płatki owsiane górskie (surowe);zbozowe;g;379;13.2;60.0;7.0;9.7;50;1 porcja
-platki-owsiane-gorskie-gotowane-na-wodzie;Płatki owsiane górskie (gotowane na wodzie);zbozowe;g;71;2.5;11.0;1.3;1.7;;
-platki-jaglane-surowe;Płatki jaglane (surowe);zbozowe;g;363;12.3;69.0;3.0;3.5;50;1 porcja
-platki-kukurydziane-surowe;Płatki kukurydziane (surowe);zbozowe;g;372;7.5;80.0;1.0;3.0;30;1 porcja
-platki-zytnie-surowe;Płatki żytnie (surowe);zbozowe;g;335;10.0;62.0;2.0;11.5;50;1 porcja
+ryz-bialy-suchy;Ryż biały (przed gotowaniem);zbozowe;g;349;6.7;78.9;0.7;2.4;50;0.5 torebki
+ryz-bialy-gotowany;Ryż biały (po ugotowaniu);zbozowe;g;130;2.7;28.0;0.3;0.4;;
+ryz-basmati-suchy;Ryż basmati (przed gotowaniem);zbozowe;g;348;8.5;75.0;1.0;1.5;50;0.5 torebki
+ryz-basmati-gotowany;Ryż basmati (po ugotowaniu);zbozowe;g;121;3.5;25.0;0.4;0.5;;
+ryz-brazowy-suchy;Ryż brązowy (przed gotowaniem);zbozowe;g;354;7.1;73.4;1.9;8.7;50;0.5 torebki
+ryz-brazowy-gotowany;Ryż brązowy (po ugotowaniu);zbozowe;g;112;2.3;23.5;0.8;1.8;;
+kasza-gryczana-palona-sucha;Kasza gryczana palona (przed gotowaniem);zbozowe;g;346;11.7;69.3;2.7;5.9;50;0.5 torebki
+kasza-gryczana-palona-gotowana;Kasza gryczana palona (po ugotowaniu);zbozowe;g;119;3.8;23.0;0.9;1.7;;
+kasza-jaglana-sucha;Kasza jaglana (przed gotowaniem);zbozowe;g;346;10.5;68.4;2.9;3.2;50;0.5 torebki
+kasza-jaglana-gotowana;Kasza jaglana (po ugotowaniu);zbozowe;g;119;3.5;23.7;1.0;1.3;;
+kasza-bulgur-sucha;Kasza bulgur (przed gotowaniem);zbozowe;g;342;12.3;69.0;1.3;12.5;50;0.5 torebki
+kasza-bulgur-gotowana;Kasza bulgur (po ugotowaniu);zbozowe;g;83;3.1;18.6;0.2;4.5;;
+makaron-pszenny-jasny-suchy;Makaron pszenny jasny (przed gotowaniem);zbozowe;g;360;12.0;73.0;1.5;2.5;50;1 porcja
+makaron-pszenny-jasny-gotowany;Makaron pszenny jasny (po ugotowaniu);zbozowe;g;131;4.0;26.0;0.5;1.0;;
+makaron-pelnoziarnisty-suchy;Makaron pełnoziarnisty (przed gotowaniem);zbozowe;g;348;14.0;65.0;2.5;8.0;50;1 porcja
+makaron-pelnoziarnisty-gotowany;Makaron pełnoziarnisty (po ugotowaniu);zbozowe;g;124;5.0;23.0;0.9;2.8;;
+platki-owsiane-gorskie-surowe;Płatki owsiane górskie;zbozowe;g;379;13.2;60.0;7.0;9.7;50;1 porcja
+platki-owsiane-gorskie-gotowane-na-wodzie;Owsianka na wodzie;zbozowe;g;71;2.5;11.0;1.3;1.7;;
+platki-jaglane-surowe;Płatki jaglane;zbozowe;g;363;12.3;69.0;3.0;3.5;50;1 porcja
+platki-kukurydziane-surowe;Płatki kukurydziane;zbozowe;g;372;7.5;80.0;1.0;3.0;30;1 porcja
+platki-zytnie-surowe;Płatki żytnie;zbozowe;g;335;10.0;62.0;2.0;11.5;50;1 porcja
 chleb-zytni-na-zakwasie;Chleb żytni na zakwasie;zbozowe;g;225;5.9;44.0;1.7;5.9;35;1 kromka
 chleb-pszenno-zytni;Chleb pszenno-żytni;zbozowe;g;245;6.5;49.0;1.5;4.0;35;1 kromka
 chleb-tostowy-pszenny;Chleb tostowy pszenny;zbozowe;g;270;7.5;52.0;3.0;2.5;25;1 kromka
@@ -78,53 +75,42 @@ bulka-grahamka;Bułka grahamka;zbozowe;g;252;9.0;48.0;1.7;5.5;70;1 sztuka
 tortilla-pszenna;Tortilla pszenna;zbozowe;g;300;8.5;52.0;5.5;2.5;60;1 placek
 tortilla-pelnoziarnista;Tortilla pełnoziarnista;zbozowe;g;290;9.0;47.0;6.0;5.0;60;1 placek
 wafle-ryzowe;Wafle ryżowe;zbozowe;g;387;8.0;81.0;2.5;3.0;10;1 wafel
-kuskus-suchy;Kuskus (suchy);zbozowe;g;376;12.8;77.4;0.6;5.0;50;0.5 torebki
-kuskus-gotowany;Kuskus (gotowany);zbozowe;g;112;3.8;23.2;0.2;1.5;;
+kuskus-suchy;Kuskus (przed gotowaniem);zbozowe;g;376;12.8;77.4;0.6;5.0;50;0.5 torebki
+kuskus-gotowany;Kuskus (po ugotowaniu);zbozowe;g;112;3.8;23.2;0.2;1.5;;
 maka-pszenna-typ-500;Mąka pszenna typ 500;zbozowe;g;348;10.0;73.0;1.2;2.5;;
 maka-zytnia-typ-2000;Mąka żytnia typ 2000;zbozowe;g;323;11.0;58.0;2.0;13.0;;
 maka-owsiana;Mąka owsiana;zbozowe;g;404;14.7;60.0;9.1;6.5;;
-soczewica-czerwona-sucha;Soczewica czerwona (sucha);straczkowe;g;341;25.8;53.0;1.0;11.0;50;1 porcja
-soczewica-czerwona-gotowana;Soczewica czerwona (gotowana);straczkowe;g;116;9.0;18.0;0.4;4.0;;
-ciecierzyca-sucha;Ciecierzyca (sucha);straczkowe;g;364;19.0;54.0;6.0;12.0;50;1 porcja
-ciecierzyca-gotowana;Ciecierzyca (gotowana);straczkowe;g;164;8.8;27.0;2.6;7.6;;
+soczewica-czerwona-sucha;Soczewica czerwona (przed gotowaniem);straczkowe;g;341;25.8;53.0;1.0;11.0;50;1 porcja
+soczewica-czerwona-gotowana;Soczewica czerwona (po ugotowaniu);straczkowe;g;116;9.0;18.0;0.4;4.0;;
+ciecierzyca-sucha;Ciecierzyca (przed gotowaniem);straczkowe;g;364;19.0;54.0;6.0;12.0;50;1 porcja
 ciecierzyca-w-zalewie-odsaczona;Ciecierzyca w zalewie (odsączona);straczkowe;g;119;7.0;15.0;2.0;6.0;120;0.5 puszki
-fasola-czerwona-sucha;Fasola czerwona (sucha);straczkowe;g;333;23.0;55.0;1.2;15.0;50;1 porcja
-fasola-czerwona-gotowana;Fasola czerwona (gotowana);straczkowe;g;127;8.7;22.8;0.5;6.4;;
+fasola-czerwona-sucha;Fasola czerwona (przed gotowaniem);straczkowe;g;333;23.0;55.0;1.2;15.0;50;1 porcja
 fasola-czerwona-w-zalewie-odsaczona;Fasola czerwona w zalewie (odsączona);straczkowe;g;105;8.0;15.0;0.5;6.0;120;0.5 puszki
-fasola-biala-sucha;Fasola biała (sucha);straczkowe;g;333;23.0;54.0;1.5;15.0;50;1 porcja
-fasola-biala-gotowana;Fasola biała (gotowana);straczkowe;g;139;9.7;23.0;0.6;6.0;;
+fasola-biala-sucha;Fasola biała (przed gotowaniem);straczkowe;g;333;23.0;54.0;1.5;15.0;50;1 porcja
 fasola-biala-w-zalewie-odsaczona;Fasola biała w zalewie (odsączona);straczkowe;g;110;8.0;16.0;0.6;5.5;120;0.5 puszki
-groch-luskany-suchy;Groch łuskany (suchy);straczkowe;g;341;24.0;55.0;1.2;14.0;50;1 porcja
-soja-nasiona-suche;Soja nasiona (suche);straczkowe;g;446;36.0;20.0;20.0;15.0;50;1 porcja
+groch-luskany-suchy;Groch łuskany (przed gotowaniem);straczkowe;g;341;24.0;55.0;1.2;14.0;50;1 porcja
 tofu-naturalne;Tofu naturalne;straczkowe;g;125;13.0;2.0;7.0;1.0;90;0.5 kostki
 tofu-wedzone;Tofu wędzone;straczkowe;g;145;15.0;2.5;8.0;1.0;90;0.5 kostki
 edamame-fasolka-sojowa-gotowana;Edamame (fasolka sojowa gotowana);straczkowe;g;121;11.9;9.0;5.2;5.2;;
-ziemniaki-wczesne-surowe;Ziemniaki wczesne (surowe);warzywa;g;69;1.9;16.3;0.1;1.5;100;1 średni ziemniak
-ziemniaki-wczesne-gotowane;Ziemniaki wczesne (gotowane);warzywa;g;75;1.8;17.8;0.1;1.5;100;1 średni ziemniak
-ziemniaki-pozne-surowe;Ziemniaki późne (surowe);warzywa;g;79;2.0;18.0;0.1;1.5;100;1 średni ziemniak
-bataty-surowe;Bataty (surowe);warzywa;g;86;1.6;20.1;0.1;3.0;200;1 średni batat
-bataty-pieczone;Bataty (pieczone);warzywa;g;90;2.0;21.0;0.1;3.3;200;1 średni batat
+ziemniaki-wczesne-surowe;Ziemniaki;warzywa;g;74;1.9;17.4;0.1;1.5;100;1 średni ziemniak
+bataty-surowe;Bataty;warzywa;g;86;1.6;20.1;0.1;3.0;200;1 średni batat
 pomidor;Pomidor;warzywa;g;19;0.9;4.1;0.2;1.2;170;1 średni pomidor
 ogorek;Ogórek;warzywa;g;14;0.7;2.9;0.1;0.5;180;1 średni ogórek
-papryka-czerwona;Papryka czerwona;warzywa;g;32;1.3;6.6;0.5;2.0;150;1 średnia papryka
-papryka-zolta;Papryka żółta;warzywa;g;27;1.0;5.3;0.2;1.5;150;1 średnia papryka
+papryka-czerwona;Papryka;warzywa;g;30;1.2;6.0;0.4;1.8;150;1 średnia papryka
 cebula;Cebula;warzywa;g;40;1.1;9.3;0.1;1.7;100;1 średnia cebula
 czosnek;Czosnek;warzywa;g;149;6.4;33.1;0.5;2.1;5;1 ząbek
-marchew-surowa;Marchew (surowa);warzywa;g;41;1.0;9.6;0.2;2.8;45;1 średnia marchew
-marchew-gotowana;Marchew (gotowana);warzywa;g;35;0.8;8.2;0.2;3.0;;
-brokul-surowy;Brokuł (surowy);warzywa;g;34;2.8;6.6;0.4;2.6;500;1 sztuka
-brokul-gotowany;Brokuł (gotowany);warzywa;g;35;2.4;7.2;0.4;3.3;;
-kalafior-surowy;Kalafior (surowy);warzywa;g;25;1.9;5.0;0.2;2.0;500;0.5 sztuki
-szpinak-surowy;Szpinak (surowy);warzywa;g;23;2.9;3.6;0.4;2.2;25;1 garść
+marchew-surowa;Marchew;warzywa;g;41;1.0;9.6;0.2;2.8;45;1 średnia marchew
+brokul-surowy;Brokuł;warzywa;g;34;2.8;6.6;0.4;2.6;500;1 sztuka
+kalafior-surowy;Kalafior;warzywa;g;25;1.9;5.0;0.2;2.0;500;0.5 sztuki
+szpinak-surowy;Szpinak;warzywa;g;23;2.9;3.6;0.4;2.2;25;1 garść
 salata-lodowa;Sałata lodowa;warzywa;g;14;0.9;3.0;0.1;1.2;40;1 duży liść
 cukinia;Cukinia;warzywa;g;17;1.2;3.1;0.3;1.0;300;1 średnia cukinia
 baklazan;Bakłażan;warzywa;g;25;1.0;6.0;0.2;3.0;;
-pieczarka-surowa;Pieczarka (surowa);warzywa;g;22;3.1;3.3;0.3;1.0;20;1 średnia pieczarka
+pieczarka-surowa;Pieczarka;warzywa;g;22;3.1;3.3;0.3;1.0;20;1 średnia pieczarka
 kapusta-pekinska;Kapusta pekińska;warzywa;g;16;1.2;3.2;0.2;1.2;;
 kapusta-kiszona;Kapusta kiszona;warzywa;g;16;1.1;3.4;0.2;2.1;;
-burak-surowy;Burak (surowy);warzywa;g;43;1.6;9.6;0.2;2.8;120;1 średni burak
-burak-gotowany;Burak (gotowany);warzywa;g;44;1.7;10.0;0.2;2.0;120;1 średni burak
-fasolka-szparagowa-surowa;Fasolka szparagowa (surowa);warzywa;g;31;1.8;7.0;0.2;3.4;200;1 porcja
+burak-surowy;Burak;warzywa;g;43;1.6;9.6;0.2;2.8;120;1 średni burak
+fasolka-szparagowa-surowa;Fasolka szparagowa;warzywa;g;31;1.8;7.0;0.2;3.4;200;1 porcja
 kukurydza-konserwowa-odsaczona;Kukurydza konserwowa (odsączona);warzywa;g;102;2.9;22.6;1.2;3.9;140;0.5 puszki
 groszek-zielony-konserwowy-odsaczony;Groszek zielony konserwowy (odsączony);warzywa;g;69;4.7;12.5;0.3;4.3;120;0.5 puszki
 oliwki-czarne;Oliwki czarne;warzywa;g;115;0.8;6.3;10.7;3.2;15;1 łyżka
@@ -189,7 +175,6 @@ majonez;Majonez;sosy;g;714;1.0;1.5;78.0;0.0;25;1 łyżka
 musztarda;Musztarda;sosy;g;105;5.0;7.0;6.0;2.5;10;1 łyżeczka
 sos-sojowy-jasny;Sos sojowy jasny;sosy;ml;60;8.0;7.0;0.1;0.0;10;1 łyżka
 koncentrat-pomidorowy-30;Koncentrat pomidorowy 30%;sosy;g;101;4.5;19.5;0.6;4.0;15;1 łyżeczka
-ocet-jablkowy;Ocet jabłkowy;sosy;ml;21;0.0;1.0;0.0;0.0;10;1 łyżka
 miod-pszczeli;Miód pszczeli;slodycze;g;319;0.3;79.5;0.0;0.0;25;1 łyżka
 syrop-klonowy;Syrop klonowy;slodycze;g;260;0.0;67.0;0.0;0.0;20;1 łyżka
 cukier-bialy;Cukier biały;slodycze;g;400;0.0;100.0;0.0;0.0;5;1 łyżeczka
@@ -202,9 +187,8 @@ cola-zero;Cola zero;napoje;ml;1;0.0;0.0;0.0;0.0;250;1 szklanka
 jogurt-typu-greckiego-10;Jogurt typu greckiego 10%;nabial;g;119;3.8;4.3;9.6;0.0;150;1 kubeczek
 mleko-krowie-0-5;Mleko krowie 0.5%;nabial;ml;38;3.4;5.0;0.5;0.0;250;1 szklanka
 szynka-wieprzowa;Szynka wieprzowa;mieso;g;112;18.0;1.0;4.0;0.0;15;1 plaster
-piers-z-kurczaka-pieczona;Pierś z kurczaka (pieczona);mieso;g;155;31.0;0.0;3.5;0.0;150;1 porcja
 udko-z-kurczaka-ze-skora-pieczone;Udko z kurczaka ze skórą (pieczone);mieso;g;235;25.0;0.0;15.0;0.0;150;1 porcja
-wolowina-gulaszowa-surowa;Wołowina gulaszowa (surowa);mieso;g;147;21.0;0.0;7.0;0.0;;
+wolowina-gulaszowa-surowa;Wołowina gulaszowa (przed gotowaniem);mieso;g;147;21.0;0.0;7.0;0.0;;
 ser-zolty-light;Ser żółty light;nabial;g;264;30.0;0.0;16.0;0.0;15;1 plaster
 hummus;Hummus;straczkowe;g;250;8.0;14.0;18.0;5.0;25;1 łyżka
 pesto-zielone;Pesto zielone;sosy;g;445;5.0;5.0;45.0;2.0;15;1 łyżka
@@ -212,14 +196,12 @@ dzem-truskawkowy;Dżem truskawkowy;slodycze;g;142;0.3;35.0;0.1;1.0;20;1 łyżka
 krem-orzechowo-kakaowy;Krem orzechowo-kakaowy;slodycze;g;531;6.0;57.0;31.0;4.0;15;1 łyżeczka
 granola;Granola;zbozowe;g;423;9.0;63.0;15.0;6.0;50;1 porcja
 musli-z-owocami;Musli z owocami;zbozowe;g;354;10.0;65.0;6.0;8.0;50;1 porcja
-platki-ryzowe-surowe;Płatki ryżowe (surowe);zbozowe;g;357;7.0;80.0;1.0;2.0;50;1 porcja
+platki-ryzowe-surowe;Płatki ryżowe;zbozowe;g;357;7.0;80.0;1.0;2.0;50;1 porcja
 piwo-jasne;Piwo jasne;napoje;ml;43;0.5;3.5;0.0;0.0;500;1 butelka
 piwo-bezalkoholowe;Piwo bezalkoholowe;napoje;ml;21;0.3;5.0;0.0;0.0;500;1 butelka
 napoj-energetyczny;Napój energetyczny;napoje;ml;45;0.3;11.0;0.0;0.0;250;1 puszka
 napoj-energetyczny-bez-cukru;Napój energetyczny bez cukru;napoje;ml;2;0.3;0.0;0.0;0.0;250;1 puszka
-kawa-czarna;Kawa czarna;napoje;ml;2;0.2;0.3;0.0;0.0;250;1 kubek
 kawa-z-mlekiem-latte;Kawa z mlekiem (latte);napoje;ml;30;1.7;2.5;1.5;0.0;300;1 kubek
-herbata;Herbata;napoje;ml;1;0.1;0.2;0.0;0.0;250;1 kubek
 pizza-margherita;Pizza margherita;inne;g;266;11.0;33.0;10.0;2.0;350;1 mała pizza
 kebab-w-bulce;Kebab w bułce;inne;g;201;10.0;20.0;9.0;1.5;400;1 porcja
 frytki;Frytki;inne;g;300;3.5;40.0;14.0;3.5;150;1 porcja
@@ -234,10 +216,10 @@ sushi-maki;Sushi maki;inne;g;145;5.0;28.0;1.5;1.0;150;1 porcja
 nalesniki-z-serem;Naleśniki z serem;inne;g;199;9.0;25.0;7.0;1.5;150;1 sztuka
 zapiekanka;Zapiekanka;inne;g;221;8.0;27.0;9.0;1.5;250;1 sztuka
 gyros-z-kurczaka;Gyros z kurczaka;mieso;g;190;22.0;3.0;10.0;0.5;150;1 porcja
-makaron-ryzowy-suchy;Makaron ryżowy (suchy);zbozowe;g;346;3.5;82.0;0.5;1.5;50;1 porcja
-makaron-ryzowy-gotowany;Makaron ryżowy (gotowany);zbozowe;g;106;1.2;25.0;0.2;0.5;;
-komosa-ryzowa-sucha;Komosa ryżowa (sucha);zbozowe;g;366;14.0;64.0;6.0;7.0;50;1 porcja
-komosa-ryzowa-gotowana;Komosa ryżowa (gotowana);zbozowe;g;120;4.4;21.3;1.9;2.8;;
+makaron-ryzowy-suchy;Makaron ryżowy (przed gotowaniem);zbozowe;g;346;3.5;82.0;0.5;1.5;50;1 porcja
+makaron-ryzowy-gotowany;Makaron ryżowy (po ugotowaniu);zbozowe;g;106;1.2;25.0;0.2;0.5;;
+komosa-ryzowa-sucha;Komosa ryżowa (przed gotowaniem);zbozowe;g;366;14.0;64.0;6.0;7.0;50;1 porcja
+komosa-ryzowa-gotowana;Komosa ryżowa (po ugotowaniu);zbozowe;g;120;4.4;21.3;1.9;2.8;;
 pumpernikiel;Pumpernikiel;zbozowe;g;221;5.0;47.0;1.5;9.0;40;1 kromka
 chleb-chrupki-zytni;Chleb chrupki żytni;zbozowe;g;321;9.0;68.0;1.5;15.0;10;1 kromka
 bulka-maslana;Bułka maślana;zbozowe;g;303;8.5;55.0;5.5;2.0;80;1 sztuka
@@ -251,7 +233,7 @@ smietana-12;Śmietana 12%;nabial;g;136;3.0;4.0;12.0;0.0;20;1 łyżka
 maslo-klarowane-ghee;Masło klarowane (ghee);tluszcze;g;898;0.0;0.0;99.8;0.0;10;1 łyżka
 majonez-light;Majonez light;sosy;g;298;1.0;6.0;30.0;0.0;25;1 łyżka
 rzodkiewka;Rzodkiewka;warzywa;g;18;1.0;3.4;0.1;1.5;15;1 sztuka
-por-surowy;Por (surowy);warzywa;g;33;1.5;6.0;0.3;2.0;100;1 mały por
+por-surowy;Por;warzywa;g;33;1.5;6.0;0.3;2.0;100;1 mały por
 seler-korzeniowy;Seler korzeniowy;warzywa;g;37;1.5;7.0;0.3;5.0;100;1 plaster
 wisnie;Wiśnie;owoce;g;54;0.9;12.0;0.3;1.5;100;1 garść
 czeresnie;Czereśnie;owoce;g;64;1.0;14.5;0.2;1.0;100;1 garść
