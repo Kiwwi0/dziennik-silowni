@@ -283,15 +283,110 @@ Aplikacja działa w całości w przeglądarce (bez serwera), więc źródło mus
 - Zrzuty tylko na końcu: `dietQty` z kartą (oba przypadki) i `dietProd` z polem wyboru, oba motywy. Po budowie przegląd zmian przez Opus w krótkim czacie
   (`git diff`, szczególnie `firestore.rules`).
 
-## CZĘŚĆ 3 – dodatki do diety (Olek chce to zrobić; kolejność i szczegóły ustalić z nim przed budową)
-Kandydaci, każdy jako osobny, mały etap (najpierw zapytać Olka, od czego zacząć i jak ma działać):
-- ważenie i wykres masy ciała (średnia 7-dniowa),
-- kalkulator zapotrzebowania (Mifflin-St Jeor) podpowiadający cele,
-- inne cele w dni treningowe,
-- kopiowanie dnia (i wpisu) na inny dzień,
-- podsumowanie tygodnia (średnie kcal i makro, dni w celu),
-- gotowe posiłki / przepisy (zestaw produktów dodawany jednym stuknięciem).
-Każdy etap: rozpisać plan w tym pliku, zbudować, przetestować (jasny/ciemny, 390 i 360 px), wdrożyć. Nowe pola w bazie – zapis scalający jak dla dni.
+## CZĘŚĆ 3 – dodatki do diety (plan ustalony z Olkiem 9.11.2026, budowa w osobnych czatach)
+Pięć etapów, **w tej kolejności, każdy osobno**: zbudować → przetestować → wdrożyć → dopisać „Stan etapu 3.x (zbudowane)” pod jego planem.
+Zasady wspólne:
+- Wszystkie nowe dane osoby idą do dokumentu `folders/{fid}/data/diet` jako **osobne pola** (zapis `setDoc(…, {merge:true})` tylko
+  zmienionych pól, usuwanie `deleteField()`, kolejka zmian oczekujących nakładana na snapshot – dokładnie jak `mine`/`goals`).
+  Reguły Firebase się nie zmieniają (dokument `diet` jest już dozwolony). localStorage: ten sam `lsKey('diet')`.
+- `normalize` diety: brakujące nowe pola = wartości domyślne; stary dokument działa bez zmian.
+- Kopia zapasowa: nowe pola są w `diet`; import **dopisuje** (przy tym samym kluczu wygrywa obecna wartość), profil i cele treningowe
+  zastępowane tylko, gdy kopia je ma.
+- Wygląd: istniejące klasy (karty, `row`, `btn`, `iconbtn`, paski, `chartCard`/`drawChart` z historii), kolory ze zmiennych CSS, oba motywy.
+- Test każdego etapu: wersja testowa (`build.py`), 390×844 **i 360×780**, jasny i ciemny, brak `pageerror`, brak przewijania w bok,
+  odświeżenie strony (dane zostają), pozostałe zakładki bez zmian. Zrzuty tylko na końcu.
+- Nie ruszać zachowania trwających funkcji diety (części 1, 2, 2b) poza opisanymi miejscami.
+
+### Etap 3.1 – masa ciała (zakładka Historia)
+**Dane:** pole `wt` w dokumencie diety: `{'RRRR-MM-DD': kg}` (mapa; w bazie zapis zagnieżdżony `{wt:{[dzień]:kg}}` z merge,
+usunięcie `{wt:{[dzień]:deleteField()}}`). W pamięci `DIET.wt`. Kg 30–300, krok 0,1 (zaokrąglenie do 0,1). Jeden pomiar na dzień
+(nowy wpis tego dnia zastępuje stary). Brak limitu dni (to małe liczby), ale bez okna 60 dni – całe pole.
+**Liczenie:** `wtAvg7(day)` = średnia pomiarów z 7 dni kończących się na `day` (tylko dni z pomiarem; brak → null).
+Trend: różnica średniej 7-dniowej dziś i 7 dni temu (kg/tydz.), pokazywana, gdy obie istnieją.
+**Wygląd:** w `vHistory` nowa karta **„Masa ciała”** (pod istniejącymi wykresami treningowymi, przed kalendarzem):
+- góra: ostatni pomiar (kg, data), średnia 7-dniowa, trend „−0,4 kg/tydz.” (bez kolorów ocen),
+- wykres: kropki = pomiary, linia = średnia 7-dniowa; przełącznik zakresu 30 / 90 dni / wszystko (wzorem `CHARTS`/`drawChart`),
+- przycisk „+ Waga” → arkusz `wtAdd`: data (domyślnie dziś, `input type=date`, nie później niż dziś), pole kg (`inputmode=decimal`,
+  podpowiedź = ostatni pomiar), „Zapisz”; gdy na ten dzień jest pomiar – „Usuń”,
+- stuknięcie „Pomiary” → lista ostatnich pomiarów (data, kg), stuknięcie = edycja w `wtAdd`.
+- Brak pomiarów → karta z krótkim tekstem „Waż się rano, po toalecie – średnia z tygodnia pokaże trend” i przyciskiem „+ Waga”.
+- Bez dostępu do diety (`dietCanEdit` = false) przycisk dodawania nieaktywny.
+**Test:** dodaj 10 pomiarów na różne dni (przez `wtAdd` i bezpośrednio w `DIET.wt` + `render()`), sprawdź średnią 7-dniową
+na znanych liczbach, edycję, usunięcie, zakresy wykresu, odświeżenie.
+
+### Etap 3.2 – kalkulator zapotrzebowania (arkusz celów)
+**Dane:** pole `prof` w dokumencie diety: `{sex:'m'|'k', by:rok urodzenia, h:wzrost cm, pal:1.2|1.375|1.55|1.725|1.9, goal:'red'|'utr'|'masa'}`
+(zapisywane jako całe pole – małe). Limity: wzrost 120–230, rok urodzenia: wiek 14–100.
+**Wzory (z podanymi źródłami w arkuszu, drobnym tekstem):**
+- BMR Mifflin-St Jeor (1990): `10·kg + 6,25·cm − 5·wiek + 5` (m) / `− 161` (k). Waga = `wtAvg7(dziś)`, a gdy brak – ostatni pomiar;
+  brak pomiarów → pole „Waga (kg)” w arkuszu (zapisuje pomiar na dziś do `wt`).
+- Zapotrzebowanie TDEE = BMR × PAL. Opisy PAL: 1,2 „praca siedząca, bez treningów”, 1,375 „1–3 treningi/tydz.”, 1,55 „3–5 treningów”,
+  1,725 „6–7 treningów lub praca fizyczna”, 1,9 „bardzo ciężka praca + treningi”.
+- Cel kcal: redukcja = TDEE × 0,80; utrzymanie = TDEE; masa = TDEE × 1,10 (lekka nadwyżka ogranicza przyrost tłuszczu). Zaokrąglić do 10 kcal.
+  Nigdy mniej niż BMR (wtedy cel = BMR i dopisek „Nie schodź poniżej podstawowej przemiany materii”).
+- Białko (Morton i in. 2018 – meta-analiza, ISSN 2017; przy deficycie wyżej – Helms i in. 2014): redukcja **2,2 g/kg**, utrzymanie i masa **1,8 g/kg**.
+  Przy BMI ≥ 30 liczyć od masy odpowiadającej BMI 25 dla wzrostu (inaczej białko wychodzi zawyżone).
+- Tłuszcz: **25% kcal** (zalecany zakres 20–35%), ale nie mniej niż **0,6 g/kg**.
+- Węglowodany: reszta kcal ÷ 4. Gdy wyjdzie < 50 g – ostrzeżenie zamiast cichego wyniku.
+- Gramy zaokrąglone do 5 g.
+**Wygląd:** w `dietGoals` przycisk „Oblicz z kalkulatora” → arkusz `dietCalc`: płeć (chipy), rok urodzenia, wzrost, waga (tylko informacja
+„z średniej 7 dni: 82,4 kg” albo pole), aktywność (lista z opisami), cel (chipy Redukcja / Utrzymanie / Masa). Wynik na żywo:
+BMR, TDEE, cel kcal, B/W/T w g i % kcal. Przycisk **„Ustaw jako cele”** → zapisuje `goals` (i `prof`), wraca do `dietGoals`
+z wypełnionymi polami; „Anuluj” nic nie zmienia poza `prof`. Pod wynikiem: „To punkt startu – po 2–3 tygodniach skoryguj o trend wagi.”
+**Test:** m, rok 1990 (wiek 36 w 2026), 180 cm, 80 kg, PAL 1,55, utrzymanie: BMR 1750, TDEE 2712,5 → 2710 kcal, B 144 → 145 g,
+T 75 g (25%, ≥ 48 g), W = (2710 − 145·4 − 75·9)/4 = 363,75 → 365 g (węgle liczone z zaokrąglonych B i T). Redukcja i BMI ≥ 30 – osobny przypadek. Zapis celów.
+
+### Etap 3.3 – inne cele w dni treningowe
+**Dane:** pole `goalsT:{k,b,w,t}` w dokumencie diety (każde makro osobnym polem, jak `goals`; puste = `null`).
+W dniu: pole `tr` w dokumencie dnia `folders/{fid}/diet/{dzień}`: `true` / `false` = ręcznie ustawione, brak pola = automatycznie
+(`deleteField()` przy powrocie do automatu). localStorage: w obiekcie dnia.
+**Dzień treningowy:** `isTrainDay(day)` = `DAYS[day].tr`, jeśli ustawione; inaczej czy w `SESS` jest zapisany trening z tą datą
+(sprawdź, które pole daty ma sesja, i użyj `dayKey`). Trwający trening (`ACTIVE`) dzisiaj też się liczy.
+`goalsFor(day)` = dzień treningowy i `goalsT` ma jakąkolwiek wartość → `goalsT` (brakujące makro z `goals`), inaczej `goals`.
+Wszystkie miejsca pokazujące cel dnia (karta podsumowania, paski) używają `goalsFor(dzień)`.
+**Wygląd:**
+- W `dietGoals` dwie zakładki-chipy: „Zwykły dzień” / „Dzień treningowy”. Druga pusta = „Jak w zwykły dzień”. Przycisk „Skopiuj ze zwykłego”.
+  Kalkulator (3.2) wypełnia tylko aktywną zakładkę.
+- Na pasku daty mała plakietka „Trening” / „Odpoczynek”; stuknięcie przełącza po kolei: automatycznie → ręcznie trening → ręcznie odpoczynek
+  → automatycznie (toast z opisem stanu). Gdy `goalsT` puste, plakietka i tak widoczna, ale zmiana nie zmienia celów.
+**Test:** cele zwykłe 2500, treningowe 2800; dzień z sesją w `SESS` → 2800; przełącznik na odpoczynek → 2500; powrót do auto;
+odświeżenie (stan `tr` zostaje); dzień bez `goalsT` → zwykłe cele.
+
+### Etap 3.4 – podsumowanie tygodnia (karta w Diecie)
+**Liczenie:** tydzień pon–nd zawierający wybrany dzień (dni przyszłe pomijane). Dni z ≥ 1 wpisem = „dni z wpisami”.
+Średnie kcal, B, W, T z dni z wpisami (do 0,1, kcal do całości). Dzień **w celu**: kcal w zakresie ±10% `goalsFor(dzień).k`
+(dzień bez celu kcal – nie liczy się ani jako w celu, ani poza). Liczba „dni w celu / dni z wpisami”.
+Jeśli są pomiary wagi (3.1) – zmiana średniej 7-dniowej w tym tygodniu.
+**Wygląd:** karta **„Tydzień”** pod kartą podsumowania dnia (zwinięta do jednej linii: „Śr. 2410 kcal · 5/6 dni w celu”, stuknięcie rozwija):
+7 kropek pon–nd (w celu = kolor akcentu, poza celem = kolor ostrzegawczy, bez wpisów = pusta, przyszłość = wyszarzona; dzień treningowy
+z małą kreską pod kropką), stuknięcie kropki przenosi na ten dzień; średnie B/W/T z celami średnimi tygodnia; zmiana wagi.
+Stan zwinięcia w `LS` (nie w bazie).
+**Test:** wpisy w 4 dniach tygodnia o znanych sumach → średnie i licznik w celu; tydzień przełomu miesiąca; dzień bez wpisów nie zaniża średniej.
+
+### Etap 3.5 – kopiowanie i moje gotowe posiłki
+(Olek: kopiowanie całego dnia i posiłku + możliwość zapisania często jedzonego posiłku i dodawania go jednym stuknięciem.)
+**Kopiowanie:**
+- Nagłówek posiłku: przycisk „⋯” → menu: „Kopiuj na…”, „Zapisz jako gotowy posiłek”.
+- Pasek daty / dół zakładki: „Kopiuj dzień na…”.
+- Arkusz `dietCopy`: data docelowa (`input type=date`, nie później niż dziś; domyślnie dziś, a gdy źródłem jest dziś – pole puste
+  i trzeba wybrać datę; ten sam dzień dozwolony tylko przy kopii posiłku na inny posiłek), przy posiłku także posiłek docelowy (chipy z `MEALS`, domyślnie ten sam). Skróty: „Na dziś”, „Na wczoraj”.
+- Kopiowane wpisy **dopisują się** (nic nie jest nadpisywane), dostają nowe `id` (`uid()`) i nowe `o` (z zachowaniem kolejności),
+  reszta pól bez zmian (to już kopie wartości). Wpisy z usuniętego posiłku („Inny posiłek”) przy kopii dnia trafiają do pierwszego posiłku z listy.
+  Zapis dnia docelowego jak zwykle (merge tylko nowych wpisów). Toast „Skopiowano 5 wpisów” z przyciskiem „Cofnij” (usuwa właśnie dodane).
+- Pole `tr` dnia **nie** jest kopiowane.
+**Gotowe posiłki:**
+- Dane: pole `tpl` w dokumencie diety: `{[id]:{id, n:nazwa, items:[…], uses, last}}`, każdy gotowy posiłek osobnym polem (merge, usunięcie
+  `deleteField()`). `items` = kopie wpisów bez `id`/`o`/`m` (`pid, n, g, q, po, pg, u, k, b, w, t`). Id `t-` + `uid()`. Max 50 posiłków,
+  30 składników, nazwa do 40 znaków.
+- Tworzenie: „Zapisz jako gotowy posiłek” z menu posiłku (nazwa domyślnie „Śniadanie 9.11”, do zmiany) albo w `dietAdd` → „Gotowe” → „Nowy”
+  (pusty, składniki dodawane wyszukiwarką jak w `dietAdd`, ilość przez `dietQty` w trybie „do zestawu”).
+- `dietAdd`: nowy przełącznik u góry **„Produkty | Gotowe”**. „Gotowe”: lista (sortowanie `uses`/`last`), przy pozycji nazwa, kcal i B,
+  liczba składników. Stuknięcie → arkusz `dietTpl`: lista składników, mnożnik (chipy ×0,5 ×1 ×1,5 ×2 + pole), posiłek docelowy,
+  sumy na żywo, „Dodaj” (wstawia osobne wpisy przeskalowane: g, q i makro × mnożnik, zaokrąglenia jak w części 1; `uses++`, `last`;
+  produkty z `pid` dostają `uses++` w `mine`, jeśli tam są). Także „Edytuj” (nazwa, usuwanie składnika, zmiana ilości) i „Usuń” z potwierdzeniem.
+- Wyszukiwanie w `dietAdd` przeszukuje też nazwy gotowych posiłków (sekcja „Gotowe” nad „Moimi produktami”).
+**Test:** kopia posiłku wczoraj→dziś, kopia dnia, „Cofnij”; zapisanie posiłku jako gotowego, dodanie ×1,5 (sprawdzić liczby), edycja, usunięcie;
+odświeżenie; dzień z „Innym posiłkiem”.
 
 ## Na później (nie robić bez prośby)
 Woda, suplementy, zdjęcie talerza (AI – wymaga klucza i pośrednika).
