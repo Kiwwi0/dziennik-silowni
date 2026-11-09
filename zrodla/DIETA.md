@@ -15,7 +15,8 @@ Po każdej części: build_web, test (jasny i ciemny, 390 px), commit, push, kr�
      utworzony ręcznie albo oznaczony gwiazdką. Domyślny widok przy dodawaniu jedzenia; sortowanie:
      ★ na górze, potem najczęściej / ostatnio używane.
 - Poprawki produktu (wartości, nazwa) są osobiste: zapisują się w „Moich produktach” i mają pierwszeństwo
-  przed bazą ogólną. Bazy ogólnej użytkownik nie edytuje.
+  przed bazą ogólną. Bazy ogólnej użytkownik nie edytuje (wyjątek: zeskanowane produkty w `foods/` – poprawka trafia tam
+  dopiero po potwierdzeniu przez kilka osób, patrz część 2b).
 - Wartości produktów zawsze **na 100 g** (płyny: na 100 ml), węglowodany **bez błonnika** (jak na polskich etykietach).
 - Wpis w dzienniku zapisuje **kopię** nazwy i wyliczonych makro (kcal, B, W, T) – późniejsza zmiana produktu
   nie zmienia historii.
@@ -183,6 +184,104 @@ Sprawdź też, że pozostałe 4 zakładki wyglądają jak przed zmianą.
 - Podpowiedź „waż przed gotowaniem”: dopasowanie po nazwie (`DRY_RE`, wyjątki `DRY_NOT`), bo zeskanowany produkt nie ma kategorii.
 - Biblioteka ZXing 0.21.3 z jsdelivr, bez SRI (nie dało się policzyć skrótu bez dostępu do CDN); service worker trzyma ją w cache `libs`, a OFF pomija.
 - **Niesprawdzone w sesji:** prawdziwy odczyt kodu przez ZXing i kamera na iPhonie (Safari i ekran główny) – test z atrapą ZXing sprawdził tylko resztę przepływu.
+
+## CZĘŚĆ 2b – weryfikacja danych zeskanowanych produktów (plan z listopada 2026, budowa w osobnym czacie)
+
+### Problem
+Dane produktu z Open Food Facts (OFF) i ze wspólnej bazy `foods/` czasem różnią się od etykiety (nazwa, drobne różnice w wartościach).
+Poprawka w „Edytuj produkt” jest dziś tylko osobista, a reguły `foods/` pozwalają tylko na `create`, więc błąd zostaje we wspólnej bazie na zawsze.
+
+### Ustalenia z przeglądu źródeł (listopad 2026)
+Aplikacja działa w całości w przeglądarce (bez serwera), więc źródło musi działać z CORS i bez tajnego klucza (klucz w stronie widzi każdy).
+- **Open Food Facts** – jedyne sensowne źródło polskich EAN: bez klucza, ODbL (atrybucja + wspólna baza pochodna też na ODbL),
+  limit odczytu produktu na IP (dokumentacja podaje obecnie 15/min, starsze źródła 100/min; przy aplikacji na telefonach limit liczy się na użytkownika).
+  Wysyłanie poprawek do OFF wymaga konta (login i hasło w żądaniu) – nie da się tego zrobić bezpiecznie z publicznej strony. **Odrzucone.**
+- **USDA FoodData Central** – CC0, darmowy klucz (1000 zapytań/h na klucz; klucz w stronie byłby wspólny dla wszystkich), produkty markowe z rynku USA –
+  brak potwierdzenia pokrycia polskich EAN. **Odrzucone.**
+- **FatSecret** – ma dane polskie (fatsecret.pl), ale darmowy pakiet obejmuje zbiór USA, a tokeny OAuth 2.0 trzeba pobierać przez własny serwer pośredniczący
+  (brak CORS, lista IP). **Odrzucone.**
+- **Edamam, Nutritionix** – klucz API (w stronie byłby jawny), plany płatne lub darmowe z małym limitem, nacisk na rynek USA. **Odrzucone.**
+- **GS1 eProdukty / Verified by GS1** – wiarygodne nazwy i producenci, ale bez publicznego API z wartościami odżywczymi dla przeglądarki. **Odrzucone.**
+- Pośrednicy oparci na OFF (np. DietlyAPI) nie są niezależnym źródłem kontrolnym.
+- **Niepotwierdzone:** aktualna liczba polskich produktów w OFF (ok. 18 tys. w 2024 r., strona statystyk blokuje boty), obsługa CORS w USDA i Edamam,
+  aktualne darmowe limity Nutritionix i Edamam.
+- Wniosek: drugie źródło kontrolne nie wchodzi w grę – weryfikacja przez **potwierdzenia użytkowników** we własnej bazie Firebase.
+
+### Rozważone warianty
+- **A. Porównanie i ostrzeżenie (tylko lokalnie)** – `dietQty` pokazuje różnice między „Moimi produktami” a `foods/` i pozwala przejąć wspólne wartości.
+  Bez zmian w regułach, mały koszt, zero ryzyka dla prywatności, ale wspólna baza nadal się nie poprawia.
+- **B. Awans poprawki po zgodności kilku osób (wybrany, razem z A)** – poprawka zgłaszana anonimowo; gdy tę samą wersję potwierdzą 3 osoby
+  (i ma więcej głosów niż obecna), zastępuje dane w `foods/{ean}`. Średni koszt (ok. 200–250 linii JS + ok. 50 linii reguł).
+  Ryzyka: logowanie anonimowe = jedno urządzenie to jeden głos (dwa telefony jednej osoby to dwa głosy, wyczyszczenie danych daje nowy głos);
+  przy małej liczbie użytkowników próg może długo nie zostać osiągnięty; reguły są bardziej złożone (do przeglądu przez Opus).
+- **C. Druga baza jako źródło kontrolne** – odrzucone (patrz wyżej: brak polskich danych, klucz jawny w stronie, potrzebny serwer).
+
+### Zasady (wariant B + A)
+- Dwa rodzaje poprawki, głosowane osobno: **`w`** – wartości (`u, k, b, w, t, f, pg, po`) i **`n`** – nazwa z marką (`n, brand`).
+- Jedno urządzenie (anonimowy `uid`) = jeden głos na rodzaj na produkt; głosu nie można zmienić ani cofnąć (świadome uproszczenie).
+- Próg awansu `FIX_MIN = 3` (stała w `app.html` i w `firestore.rules` – zmieniać razem). Awans tylko, gdy grupa ma ≥ 3 głosy **i** więcej głosów
+  niż wersja obecna (`cw`/`cn` w `foods/{ean}`, domyślnie 1 – pierwszy dodający).
+- Nikt nie widzi, kto głosował: głosy są nieczytelne dla innych (tylko własny `get`, bez `list`), grupy i produkt mają tylko liczniki.
+- Nie ma głosów „przeciw” – „Ukryj” chowa zgłoszenie tylko na tym urządzeniu.
+- Poprawki nie są wysyłane do OFF. Produkt z OFF po awansie ma dopisek „Dane: Open Food Facts (ODbL), poprawione przez użytkowników”.
+- Porównanie „takie samo” po zaokrągleniu: kcal i porcja do 1, makro do 0,1, nazwa i marka przez `phraseKey` (bez polskich znaków i wielkości liter).
+
+### Zmiany w danych (Firebase)
+- `foods/{ean}` – nowe **opcjonalne** pola (stare dokumenty bez nich są ważne): `fw`/`fn` – klucz grupy, z której przyszły obecne wartości/nazwa,
+  `cw`/`cn` – liczba głosów tej grupy (int 1–1000). Przy awansie zmienia się też `at` (`Date.now()`), a przy awansie nazwy – `q`.
+- `foods/{ean}/fix/{key}` – grupa zgłoszeń jednej wersji. `key` = `w_` albo `n_` + 12 znaków hex SHA-256 (`crypto.subtle`) z postaci kanonicznej
+  (w: zaokrąglone wartości jako JSON w stałej kolejności; n: `phraseKey(n) + '|' + phraseKey(brand)`).
+  Dane: rodzaj w → `{u, k, b, w, t, f, pg, po, c, at}`, rodzaj n → `{n, brand, c, at}` (`c` – liczba głosów). Zapisane wartości pochodzą od pierwszego zgłaszającego.
+- `foods/{ean}/v/{vid}` – głos; `vid` = `w_` albo `n_` + `uid`, dane tylko `{g: key}` (klucz grupy tego samego rodzaju).
+
+### Reguły (`firestore.rules`)
+- `validFood`: `hasOnly` rozszerzone o `fw, fn, cw, cn` (`hasAll` bez zmian); gdy są: `fw`/`fn` pasują do `^[wn]_[0-9a-f]{12}$`, `cw`/`cn` int 1–1000.
+- `match /foods/{ean}/v/{vid}`: `get` tylko gdy `vid == vid[0:2] + request.auth.uid` (własny głos), `list/update/delete` – nie;
+  `create`: `signedIn()`, `vid.matches('^[wn]_')`, `vid[2:] == request.auth.uid`, dane `hasOnly/hasAll(['g'])`, `g` zgodne ze wzorem i tego samego rodzaju co `vid`.
+- `match /foods/{ean}/fix/{key}`: `get` każdy, `list` z `limit ≤ 10`, `delete` – nie.
+  Funkcja `voteNew(ean, key)`: `v = .../foods/$(ean)/v/$(key[0:2] + request.auth.uid)`; `!exists(v) && existsAfter(v) && getAfter(v).data.g == key`.
+  `create`: `signedIn()`, `exists(foods/$(ean))`, klucz pasuje do wzoru, `validFix` (te same zakresy co `validFood` dla danego rodzaju, `c == 1`, `at is int`), `voteNew`.
+  `update`: `affectedKeys().hasOnly(['c', 'at'])`, `c == resource.data.c + 1`, `voteNew`.
+- `foods/{ean}` – `allow update: if signedIn() && validFood(nowe) && (awansW || awansN)`:
+  - awansW: zmienione pola tylko z `k, b, w, t, f, u, pg, po, fw, cw, at`; `g = getAfter(.../fix/$(nowe.fw))`; `g.data.c >= 3`;
+    `g.data.c > resource.data.get('cw', 1)`; `nowe.cw == g.data.c`; każde z 8 pól wartości równe polu w `g.data`.
+  - awansN: zmienione pola tylko z `n, brand, q, fn, cn, at`; analogicznie z `fn`, `cn` i polami `n`, `brand`.
+  - `delete` nadal zabronione. Wywołań `get/exists` w jednej transakcji ≤ 7 (limit Firestore 20).
+- Do sprawdzenia przy budowie: wycinanie napisów `key[0:2]` w regułach i `getAfter` w transakcji. Wynik wdrożenia: `gh run list -R Kiwwi0/dziennik-silowni -w rules.yml -L 1`.
+
+### Kod (`app.html`, sekcja wspólnej bazy)
+- `FIX_MIN = 3`, `fixCanon(kind, p)`, `fixKey(kind, p)` (async, SHA-256), `fixDiff(a, b)` → lista różnic `{pole, moje, wspólne}`.
+- `fixLoad(ean)` – przy otwarciu `dietQty` produktu z `ean` (gdy `sharedOn()`): `sharedGet(ean)`, lista `fix` (limit 10) i własne głosy (2× `get`);
+  wynik w pamięci `FIXC` (Map ean → {shared, groups, voted:{w,n}}), bez ponownych odczytów w tej samej sesji poza odświeżeniem po głosie.
+- `fixVote(ean, kind, p)` – `runTransaction` (dodaj do importów Firebase, jeśli go nie ma): odczyt `foods/{ean}`, `fix/{key}`, własnego głosu;
+  gdy głos już jest → toast „To urządzenie już zgłosiło poprawkę tego produktu”; inaczej zapis głosu, `fix` (create `c:1` albo update `c+1`)
+  i – gdy nowe `c ≥ FIX_MIN`, `c > (cw|cn || 1)` i wersja różni się od obecnej – aktualizacja `foods/{ean}`. Potem `sharedCache.clear()`, toast
+  „Zgłoszono anonimowo (2 z 3)” albo „Wspólna baza poprawiona”. Brak `foods/{ean}` → jak dziś `sharedPut` (create), bez głosowania.
+- `dpSave` (edycja produktu z `ean`, Firebase włączony): pole wyboru **„Zgłoś poprawkę do wspólnej bazy (anonimowo)”**, domyślnie zaznaczone;
+  po zapisie osobistym `fixVote` dla rodzajów, które różnią się od `foods/{ean}`. Zapis osobisty działa jak dziś niezależnie od wyniku głosu.
+- Gdy wersja we wspólnej bazie zmieni się, kopia w „Moich produktach” **nie** jest nadpisywana sama – tylko przyciskiem „Użyj wspólnych”.
+- Ukryte zgłoszenia: localStorage `lsKey('fixHide')` (zbiór `ean:key`).
+
+### Wygląd w arkuszach
+- **`dietQty`** (produkt z `ean`, Firebase włączony), pod makro mała karta „Wspólna baza” (istniejące klasy kart, kolory ze zmiennych, oba motywy, bez czerwieni):
+  1. Moja kopia różni się od `foods/`: „Twoje dane różnią się od wspólnej bazy” + różnice w jednej, dwóch linijkach (np. „kcal 352 · wspólna 340”, „nazwa: …”);
+     przyciski „Użyj wspólnych” (nadpisuje w mojej kopii tylko różniące się pola, zostają ★, `uses`, `last`) i „Zgłoś moje” (ukryty, gdy ten rodzaj już zgłoszony).
+  2. Jest zgłoszenie (grupa różna od `foods/`, nieukryta, bez mojego głosu): „Zgłoszona poprawka · 1 z 3 potwierdzeń” + wartości w skrócie
+     („352 kcal · B 12,5 · W 60,1 · T 6”) albo nowa nazwa; przyciski „Zgodne z moją etykietą” i „Ukryj”. Najwyżej jedna grupa na rodzaj (z największym `c`).
+  3. Brak różnic i zgłoszeń → karty nie ma. Ładowanie nie blokuje dodawania (karta dorysowuje się po `fixLoad`); offline → karty nie ma.
+- **`dietProd`** (edycja produktu z `ean`): pole wyboru opisane wyżej, pod nim drobny opis „Zmieni wspólną bazę, gdy tę samą poprawkę potwierdzą 3 osoby”.
+- Atrybucja: „Dane: Open Food Facts (ODbL), poprawione przez użytkowników”, gdy produkt ma `fw` albo `fn`.
+- Szerokość 390 i 360 px bez przewijania w bok; przyciski w karcie mogą zawijać się do dwóch linii.
+
+### Test części 2b
+- Wersja testowa (`build.py`) z atrapą Firebase w Playwright (w pamięci: `getDoc`, `setDoc`, `getDocs`, `runTransaction`, prosta symulacja reguł
+  w atrapie: brak `update` bez głosu, jeden głos na `uid`), 390×844 i 360 px, jasny i ciemny, brak `pageerror`, brak przewijania w bok.
+- Scenariusz: produkt w `foods/` → urządzenie 1 (uid1) poprawia kcal w `dietProd` → grupa `c:1`, `foods/` bez zmian → uid1 drugi raz – odmowa →
+  uid2 widzi „1 z 3”, „Zgodne z moją etykietą” → `c:2` → uid3 potwierdza → `foods/` ma nowe wartości, `fw`, `cw:3` → uid4 z kopią starych wartości
+  widzi różnicę i „Użyj wspólnych” → kopia zgodna. Osobno: zmiana nazwy (rodzaj `n`), „Ukryj”, brak karty offline i w trybie lokalnym.
+- Reguły: wdrożenie przez workflow + `gh run list`; prawdziwy przepływ (trzy urządzenia, np. iPhone Olka, Windows i telefon Marty) sprawdza Olek.
+- Zrzuty tylko na końcu: `dietQty` z kartą (oba przypadki) i `dietProd` z polem wyboru, oba motywy. Po budowie przegląd zmian przez Opus w krótkim czacie
+  (`git diff`, szczególnie `firestore.rules`).
 
 ## CZĘŚĆ 3 – dodatki do diety (Olek chce to zrobić; kolejność i szczegóły ustalić z nim przed budową)
 Kandydaci, każdy jako osobny, mały etap (najpierw zapytać Olka, od czego zacząć i jak ma działać):
