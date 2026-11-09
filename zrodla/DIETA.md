@@ -1,11 +1,11 @@
 # Segment „Dieta” – plan budowy
 
-Plan ustalony z Olkiem (czat „Dieta”, listopad 2026). Budowa w dwóch częściach, każda w osobnym czacie.
+Plan ustalony z Kamilem (czat „Dieta”, listopad 2026). Budowa w dwóch częściach, każda w osobnym czacie.
 Czytaj tylko potrzebne fragmenty `zrodla/src/app.html` (grep + zakres linii). Nie zmieniaj zachowania
 istniejących segmentów (trening, plany, ćwiczenia, historia, manekin) – dieta to nowa, osobna część.
 Po każdej części: build_web, test (jasny i ciemny, 390 px), commit, push, krótkie podsumowanie po polsku.
 
-## Ustalenia (nie zmieniać bez pytania Olka)
+## Ustalenia (nie zmieniać bez pytania Kamila)
 - Nowa, piąta zakładka **Dieta** na dolnym pasku.
 - Produkty w dwóch warstwach:
   1. **Baza ogólna** – wspólna dla wszystkich: 242 produkty ogólne z `zrodla/content/produkty.csv`
@@ -156,7 +156,7 @@ Sprawdź też, że pozostałe 4 zakładki wyglądają jak przed zmianą.
 
 ---
 
-## CZĘŚĆ 2 – skaner kodów kreskowych i wspólna baza (osobny czat, po przetestowaniu części 1 przez Olka)
+## CZĘŚĆ 2 – skaner kodów kreskowych i wspólna baza (osobny czat, po przetestowaniu części 1 przez Kamila)
 - **Podpowiedź przy zbożowych i strączkowych:** przy zeskanowanym produkcie z kategorii zbożowe/strączkowe (ryż, makaron, kasze, płatki, suche strączki)
   pokaż w `dietQty` (i w `dietProd` po skanie) podpowiedź „Wartości z etykiety – waż przed gotowaniem”, bo etykieta podaje wartości suchego produktu.
 - Przycisk **📷 Skanuj** w `dietAdd`. Aparat przez `getUserMedia` (tylna kamera), odczyt kodów EAN-13/EAN-8/UPC
@@ -172,7 +172,7 @@ Sprawdź też, że pozostałe 4 zakładki wyglądają jak przed zmianą.
 - Wyszukiwarka w `dietAdd` pokazuje też pasujące produkty ze wspólnej bazy (zapytanie po prefiksie, z opóźnieniem po wpisywaniu).
 - Atrybucja: przy produktach z OFF dopisek „Dane: Open Food Facts (ODbL)”; to samo w ustawieniach.
 - Service worker (`build_web.py`): nie zapisuje odpowiedzi z openfoodfacts.org w pamięci podręcznej.
-- Kamery i OFF nie da się sprawdzić z sesji (proxy) – test odczytu na wygenerowanych obrazkach kodów, resztę testuje Olek na telefonie.
+- Kamery i OFF nie da się sprawdzić z sesji (proxy) – test odczytu na wygenerowanych obrazkach kodów, resztę testuje Kamil na telefonie.
 
 ### Stan części 2 (zbudowane, listopad 2026)
 - Kod: `app.html`, sekcja „wspólna baza (foods/{ean}), Open Food Facts i skaner”: `sharedGet/sharedPut/sharedSearch`, `offGet/offToProd`, `loadZX/zxDecoder`,
@@ -279,7 +279,7 @@ Aplikacja działa w całości w przeglądarce (bez serwera), więc źródło mus
 - Scenariusz: produkt w `foods/` → urządzenie 1 (uid1) poprawia kcal w `dietProd` → grupa `c:1`, `foods/` bez zmian → uid1 drugi raz – odmowa →
   uid2 widzi „1 z 3”, „Zgodne z moją etykietą” → `c:2` → uid3 potwierdza → `foods/` ma nowe wartości, `fw`, `cw:3` → uid4 z kopią starych wartości
   widzi różnicę i „Użyj wspólnych” → kopia zgodna. Osobno: zmiana nazwy (rodzaj `n`), „Ukryj”, brak karty offline i w trybie lokalnym.
-- Reguły: wdrożenie przez workflow + `gh run list`; prawdziwy przepływ (trzy urządzenia, np. iPhone Olka, Windows i telefon Marty) sprawdza Olek.
+- Reguły: wdrożenie przez workflow + `gh run list`; prawdziwy przepływ (trzy urządzenia, np. iPhone Kamila, Windows i telefon Marty) sprawdza Kamil.
 - Zrzuty tylko na końcu: `dietQty` z kartą (oba przypadki) i `dietProd` z polem wyboru, oba motywy. Po budowie przegląd zmian przez Opus w krótkim czacie
   (`git diff`, szczególnie `firestore.rules`).
 
@@ -304,9 +304,9 @@ Aplikacja działa w całości w przeglądarce (bez serwera), więc źródło mus
   `fw`, `cw:3` → u4 ze starą kopią widzi różnicę i „Użyj wspólnych”; osobno rodzaj `n` (awans nazwy, `q` przeliczone, wartości bez zmian), „Ukryj”, brak karty offline
   i w trybie lokalnym, odznaczone pole = brak zgłoszenia, `update` `foods/` bez awansu odrzucony w atrapie.
 - **Niesprawdzone w sesji:** prawdziwe reguły Firestore (atrapa to moje lustro reguł, nie emulator – składnia przeszła kompilację przy wdrożeniu, ale zachowanie reguł na prawdziwych danych sprawdzi dopiero głosowanie z urządzeń), prawdziwe głosowanie z trzech
-  urządzeń (iPhone Olka, Windows, telefon Marty) i `crypto.subtle` na iPhonie (wymaga https – strona jest na https). Nie zrobiono jeszcze przeglądu `git diff` przez Opus (szczególnie `firestore.rules`).
+  urządzeń (iPhone Kamila, Windows, telefon Marty) i `crypto.subtle` na iPhonie (wymaga https – strona jest na https). Nie zrobiono jeszcze przeglądu `git diff` przez Opus (szczególnie `firestore.rules`).
 
-## CZĘŚĆ 3 – dodatki do diety (plan ustalony z Olkiem 9.11.2026, budowa w osobnych czatach)
+## CZĘŚĆ 3 – dodatki do diety (plan ustalony z Kamilem 9.11.2026, budowa w osobnych czatach)
 Pięć etapów, **w tej kolejności, każdy osobno**: zbudować → przetestować → wdrożyć → dopisać „Stan etapu 3.x (zbudowane)” pod jego planem.
 Zasady wspólne:
 - Wszystkie nowe dane osoby idą do dokumentu `folders/{fid}/data/diet` jako **osobne pola** (zapis `setDoc(…, {merge:true})` tylko
@@ -356,7 +356,7 @@ na znanych liczbach, edycję, usunięcie, zakresy wykresu, odświeżenie.
   Kod arkuszy i akcji jest przed `route()` na końcu skryptu.
 - **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – bez `pageerror`, bez przewijania w bok; średnia 7 dni na znanych
   liczbach (80,317 / 81,0 → trend −0,7), walidacja (20 kg, data jutro), edycja z listy, usunięcie, zakresy, odświeżenie strony,
-  karta z treningami nad kalendarzem. Zapis do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+  karta z treningami nad kalendarzem. Zapis do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Kamila.
 
 ### Etap 3.2 – kalkulator zapotrzebowania (arkusz celów)
 **Dane:** pole `prof` w dokumencie diety: `{sex:'m'|'k', by:rok urodzenia, h:wzrost cm, pal:1.2|1.375|1.55|1.725|1.9, goal:'red'|'utr'|'masa'}`
@@ -396,7 +396,7 @@ T 75 g (25%, ≥ 48 g), W = (2710 − 145·4 − 75·9)/4 = 363,75 → 365 g (w�
 - **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – bez `pageerror`, bez przewijania w bok; przypadek z planu (m, 1990, 180 cm, 80 kg, PAL 1,55,
   utrzymanie: BMR 1750, TDEE 2712,5, 2710 kcal, B 145, T 75, W 365), redukcja (2170 kcal, B 175, T 60, W 235), BMI ≥ 30 (B 145 z masy 81 kg), podłoga BMR,
   walidacja roku i wzrostu, „Anuluj” zapisuje tylko profil, „Ustaw jako cele” wypełnia pola celów, masa z pola → pomiar, odświeżenie (profil i cele zostają),
-  zakładki bez zmian. Zapis `prof` do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+  zakładki bez zmian. Zapis `prof` do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Kamila.
 
 ### Etap 3.3 – inne cele w dni treningowe
 **Dane:** pole `goalsT:{k,b,w,t}` w dokumencie diety (każde makro osobnym polem, jak `goals`; puste = `null`).
@@ -429,7 +429,7 @@ odświeżenie (stan `tr` zostaje); dzień bez `goalsT` → zwykłe cele.
 - **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – 76 sprawdzeń, bez `pageerror`, bez przewijania w bok (Dieta, arkusz, pozostałe zakładki); cele 2500 / 2800 (B 160),
   dzień bez sesji → 2500, z sesją w `SESS` → 2800, pełny cykl przełącznika, ręczny odpoczynek przy sesji → 2500, odświeżenie (`tr` i cele zostają), wczoraj → zwykłe, brak `goalsT` → zwykłe,
   „Skopiuj ze zwykłego”, kalkulator wypełnia tylko zakładkę treningową (2710 kcal, B 145) i nie rusza zwykłych celów. Zapis `goalsT` i `tr` do Firebase niesprawdzony na żywo
-  (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+  (strona nieosiągalna z sesji) – do sprawdzenia przez Kamila.
 
 ### Etap 3.4 – podsumowanie tygodnia (karta w Diecie)
 **Liczenie:** tydzień pon–nd zawierający wybrany dzień (dni przyszłe pomijane). Dni z ≥ 1 wpisem = „dni z wpisami”.
@@ -454,7 +454,7 @@ Stan zwinięcia w `LS` (nie w bazie).
   granica ±10% włącznie), dzień bez wpisów nie zaniża średniej, przełom miesiąca (28.09–4.10), brak celu, tydzień bez wpisów, zmiana wagi, odświeżenie (stan zwinięcia zostaje), przyszłe dni wyszarzone.
 
 ### Etap 3.5 – kopiowanie i moje gotowe posiłki
-(Olek: kopiowanie całego dnia i posiłku + możliwość zapisania często jedzonego posiłku i dodawania go jednym stuknięciem.)
+(Kamil: kopiowanie całego dnia i posiłku + możliwość zapisania często jedzonego posiłku i dodawania go jednym stuknięciem.)
 **Kopiowanie:**
 - Nagłówek posiłku: przycisk „⋯” → menu: „Kopiuj na…”, „Zapisz jako gotowy posiłek”.
 - Pasek daty / dół zakładki: „Kopiuj dzień na…”.
@@ -498,7 +498,7 @@ odświeżenie; dzień z „Innym posiłkiem”.
 - **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – bez `pageerror`, bez przewijania w bok (Dieta, wszystkie nowe arkusze, błędy walidacji, pozostałe zakładki): kopia posiłku wczoraj→dziś (3 wpisy, nowe `id`) i „Cofnij” (źródło bez zmian),
   kopia dnia (kolejność, „Inny posiłek” → Śniadanie, `tr` niekopiowane), walidacje dat i posiłku, zapis gotowego posiłku z menu (nazwa domyślna, składniki bez `id`/`o`/`m`), dodanie ×1,5 (75 g → 277,5 kcal; 300 ml → 150 kcal; suma 427,5 kcal), mnożnik 0 zablokowany,
   edycja (nazwa, ilość 50→100 g, usunięcie składnika), sekcja „Gotowe” w wyszukiwarce, nowy gotowy posiłek ze składnikiem z wyszukiwarki, usunięcie, odświeżenie strony (dane zostają), limity 50 / 30 / 40 znaków, stary dokument bez `tpl`.
-  Zapis `tpl` i kopii dni do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+  Zapis `tpl` i kopii dni do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Kamila.
 
 ## Na później (nie robić bez prośby)
 Woda, suplementy, zdjęcie talerza (AI – wymaga klucza i pośrednika).

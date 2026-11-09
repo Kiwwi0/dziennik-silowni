@@ -1,7 +1,7 @@
 # Dziennik siłowni – przewodnik dla Claude
 
-Aplikacja treningowa Olka (iPhone 11 Pro, Windows). Strona: https://kiwwi0.github.io/dziennik-silowni/
-Interfejs i rozmowa po polsku. Olek prosi: ostrożnie z poprawkami, a przed czymś kosztownym (duże przebudowy,
+Aplikacja treningowa Kamila (iPhone 11 Pro, Windows). Strona: https://kiwwi0.github.io/dziennik-silowni/
+Interfejs i rozmowa po polsku. Kamil prosi: ostrożnie z poprawkami, a przed czymś kosztownym (duże przebudowy,
 model 3D, długie testy) najpierw powiedz mu o koszcie. Każdy czat zajmuje się jednym segmentem (lista niżej),
 czytaj tylko potrzebne fragmenty kodu (grep + zakres linii), nie cały plik.
 Na starcie dołącz repozytorium od razu z prawem zapisu (add_repo z `access: "push"`), bo każda zmiana kończy się
@@ -71,9 +71,9 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 7. **Dieta** – w budowie, cały plan i ustalenia w `zrodla/DIETA.md` (czytaj go zamiast tego czatu); dane startowe
    produktów `zrodla/content/produkty.csv`. **Aplikacja na iPhone'a** (`DziennikSilowni/`) – osobny czat.
 
-## Oszczędzanie limitu (Olek ma plan Pro)
+## Oszczędzanie limitu (Kamil ma plan Pro)
 Duże zadania: plan pisze Opus (do pliku w repo), buduje Sonnet w nowym czacie, sprawdza Opus w nowym, krótkim czacie
-(czyta tylko `git diff` / zmiany z commita). Gdy zadanie lepiej zrobić w nowym czacie, powiedz to Olkowi wprost
+(czyta tylko `git diff` / zmiany z commita). Gdy zadanie lepiej zrobić w nowym czacie, powiedz to Kamilowi wprost
 i podaj gotowe zdanie do wklejenia oraz model do wybrania (Sonnet / Opus).
 
-Po każdej zmianie: build_web, test (jasny i ciemny, 390 px), commit, push, krótkie podsumowanie dla Olka po polsku.
+Po każdej zmianie: build_web, test (jasny i ciemny, 390 px), commit, push, krótkie podsumowanie dla Kamila po polsku.
