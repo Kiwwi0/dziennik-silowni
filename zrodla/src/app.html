@@ -2834,14 +2834,16 @@ const ACT = {
         for (const p of inc.mine) if (!have.has(p.id)){ DIET.mine.push(p); add.push(p.id); }
         const g = inc.goals, anyGoal = !!(g.k || g.b || g.w || g.t);
         if (anyGoal) DIET.goals = g;
-        persistDiet(add, [], anyGoal);
+        const addM = Array.isArray(d.diet.meals) ? cleanMeals(d.diet.meals).filter(x => !DIET.meals.some(y => y.id === x.id)).slice(0, MEAL_MAX - DIET.meals.length) : [];
+        DIET.meals.push(...addM); syncMeals();
+        persistDiet(add, [], anyGoal, addM.length > 0);
       }
       if (d.dietDays && typeof d.dietDays === 'object'){   // dni scalane po wpisach: brakujące dochodzą, istniejące zostają
         const inc = normalizeDays(d.dietDays);
         for (const k of Object.keys(inc)){
-          const day = dayW(k), have = new Set(MEALS.flatMap(([m]) => day.meals[m].map(x => x.id))), add = [];
-          for (const [m] of MEALS) for (const x of inc[k].meals[m]) if (!have.has(x.id)){ day.meals[m].push(x); add.push(x.id); }
-          if (add.length){ for (const [m] of MEALS) day.meals[m].sort((a, b) => a.o - b.o); persistDay(k, add); }
+          const day = dayW(k), have = new Set(Object.values(day.meals).flat().map(x => x.id)), add = [];
+          for (const m of Object.keys(inc[k].meals)) for (const x of inc[k].meals[m]) if (!have.has(x.id)){ (day.meals[m] ||= []).push(x); add.push(x.id); }
+          if (add.length){ for (const m of Object.keys(day.meals)) day.meals[m].sort((a, b) => a.o - b.o); persistDay(k, add); }
         }
       }
       sheets.length = 0; renderSheet(); render(); toast('Przywrócono dane.');
@@ -3052,8 +3054,22 @@ document.addEventListener('keydown', e => {
 const FOODS = JSON.parse(document.getElementById('fooddata').textContent);
 FOODS.forEach(f => { f.q = norm(f.n); });
 const FOODMAP = new Map(FOODS.map(f => [f.id, f]));
-const MEALS = [['sn', 'Śniadanie'], ['ob', 'Obiad'], ['ko', 'Kolacja'], ['pr', 'Przekąski']];
-const MEAL_NAME = Object.fromEntries(MEALS);
+// Posiłki w ciągu dnia: lista każdej osoby (DIET.meals, domyślnie 4), id wpisu w dniu = id posiłku. MEALS = [[id, nazwa]] bieżącej listy.
+const DEF_MEALS = [{id:'sn', n:'Śniadanie'}, {id:'ob', n:'Obiad'}, {id:'ko', n:'Kolacja'}, {id:'pr', n:'Przekąski'}];
+const MEAL_MAX = 10, MEAL_NAME_MAX = 30;
+const MEALS = DEF_MEALS.map(m => [m.id, m.n]);
+const mealName = m => (MEALS.find(x => x[0] === m) || [])[1] || 'Inny posiłek';   // posiłek usunięty z listy, ale z wpisami w starych dniach
+const mealIdOk = m => typeof m === 'string' && /^[a-z0-9]{1,12}$/.test(m);
+function cleanMeals(raw){
+  const out = [], seen = new Set();
+  if (Array.isArray(raw)) for (const x of raw){
+    if (!x || typeof x !== 'object') continue;
+    const id = String(x.id || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12), n = String(x.n || '').trim().slice(0, MEAL_NAME_MAX);
+    if (id && n && !seen.has(id) && out.length < MEAL_MAX){ seen.add(id); out.push({id, n}); }
+  }
+  return out.length ? out : DEF_MEALS.map(m => ({...m}));
+}
+function syncMeals(){ MEALS.length = 0; DIET.meals.forEach(m => MEALS.push([m.id, m.n])); }
 const DLIM = {k:900, mac:100, sum:105, qty:5000, gk:10000, gmac:1000};
 const DIET_WINDOW = 60;   // tyle ostatnich dni wczytujemy z bazy (nie cofamy się dalej, żeby nie nadpisać nie wczytanego dnia)
 const r1 = v => Math.round(v * 10) / 10;
@@ -3064,7 +3080,7 @@ const shiftKey = (k, n) => { const d = keyToDate(k); d.setDate(d.getDate() + n);
 const dietToday = () => dayKey(new Date());
 const dietKey = () => { const t = dietToday(); return ui.dietDay && ui.dietDay < t ? ui.dietDay : t; };
 const dietMinKey = () => FIRE ? shiftKey(dietToday(), -(DIET_WINDOW - 1)) : '0000-01-01';
-const blankDay = () => ({meals:{sn:[], ob:[], ko:[], pr:[]}});
+const blankDay = () => ({meals:Object.fromEntries(MEALS.map(([m]) => [m, []]))});
 
 function cleanProd(p){
   if (!p || typeof p !== 'object' || !p.id) return null;
@@ -3084,7 +3100,7 @@ function normalizeDiet(d){
   const raw = d && d.mine, list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.entries(raw).map(([id, x]) => x && typeof x === 'object' ? {...x, id} : null) : [];
   for (const p of list){ const c = cleanProd(p); if (c && !seen.has(c.id)){ seen.add(c.id); mine.push(c); } }
   mine.sort(byId);
-  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, v:1};
+  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), v:1};
 }
 // o = kolejność w posiłku (czas dodania); id służy jako klucz pola w bazie, więc tylko bezpieczne znaki
 function cleanEntry(e, i = 0){
@@ -3098,33 +3114,33 @@ function cleanEntry(e, i = 0){
 // Dzień w pamięci: {meals:{sn:[…], …}}. W bazie: {date, e:{[id]:{…wpis, m:posiłek}}} – każdy wpis to osobne pole,
 // więc zapis scala wpisy i nie nadpisze tych, których to urządzenie nie wczytało. Czytamy też stary format {meals}.
 function normalizeDay(d){
-  const meals = {sn:[], ob:[], ko:[], pr:[]}, seen = new Set();
+  const meals = Object.fromEntries(MEALS.map(([m]) => [m, []])), seen = new Set();   // posiłki spoza listy (usunięte) też zostają
   if (!d || typeof d !== 'object') return {meals};
-  const add = (m, x, i) => { const c = cleanEntry(x, i); if (c && !seen.has(c.id)){ seen.add(c.id); meals[m].push(c); } };
+  const add = (m, x, i) => { const c = cleanEntry(x, i); if (c && !seen.has(c.id)){ seen.add(c.id); (meals[m] ||= []).push(c); } };
   const old = d.meals && typeof d.meals === 'object' ? d.meals : {};
-  for (const [m] of MEALS) if (Array.isArray(old[m])) old[m].forEach((x, i) => add(m, x, i));
-  if (d.e && typeof d.e === 'object') for (const [id, x] of Object.entries(d.e)) if (x && typeof x === 'object' && MEALS.some(([m]) => m === x.m)) add(x.m, {...x, id}, 0);
-  for (const [m] of MEALS) meals[m].sort((a, b) => a.o - b.o);
+  for (const m of Object.keys(old)) if (mealIdOk(m) && Array.isArray(old[m])) old[m].forEach((x, i) => add(m, x, i));
+  if (d.e && typeof d.e === 'object') for (const [id, x] of Object.entries(d.e)) if (x && typeof x === 'object' && mealIdOk(x.m)) add(x.m, {...x, id}, 0);
+  for (const m of Object.keys(meals)) meals[m].sort((a, b) => a.o - b.o);
   return {meals};
 }
 function normalizeDays(o){ const out = {}; if (o && typeof o === 'object') for (const k of Object.keys(o)) if (dayKeyOk(k)) out[k] = normalizeDay(o[k]); return out; }
 
-let DIET = normalizeDiet(lsKey('diet') ? LS.get(lsKey('diet'), null) : null);
+let DIET = normalizeDiet(lsKey('diet') ? LS.get(lsKey('diet'), null) : null); syncMeals();
 let DAYS = normalizeDays(lsKey('dietDays') ? LS.get(lsKey('dietDays'), {}) : {});
 let unsubDiet = null, unsubDays = null, dietDirty = false, dietT = null;
 let dietLoaded = false;          // dokument data/diet przyszedł już z bazy (albo z jej pamięci na tym urządzeniu)
 // Zmiany w „Moich produktach” i celach czekają na wysłanie: produkty (id) do zapisu / usunięcia i znacznik celów.
 // Zapis scala pola dokumentu (merge), więc dwa urządzenia nie nadpisują się nawzajem.
 const dietPut = new Set(), dietDel = new Set();
-let dietGoalsDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
+let dietGoalsDirty = false, dietMealsDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
 const DAY_OLD = new Set();       // dni zapisane w bazie starym formatem {meals} – przy najbliższym zapisie przechodzą na nowy
 const dayOf = k => DAYS[k] || blankDay();
 // dwa warianty tego samego dnia → suma wpisów (wg id; wpis z b wygrywa, także gdy zmienił posiłek)
 function mergeDays(a, b){
   const all = new Map(), out = blankDay();
-  for (const day of [a, b]) for (const [m] of MEALS) for (const e of day.meals[m]) all.set(e.id, {e, m});
-  for (const {e, m} of all.values()) out.meals[m].push(e);
-  for (const [m] of MEALS) out.meals[m].sort((x, y) => x.o - y.o);
+  for (const day of [a, b]) for (const m of Object.keys(day.meals)) for (const e of day.meals[m]) all.set(e.id, {e, m});
+  for (const {e, m} of all.values()) (out.meals[m] ||= []).push(e);
+  for (const m of Object.keys(out.meals)) out.meals[m].sort((x, y) => x.o - y.o);
   return out;
 }
 function backupBox(s){
@@ -3140,36 +3156,38 @@ const dayW = k => DAYS[k] || (DAYS[k] = blankDay());
 
 /* ---------- zapis ---------- */
 // put = id produktów dodanych/zmienionych, del = id usuniętych, goals = zmieniono cele
-function persistDiet(put = [], del = [], goals = false){
+function persistDiet(put = [], del = [], goals = false, meals = false){
   const k = lsKey('diet'); if (k) LS.set(k, DIET);
   if (!fireOn()) return;
   for (const id of put){ dietPut.add(id); dietDel.delete(id); }
   for (const id of del){ dietDel.add(id); dietPut.delete(id); }
   if (goals) dietGoalsDirty = true;
-  if (!dietPut.size && !dietDel.size && !dietGoalsDirty) return;
+  if (meals) dietMealsDirty = true;
+  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietMealsDirty) return;
   dietDirty = true; clearTimeout(dietT); dietT = setTimeout(flushDiet, 600);
 }
 function flushDiet(){
   clearTimeout(dietT);
   if (!dietDirty || !fireOn()) return;
   dietDirty = false;
-  const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, old = DIET_OLD, G = DIET.goals;
-  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false;
+  const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, meals = dietMealsDirty, old = DIET_OLD, G = DIET.goals;
+  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false;
   const ref = FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'diet'), gdoc = {k:G.k ?? null, b:G.b ?? null, w:G.w ?? null, t:G.t ?? null};
   let job;
   if (old){   // stary format: jednorazowo cały dokument w nowym kształcie (mapa produktów)
     const mine = {}; for (const x of DIET.mine) mine[x.id] = clone(x);
-    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, mine});
+    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, mine, meals:clone(DIET.meals)});
   } else {
     const data = {v:2}, mine = {};
     if (goals) data.goals = gdoc;
+    if (meals) data.meals = clone(DIET.meals);   // lista posiłków zapisuje się w całości (ostatnia zmiana wygrywa)
     for (const id of put){ const x = DIET.mine.find(p => p.id === id); if (x) mine[id] = clone(x); }
     for (const id of del) mine[id] = FB.deleteField();
     if (Object.keys(mine).length) data.mine = mine;
     job = FB.setDoc(ref, data, {merge:true});
   }
   job.catch(() => {   // nie poszło: zmiany wracają do kolejki
-    put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (old) DIET_OLD = true;
+    put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (meals) dietMealsDirty = true; if (old) DIET_OLD = true;
     toast('Nie udało się zapisać diety w bazie.');
   });
 }
@@ -3179,7 +3197,7 @@ function persistDay(k, put = [], del = []){
   const lk = lsKey('dietDays'); if (lk) LS.set(lk, DAYS);
   if (!fireOn()) return;
   const old = DAY_OLD.has(k), e = {};
-  for (const [m] of MEALS) for (const x of dayOf(k).meals[m]) if (old || put.includes(x.id)){
+  for (const m of Object.keys(dayOf(k).meals)) for (const x of dayOf(k).meals[m]) if (old || put.includes(x.id)){
     const ent = {...clone(x), m};
     for (const f of ['q', 'po', 'pg', 'u']) if (!(f in ent)) ent[f] = FB.deleteField();   // pola opcjonalne: scalanie samo ich nie usuwa
     e[x.id] = ent;
@@ -3197,10 +3215,10 @@ function dietCanEdit(){
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDiet(); });
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
-function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; DAY_OLD.clear(); DIET = normalizeDiet(null); DAYS = {}; ui.dietDay = null; }
+function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
-  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false;
-  DIET = normalizeDiet(LS.get(lsKey('diet'), null)); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
+  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false;
+  DIET = normalizeDiet(LS.get(lsKey('diet'), null)); syncMeals(); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
   unsubDiet = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'diet'), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
     if (snap.exists() || !snap.metadata.fromCache) dietLoaded = true;
@@ -3211,9 +3229,10 @@ function dietOpen(fid){
     for (const id of dietPut){ const x = DIET.mine.find(p => p.id === id), i = inc.mine.findIndex(p => p.id === id); if (x){ if (i >= 0) inc.mine[i] = x; else inc.mine.push(x); } }
     if (dietDel.size) inc.mine = inc.mine.filter(p => !dietDel.has(p.id));
     if (dietGoalsDirty) inc.goals = DIET.goals;
+    if (dietMealsDirty) inc.meals = DIET.meals;
     inc.mine.sort(byId);
-    const sig = d => JSON.stringify([d.goals, d.mine.slice().sort(byId)]);
-    if (sig(inc) !== sig(DIET)){ DIET = inc; LS.set(lsKey('diet'), DIET); dietRefresh(); }
+    const sig = d => JSON.stringify([d.goals, d.mine.slice().sort(byId), d.meals]);
+    if (sig(inc) !== sig(DIET)){ DIET = inc; syncMeals(); LS.set(lsKey('diet'), DIET); dietRefresh(); }
   }, () => {});
   const q = FB.query(FB.collection(FB.db, 'folders', fid, 'diet'), FB.where('date', '>=', dietMinKey()));
   unsubDays = FB.onSnapshot(q, snap => {
@@ -3243,10 +3262,10 @@ function ensureMine(p){
 const macroFor = (p, g) => ({k:r1(p.k * g / 100), b:r1(p.b * g / 100), w:r1(p.w * g / 100), t:r1(p.t * g / 100)});
 const mineSort = (a, b) => (b.star - a.star) || (b.uses - a.uses) || (b.last - a.last) || a.n.localeCompare(b.n, 'pl');
 const sumOf = list => list.reduce((a, e) => ({k:a.k + e.k, b:a.b + e.b, w:a.w + e.w, t:a.t + e.t}), {k:0, b:0, w:0, t:0});
-const dayTotals = k => sumOf(MEALS.flatMap(([m]) => dayOf(k).meals[m]));
+const dayTotals = k => sumOf(Object.values(dayOf(k).meals).flat());
 const fmtG = n => fmtN(Math.round(n));
 const sumWarn = p => p.k > 30 && Math.abs(4 * p.b + 4 * p.w + 9 * p.t - p.k) > 0.15 * p.k;
-function findEntry(k, id){ for (const [m] of MEALS){ const e = dayOf(k).meals[m].find(x => x.id === id); if (e) return {e, m}; } return null; }
+function findEntry(k, id){ for (const m of Object.keys(dayOf(k).meals)){ const e = dayOf(k).meals[m].find(x => x.id === id); if (e) return {e, m}; } return null; }
 
 /* ---------- widok zakładki ---------- */
 function dietBar(val, goal, sm){
@@ -3266,13 +3285,14 @@ function vDiet(){
     ${G.k ? dietBar(tot.k, G.k) : ''}
     <div class="dt-macros">${[['b', 'Białko'], ['w', 'Węgle'], ['t', 'Tłuszcz']].map(([f, nm]) => `<div class="dt-m"><div class="t"><span>${nm}</span><b class="num${G[f] && tot[f] > G[f] ? ' dt-warn' : ''}">${fmtG(tot[f])}${G[f] ? ' / ' + fmtG(G[f]) : ''} g</b></div>${G[f] ? dietBar(tot[f], G[f], true) : ''}</div>`).join('')}</div>
     ${hasGoal ? '' : `<div class="row"><span class="muted small" style="flex:1;min-width:0">Ustaw dzienne cele, żeby widzieć postęp.</span><button class="btn sm" data-act="dietGoals">Ustaw cel</button></div>`}</section>`;
-  for (const [m, nm] of MEALS){
-    const list = dayOf(key).meals[m], s = sumOf(list);
-    h += `<section class="dt-meal" aria-label="${nm}"><div class="dt-meal-h"><h2>${nm}</h2><span class="s num">${list.length ? fmtG(s.k) + ' kcal · B ' + fmtG(s.b) + ' g' : ''}</span></div>
+  const dm = dayOf(key).meals, orphan = Object.keys(dm).filter(m => dm[m].length && !MEALS.some(x => x[0] === m)).map(m => [m, 'Inny posiłek']);
+  for (const [m, nm] of [...MEALS, ...orphan]){
+    const list = dm[m] || [], s = sumOf(list), known = MEALS.some(x => x[0] === m);
+    h += `<section class="dt-meal" aria-label="${esc(nm)}"><div class="dt-meal-h"><h2>${esc(nm)}</h2><span class="s num">${list.length ? fmtG(s.k) + ' kcal · B ' + fmtG(s.b) + ' g' : ''}</span></div>
       ${list.map(e => `<button class="dt-ent" data-act="dietEntry" data-meal="${m}" data-id="${esc(e.id)}"><span><span class="n">${esc(e.n)}</span><span class="m num" style="display:block">${entryQty(e) ? esc(entryQty(e)) + ' · ' : ''}B ${fmtG(e.b)} · W ${fmtG(e.w)} · T ${fmtG(e.t)}</span></span><span class="k num">${fmtG(e.k)} kcal</span></button>`).join('')}
-      <button class="dt-add" data-act="dietAdd" data-meal="${m}">${svg('plus', 'i s')}Dodaj</button></section>`;
+      ${known ? `<button class="dt-add" data-act="dietAdd" data-meal="${m}">${svg('plus', 'i s')}Dodaj</button>` : ''}</section>`;
   }
-  h += `<div class="row" style="justify-content:center"><button class="btn ghost sm" data-act="dietGoals">Cele</button></div></div>`;
+  h += `<div class="row" style="justify-content:center"><button class="btn ghost sm" data-act="dietMeals">Posiłki</button><button class="btn ghost sm" data-act="dietGoals">Cele</button></div></div>`;
   return h;
 }
 const entryUnit = e => { if (e.u) return e.u; const p = e.pid ? prodOf(e.pid) : null; return p ? p.u : 'g'; };
@@ -3323,7 +3343,7 @@ function qtyBase(s){
   }
   return prodOf(s.pid);
 }
-SHEETS.dietAdd = s => sheetHead('Dodaj: ' + MEAL_NAME[s.meal]) + `
+SHEETS.dietAdd = s => sheetHead('Dodaj: ' + mealName(s.meal)) + `
   <div class="search">${svg('search')}<input class="input" id="dt-q" type="search" data-bind="dietq" placeholder="Szukaj produktu" value="${esc(s.q || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Szukaj produktu"></div>
   <div class="row"><button class="btn" data-act="dietQuick" data-meal="${s.meal}">Szybki wpis</button><button class="btn" data-act="dietNewProd" data-meal="${s.meal}">Nowy produkt</button></div>
   <div id="dt-list" class="stack"></div>`;
@@ -3340,20 +3360,20 @@ SHEETS.dietQty = s => {
     : `<div class="field"><label class="lbl" for="dq-g">Ilość (${p.u})</label>
         <div class="row" style="flex-wrap:nowrap"><input class="input" id="dq-g" inputmode="decimal" data-bind="dqg" value="${esc(s.g != null ? fmtN(s.g) : '')}" autocomplete="off" aria-label="Ilość w ${p.u === 'ml' ? 'mililitrach' : 'gramach'}">
         ${pc ? `<button class="btn" data-act="dqPortion" style="flex:none">${esc(p.po || '1 porcja')} · ${fmtN(p.pg)} ${p.u}</button>` : ''}</div></div>`;
-  return sheetHead(s.entry ? 'Edytuj wpis' : 'Dodaj do: ' + MEAL_NAME[s.meal]) + `
+  return sheetHead(s.entry ? 'Edytuj wpis' : 'Dodaj do: ' + mealName(s.meal)) + `
     <div><h2 class="ex-title" style="font-size:24px">${esc(p.n)}</h2>${p.brand ? `<p class="muted small" style="margin:2px 0 0">${esc(p.brand)}</p>` : ''}
       <p class="muted small num" style="margin:6px 0 0">${per}: ${fmtN(r1(p.k))} kcal · B ${fmtN(r1(p.b))} · W ${fmtN(r1(p.w))} · T ${fmtN(r1(p.t))}</p>
       ${pc ? `<p class="muted small num" style="margin:2px 0 0">Porcja: ${esc(p.po || '1 porcja')} · ${fmtN(p.pg)} ${p.u}</p>` : ''}</div>
     ${pc ? `<div class="field"><span class="lbl">Jednostka</span><div class="seg" role="group" aria-label="Jednostka ilości"><button data-act="dqMode" data-m="q" aria-pressed="${qm}">szt.</button><button data-act="dqMode" data-m="g" aria-pressed="${!qm}">${p.u}</button></div></div>` : ''}
     ${field}
-    <div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${nm}</button>`).join('')}</div></div>
+    <div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${esc(nm)}</button>`).join('')}</div></div>
     <div class="dt-out" id="dq-out" aria-live="polite"></div>
     ${live ? `<div class="row"><button class="btn sm" data-act="dqStar" aria-pressed="${!!(mine && mine.star)}">${svg('star', 'i s')}${mine && mine.star ? 'Ulubiony' : 'Dodaj gwiazdkę'}</button><button class="btn sm" data-act="dqEditProd">Edytuj produkt</button></div>` : ''}
     <div class="sheet-f">${s.entry ? '<button class="btn danger" data-act="dqDelete" style="flex:none">Usuń</button>' : ''}<button class="btn primary" data-act="dqSave">${s.entry ? 'Zapisz' : 'Dodaj'}</button></div>`;
 };
 SHEETS.dietQuick = s => {
   const f = s.f, fld = (k, lbl, ph) => `<div class="field"><label class="lbl" for="dk-${k}">${lbl}</label><input class="input" id="dk-${k}" inputmode="decimal" data-bind="df" data-f="${k}" value="${esc(f[k])}" placeholder="${ph}" autocomplete="off"></div>`;
-  return sheetHead(s.entryId ? 'Edytuj wpis' : 'Szybki wpis: ' + MEAL_NAME[s.meal]) + `
+  return sheetHead(s.entryId ? 'Edytuj wpis' : 'Szybki wpis: ' + mealName(s.meal)) + `
     <div class="field"><label class="lbl" for="dk-n">Nazwa (opcjonalnie)</label><input class="input" id="dk-n" maxlength="80" data-bind="df" data-f="n" value="${esc(f.n)}" placeholder="Szybki wpis" autocomplete="off"></div>
     ${fld('k', 'Kalorie (kcal)', 'np. 350')}
     <div class="row" style="align-items:flex-start;flex-wrap:nowrap"><div style="flex:1;min-width:0">${fld('b', 'Białko (g)', '0')}</div><div style="flex:1;min-width:0">${fld('w', 'Węgle (g)', '0')}</div><div style="flex:1;min-width:0">${fld('t', 'Tłuszcz (g)', '0')}</div></div>
@@ -3375,6 +3395,17 @@ SHEETS.dietProd = s => {
     ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}
     ${s.id && inMine(s.id) ? '<div class="row"><button class="btn danger sm" data-act="dpDelete">Usuń z moich produktów</button></div>' : ''}
     <div class="sheet-f"><button class="btn primary" data-act="dpSave">Zapisz produkt</button></div>`;
+};
+SHEETS.dietMeals = s => {
+  const n = DIET.meals.length;
+  const row = (m, i) => `<div class="row" style="flex-wrap:nowrap;gap:6px"><input class="input" style="flex:1;min-width:0" maxlength="${MEAL_NAME_MAX}" data-bind="dmName" data-id="${m.id}" value="${esc(m.n)}" aria-label="Nazwa posiłku ${i + 1}" autocomplete="off">
+    <button class="iconbtn" data-act="dmMove" data-id="${m.id}" data-d="-1" aria-label="Przesuń wyżej" ${i === 0 ? 'disabled' : ''}><span style="display:inline-flex;transform:rotate(-90deg)">${svg('chev')}</span></button>
+    <button class="iconbtn" data-act="dmMove" data-id="${m.id}" data-d="1" aria-label="Przesuń niżej" ${i === n - 1 ? 'disabled' : ''}><span style="display:inline-flex;transform:rotate(90deg)">${svg('chev')}</span></button>
+    <button class="iconbtn" data-act="dmDel" data-id="${m.id}" aria-label="Usuń posiłek ${esc(m.n)}" ${n <= 1 ? 'disabled' : ''}>${svg('x')}</button></div>`;
+  return sheetHead('Posiłki') + `<p class="note">Nazwy, kolejność i liczba posiłków w ciągu dnia (do ${MEAL_MAX}). Usunięcie posiłku nie kasuje wpisów, które w nim zapisałeś – pozostają w starych dniach w sekcji „Inny posiłek”.</p>
+    <div class="stack" id="dm-list">${DIET.meals.map(row).join('')}</div>
+    ${n < MEAL_MAX ? `<div class="field"><label class="lbl" for="dm-new">Nowy posiłek</label><div class="row" style="flex-wrap:nowrap"><input class="input" style="flex:1;min-width:0" id="dm-new" maxlength="${MEAL_NAME_MAX}" placeholder="np. Drugie śniadanie" autocomplete="off"><button class="btn" data-act="dmAdd">Dodaj</button></div></div>` : '<p class="note">Osiągnięto największą liczbę posiłków.</p>'}
+    ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}`;
 };
 SHEETS.dietGoals = s => {
   const fld = (k, lbl) => `<div class="field"><label class="lbl" for="dg-${k}">${lbl}</label><input class="input" id="dg-${k}" inputmode="decimal" data-bind="dg" data-f="${k}" value="${esc(s.f[k])}" placeholder="–" autocomplete="off"></div>`;
@@ -3449,12 +3480,12 @@ Object.assign(ACT, {
     if (s.entry){
       const r = findEntry(key, s.entryId); if (!r){ toast('Tego wpisu już nie ma.'); sheets.length = 0; renderSheet(); render(); return; }
       Object.assign(r.e, {g:r1(g), ...m}); for (const f of ['q', 'po', 'pg']) delete r.e[f]; Object.assign(r.e, pc);
-      if (r.m !== s.meal){ const from = dayW(key).meals[r.m]; from.splice(from.findIndex(x => x.id === r.e.id), 1); r.e.o = Date.now(); dayW(key).meals[s.meal].push(r.e); }
+      if (r.m !== s.meal){ const from = dayW(key).meals[r.m]; from.splice(from.findIndex(x => x.id === r.e.id), 1); r.e.o = Date.now(); (dayW(key).meals[s.meal] ||= []).push(r.e); }
       persistDay(key, [r.e.id]); sheets.length = 0; renderSheet(); render(); toast('Zapisano zmiany.'); return;
     }
     const p = prodOf(s.pid); if (!p || !dietCanEdit()) return;
     const mine = ensureMine(p); mine.uses++; mine.last = Date.now(); persistDiet([mine.id]);
-    const id = uid(); dayW(key).meals[s.meal].push({id, pid:p.id, n:p.n, g:r1(g), ...m, o:Date.now(), ...pc, ...(p.u === 'ml' ? {u:'ml'} : {})});
+    const id = uid(); (dayW(key).meals[s.meal] ||= []).push({id, pid:p.id, n:p.n, g:r1(g), ...m, o:Date.now(), ...pc, ...(p.u === 'ml' ? {u:'ml'} : {})});
     persistDay(key, [id]); sheets.length = 0; renderSheet(); render(); toast('Dodano: ' + p.n);
   },
   dqDelete(){
@@ -3476,7 +3507,7 @@ Object.assign(ACT, {
     if (id){
       const r = findEntry(key, id); if (!r){ toast('Tego wpisu już nie ma.'); sheets.length = 0; renderSheet(); render(); return; }
       Object.assign(r.e, ent);
-    } else { id = uid(); dayW(key).meals[s.meal].push({id, ...ent, o:Date.now()}); }
+    } else { id = uid(); (dayW(key).meals[s.meal] ||= []).push({id, ...ent, o:Date.now()}); }
     persistDay(key, [id]); sheets.length = 0; renderSheet(); render(); toast(s.entryId ? 'Zapisano zmiany.' : 'Dodano wpis.');
   },
   dkDelete(){
@@ -3511,6 +3542,24 @@ Object.assign(ACT, {
       DIET.mine = DIET.mine.filter(x => x.id !== id); persistDiet([], [id]); sheets.length = 0; renderSheet(); render(); toast('Usunięto produkt.');
     });
   },
+  dietMeals(){ if (dietCanEdit()) openSheet({type:'dietMeals'}); },
+  dmAdd(){
+    const s = topSheet(), el = $('#dm-new'), n = (el ? el.value : '').trim().slice(0, MEAL_NAME_MAX);
+    if (!n){ s.err = 'Wpisz nazwę posiłku.'; renderSheet(); return; }
+    if (DIET.meals.length >= MEAL_MAX) return;
+    let id; do id = 'm' + Math.random().toString(36).slice(2, 8); while (DIET.meals.some(m => m.id === id));
+    DIET.meals.push({id, n}); syncMeals(); s.err = ''; persistDiet([], [], false, true); renderSheet(); render();
+  },
+  dmMove(el){
+    const i = DIET.meals.findIndex(m => m.id === el.dataset.id), j = i + +el.dataset.d; if (i < 0 || j < 0 || j >= DIET.meals.length) return;
+    [DIET.meals[i], DIET.meals[j]] = [DIET.meals[j], DIET.meals[i]]; syncMeals(); persistDiet([], [], false, true); renderSheet(); render();
+  },
+  dmDel(el){
+    const m = DIET.meals.find(x => x.id === el.dataset.id); if (!m || DIET.meals.length <= 1) return;
+    confirmBox(`Usunąć posiłek „${m.n}”?`, 'Wpisy zapisane w tym posiłku nie zostaną skasowane – w dniach, w których są, pojawią się w sekcji „Inny posiłek”.', 'Usuń posiłek', () => {
+      DIET.meals = DIET.meals.filter(x => x.id !== m.id); syncMeals(); persistDiet([], [], false, true); render();
+    });
+  },
   dietGoals(){ const G = DIET.goals; openSheet({type:'dietGoals', f:{k:G.k ? fmtN(G.k) : '', b:G.b ? fmtN(G.b) : '', w:G.w ? fmtN(G.w) : '', t:G.t ? fmtN(G.t) : ''}}); goalsHint(); },
   dgSave(){
     const s = topSheet(), f = s.f, v = {k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t)}; if (!dietCanEdit()) return;
@@ -3522,6 +3571,7 @@ Object.assign(ACT, {
   },
 });
 Object.assign(BIND, {
+  dmName(t){ const m = DIET.meals.find(x => x.id === t.dataset.id), n = t.value.trim().slice(0, MEAL_NAME_MAX); if (!m || !n || m.n === n) return; m.n = n; syncMeals(); persistDiet([], [], false, true); render(); },
   dietq(t){ topSheet().q = t.value; fillDietList(); },
   dqq(t){
     const s = topSheet(), pg = s.base.pg, max = Math.floor(DLIM.qty / pg * 100) / 100; let v = num(t.value);

@@ -88,6 +88,14 @@ Dieta **nie** wchodzi do `S` (dokument `state` jest zapisywany w całości przy 
   `match /diet/{day} { allow read, write: if isMember(fid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }`.
   Reguły wgrywa sam workflow `.github/workflows/rules.yml` po pushu zmian w `firestore.rules`.
 - `DIET` zapisuje się w całości, dlatego zmiany produktów i celów czekają, aż dokument przyjdzie z bazy (`dietLoaded`, `dietCanEdit`).
+- **Posiłki w ciągu dnia nie są stałe** (poprawka po części 1): lista każdej osoby to `DIET.meals = [{id, n}]` (domyślnie Śniadanie `sn`, Obiad `ob`,
+  Kolacja `ko`, Przekąski `pr`; do 10 posiłków, nazwa do 30 znaków, minimum 1). `MEALS = [[id, nazwa]]` jest odbiciem tej listy (`syncMeals()`).
+  W bazie to pole `meals` (tablica) w `folders/{fid}/data/diet`, zapisywana w całości przy zmianie (`dietMealsDirty`, ostatnia zmiana wygrywa;
+  zmiana oczekująca na zapis ma pierwszeństwo nad snapshotem). Dokument bez `meals` = cztery domyślne. Id nowego posiłku: `m` + 6 znaków `[a-z0-9]`.
+  Wpisy w dniach trzymają id posiłku (`m`); dzień ma tablicę dla każdego posiłku, ale kod nie zakłada, że ma je wszystkie (`||= []`).
+  **Usunięcie posiłku nie kasuje wpisów** – w dniach, które je mają, pokazują się w sekcji „Inny posiłek” (bez przycisku „Dodaj”, liczą się do sum dnia).
+  Arkusz `dietMeals` (przycisk „Posiłki” na dole zakładki, obok „Cele”): zmiana nazwy na żywo, strzałki w górę/w dół, usunięcie z potwierdzeniem, pole „Nowy posiłek”.
+  Chipy wyboru posiłku w `dietQty` pochodzą z listy. Import kopii dopisuje posiłki z kopii, których id brakuje (kopia bez `diet.meals` nic nie zmienia).
 - Kopia zapasowa (segment 5) zawiera `diet` i `dietDays`; stara kopia bez tych pól zostawia obecną dietę nietkniętą.
   - **Eksport w dwóch krokach** (schowek na iPhonie działa tylko zaraz po stuknięciu): „Przygotuj kopię” (`exportPrep`, asynchronicznie
     pobiera z Firebase **wszystkie** dni z `folders/{fid}/diet`, także starsze niż 60, i scala je z lokalnymi przez `mergeDays`;
