@@ -446,3 +446,12 @@ odświeżenie; dzień z „Innym posiłkiem”.
 
 ## Na później (nie robić bez prośby)
 Woda, suplementy, zdjęcie talerza (AI – wymaga klucza i pośrednika).
+
+## Poprawka: wczytanie diety z bazy
+- Objaw: „Zapisz cele” (i inne zmiany w diecie) kończyło się toastem „Chwila, wczytuję dietę z bazy…”, także po odświeżeniu.
+- Przyczyna: w folderze, który nie ma jeszcze dokumentu `data/diet`, Firestore z `persistentLocalCache` przy kolejnym
+  wczytaniu strony od razu podaje z pamięci „dokumentu brak” (`fromCache:true`), a potwierdzenie z serwera to już tylko
+  zmiana metadanych. Bez `includeMetadataChanges` ten drugi snapshot nie wywołuje funkcji, więc `dietLoaded` zostawało false
+  na zawsze i `dietCanEdit()` blokowało zapis. Etap 3.3 nie miał z tym związku (błąd był od części 1).
+- Zmiana: `onSnapshot(… data/diet, {includeMetadataChanges:true}, …)` w `dietOpen`. Blokada `dietCanEdit` zostaje,
+  bo do czasu wczytania nie wiadomo, czy dokument nie jest w starym formacie (`DIET_OLD`, v:1, tablica `mine`).
