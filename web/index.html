@@ -4630,6 +4630,7 @@ const tplPut = new Set(), tplDel = new Set();   // gotowe posiłki do zapisu / u
 const supPut = new Set(), supDel = new Set();   // suplementy do zapisu / usunięcia (id)
 let dietWgDirty = false;                        // cel wody czeka na zapis
 const waPend = new Map();                       // dzień → licznik zapisu wody (jeden zapis po serii stuknięć)
+const waDelta = new Map(), waAbs = new Set();    // dzień → przyrost do wysłania (+/−) albo dokładna wartość do wpisania (z okna „Woda”)
 let dietGoalsDirty = false, dietGoalsTDirty = false, dietMealsDirty = false, dietProfDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
 const DAY_OLD = new Set();       // dni zapisane w bazie starym formatem {meals} – przy najbliższym zapisie przechodzą na nowy
 const dayOf = k => DAYS[k] || blankDay();
@@ -4751,7 +4752,7 @@ function persistDay(k, put = [], del = [], tr, x){   // x: dodatkowe pola dnia (
   if (tr !== undefined) data.tr = tr === null ? FB.deleteField() : tr;
   if (x) for (const [f, v] of Object.entries(x)){
     if (v === null) data[f] = FB.deleteField();
-    else if (typeof v === 'object') data[f] = Object.fromEntries(Object.entries(v).map(([i, y]) => [i, y === null ? FB.deleteField() : y]));
+    else if (v && v.constructor === Object) data[f] = Object.fromEntries(Object.entries(v).map(([i, y]) => [i, y === null ? FB.deleteField() : y]));
     else data[f] = v;
   }
   if (old){ data.meals = FB.deleteField(); DAY_OLD.delete(k); }
@@ -4765,20 +4766,25 @@ function dietCanEdit(){
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden'){ flushDiet(); waFlushAll(); } });
 // woda: zmiana od razu w pamięci, zapis do bazy ok. 600 ms po ostatnim stuknięciu
-function setWater(key, v){
+// rel = true: przycisk +/− (do bazy idzie przyrost, więc stuknięcia z dwóch urządzeń się sumują); false: dokładna wartość
+function setWater(key, v, rel){
   v = Math.max(0, Math.min(WATER_MAX, Math.round(v)));
-  const d = dayW(key); if (v) d.wa = v; else delete d.wa;
+  const d = dayW(key), was = d.wa || 0; if (v) d.wa = v; else delete d.wa;
+  if (rel && !waAbs.has(key)) waDelta.set(key, (waDelta.get(key) || 0) + v - was);
+  else if (!rel){ waAbs.add(key); waDelta.delete(key); }
   const lk = lsKey('dietDays'); if (lk) LS.set(lk, DAYS);
   if (!fireOn()) return;
   clearTimeout(waPend.get(key)); waPend.set(key, setTimeout(() => waFlush(key), 600));
 }
 function waFlush(key){
   if (!waPend.has(key)) return;
-  clearTimeout(waPend.get(key)); waPend.delete(key); if (!fireOn()) return;
-  persistDay(key, [], [], undefined, {wa:(DAYS[key] && DAYS[key].wa) || null});
+  clearTimeout(waPend.get(key)); waPend.delete(key);
+  const abs = waAbs.delete(key), dl = waDelta.get(key) || 0; waDelta.delete(key); if (!fireOn()) return;
+  if (abs) persistDay(key, [], [], undefined, {wa:(DAYS[key] && DAYS[key].wa) || null});
+  else if (dl) persistDay(key, [], [], undefined, {wa:FB.increment(dl)});
 }
 function waFlushAll(){ for (const k of [...waPend.keys()]) waFlush(k); }
-function waClear(){ waPend.forEach(h => clearTimeout(h)); waPend.clear(); }
+function waClear(){ waPend.forEach(h => clearTimeout(h)); waPend.clear(); waDelta.clear(); waAbs.clear(); }
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
 function dietClose(){ waFlushAll(); waClear(); dietWgDirty = false; supPut.clear(); supDel.clear(); dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietErr = ''; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); tplPut.clear(); tplDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
@@ -4973,11 +4979,12 @@ function qtyMacro(s){
   return e ? {k:r1(e.k * g / e.g), b:r1(e.b * g / e.g), w:r1(e.w * g / e.g), t:r1(e.t * g / e.g)} : macroFor(s.base, g);
 }
 const QTY_CHIPS = [50, 100, 150, 200];   // etap 4.1: szybkie ilości w g/ml
-// etap 4.2: ostatnia ilość tego produktu z wczytanych dni (największe o) → {g, q} albo null
+// etap 4.2: ostatnia ilość tego produktu z wczytanych dni (najpóźniejszy dzień, w nim największe o) → {g, q, pg} albo null
 function lastQty(pid){
-  let best = null;
-  for (const d of Object.values(DAYS)) for (const list of Object.values(d.meals || {})) for (const e of list) if (e.pid === pid && (!best || e.o > best.o)) best = e;
-  return best ? {g:best.g, q:best.q || null} : null;
+  let best = null, bk = '';
+  for (const [k, d] of Object.entries(DAYS)) for (const list of Object.values(d.meals || {})) for (const e of list)
+    if (e.pid === pid && e.g > 0 && (!best || k > bk || (k === bk && e.o > best.o))){ best = e; bk = k; }
+  return best ? {g:best.g, q:best.q || null, pg:best.pg || null} : null;
 }
 function qtyOut(s){
   $$('#dq-chips .chip').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === s.g)));
@@ -5409,7 +5416,7 @@ function openDietQty(o){
   if (s.entry){ s.g = s.entry.g; if (s.entry.q && b.pg){ s.mode = 'q'; s.q = s.entry.q; } }
   else {
     const lq = s.pid ? lastQty(s.pid) : null;
-    if (lq && lq.q && b && b.pg){ s.mode = 'q'; s.q = lq.q; s.g = r1(lq.q * b.pg); }
+    if (lq && lq.q && b && b.pg && Math.abs((lq.pg || 0) - b.pg) < 0.05){ s.mode = 'q'; s.q = lq.q; s.g = r1(lq.q * b.pg); }   // porcja produktu bez zmian: te same sztuki
     else if (lq && lq.g > 0){ s.g = lq.g; }
     else if (b && b.pg){ s.mode = 'q'; s.q = 1; s.g = r1(b.pg); }
     else s.g = 100;
@@ -5434,15 +5441,18 @@ Object.assign(ACT, {
   },
   dietQuick(el){ openSheet({type:'dietQuick', meal:el.dataset.meal, day:sDay(topSheet()), entryId:null, f:{n:'', k:'', b:'', w:'', t:''}}); },
   dietNewProd(el){ openSheet({type:'dietProd', id:null, meal:el.dataset.meal, toTpl:!!topSheet().toTpl, day:sDay(topSheet()), f:{n:topSheet().q || '', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''}}); },
-  dietEntDel(el){   // etap 4.4: usunięcie przesunięciem, bez potwierdzenia, z „Cofnij”
+  dietEntDel(el){   // etap 4.4: usunięcie przesunięciem, z potwierdzeniem (na razie, wybór Kamila) i „Cofnij”
     if (!dietCanEdit()) return;
     const key = dietKey(), r = findEntry(key, el.dataset.id); if (!r) return;
-    const ent = clone(r.e), m = r.m;
-    dayW(key).meals[m] = dayW(key).meals[m].filter(x => x.id !== ent.id);
+    const ent = clone(r.e), m = r.m, sw = el.closest('.sw'); if (sw) swSet(sw, 0);   // wpis wraca na miejsce (także po „Anuluj”)
+    confirmBox('Usunąć wpis?', `„${ent.n}” zniknie z posiłku „${mealName(m)}”.`, 'Usuń', () => {
+    const cur = dayW(key).meals[m] || []; if (!cur.some(x => x.id === ent.id)) return;
+    dayW(key).meals[m] = cur.filter(x => x.id !== ent.id);
     persistDay(key, [], [ent.id]); render();
     toastUndo('Usunięto', () => {
       const list = (dayW(key).meals[m] ||= []); if (list.some(x => x.id === ent.id)) return;
       list.push(ent); list.sort((a, b) => a.o - b.o); persistDay(key, [ent.id]); render();
+    });
     });
   },
   dietEntry(el){
@@ -5596,7 +5606,7 @@ Object.assign(ACT, {
   },
   waAdd(el){
     if (!dietCanEdit()) return;
-    const key = dietKey(); setWater(key, (dayOf(key).wa || 0) + +el.dataset.v); render();
+    const key = dietKey(); setWater(key, (dayOf(key).wa || 0) + +el.dataset.v, true); render();
   },
   dietWaterEdit(){ if (dietCanEdit()) openSheet({type:'dietWater', v:String(dayOf(dietKey()).wa || ''), day:dietKey(), err:''}); },
   dwSave(){

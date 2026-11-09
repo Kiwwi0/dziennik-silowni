@@ -581,6 +581,7 @@ i `diet/{dzień}` nie mają walidacji pól).
 - **4.5** woda: `DAYS[k].wa`, `DIET.wg`, `setWater` (zapis po 600 ms, `waPend`, `waFlush`), karta `dietWaterCard`, arkusz `dietWater`, pole „Woda (ml)” w `dietGoals` (tylko zwykły dzień). Suplementy: `DIET.sup` (`cleanSup`, `supList`), `DAYS[k].sp`, karta `dietSupCard`, arkusz `dietSup`, ACT `supTake/supAdd/supMove/supDel`, BIND `supName/supDose`.
   `persistDay(k, put, del, tr, x)` – `x` to dodatkowe pola dnia (`null` → usuń; w mapach `null` → usuń klucz). `persistDiet(..., wg, sp, sd)`. Scalanie: `mergeDays` i import kopii obsługują `wa`, `sp`, `wg`, `sup`.
 - Test (Playwright, wersja testowa, 390×844 i 360×780, jasny/ciemny): bez błędów i bez przewijania w bok. Zapis `wa`, `sp`, `wg`, `sup` do Firebase niesprawdzalny z sesji – do sprawdzenia przez Kamila na telefonie.
+- Poprawki po przeglądzie (9.11.2026): woda z przycisków +/− idzie do bazy jako przyrost (`FB.increment`, `waDelta`), dokładna wartość z okna „Woda” – jako liczba (`waAbs`); `persistDay` traktuje jako mapę tylko zwykły obiekt. `lastQty` wybiera najpóźniejszy dzień, potem największe `o`; sztuki tylko, gdy porcja produktu się nie zmieniła (`pg`). `dietEntDel` – na razie z potwierdzeniem (`confirmBox`) i nadal z „Cofnij”.
 
 ## Na później (nie robić bez prośby)
 Zdjęcie talerza (AI – wymaga klucza i pośrednika). Odporność zapisu (ponowna wysyłka po odrzuceniu przez bazę, limit pamięci przeglądarki) –
