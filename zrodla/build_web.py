@@ -15,6 +15,20 @@ os.makedirs(OUT, exist_ok=True)
 
 tpl = open(os.path.join(HERE, 'src', 'app.html'), encoding='utf-8').read()
 
+def foods_json(here):
+    """Wczytuje content/produkty.csv i zwraca JSON (krótkie klucze) do wstawienia w stronę."""
+    import csv
+    rows = list(csv.DictReader(open(os.path.join(here, 'content', 'produkty.csv'), encoding='utf-8'), delimiter=';'))
+    num = lambda s: float(s.replace(',', '.')) if s.strip() else 0.0
+    out, seen = [], set()
+    for r in rows:
+        assert r['id'] not in seen, 'powtórzone id: ' + r['id']
+        seen.add(r['id'])
+        out.append({'id': r['id'], 'n': r['nazwa'], 'c': r['kategoria'], 'u': r['jednostka'], 'k': num(r['kcal']), 'b': num(r['bialko']),
+                    'w': num(r['wegle']), 't': num(r['tluszcz']), 'f': num(r['blonnik']),
+                    'pg': num(r['porcja_g']) if r['porcja_g'].strip() else None, 'po': r['porcja_opis'].strip()})
+    return json.dumps(out, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
+
 def inject_anim(tpl):
     """Wkleja silnik animacji ćwiczeń (src/anim.js, src/anim_ex.js) i jego style (src/anim.css)."""
     src = os.path.join(HERE, 'src')
@@ -35,6 +49,8 @@ if os.path.exists(_glb):
 data = json.load(open(os.path.join(HERE, 'dist', 'exercises.json'), encoding='utf-8'))
 js = json.dumps(data, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
 tpl = tpl.replace('__EXERCISES_JSON__', js)
+assert tpl.count('__FOODS_JSON__') == 1
+tpl = tpl.replace('__FOODS_JSON__', foods_json(HERE))
 cfg_path = os.path.join(REPO, 'firebase-config.json')
 if os.path.exists(cfg_path):
     cfg = json.load(open(cfg_path, encoding='utf-8'))
