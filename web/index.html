@@ -4531,7 +4531,8 @@ function cleanProd(p){
     k:r1(clampN(p.k, 0, DLIM.k)), b:r1(clampN(p.b, 0, DLIM.mac)), w:r1(clampN(p.w, 0, DLIM.mac)), t:r1(clampN(p.t, 0, DLIM.mac)), f:r1(clampN(p.f, 0, DLIM.mac)),
     pg:p.pg > 0 ? r1(clampN(p.pg, 0.1, DLIM.qty)) : null, po:String(p.po || '').trim().slice(0, 40),
     src:['gen', 'own', 'scan'].includes(p.src) ? p.src : 'own', ean:String(p.ean || '').slice(0, 14), star:!!p.star,
-    uses:Math.max(0, Math.floor(+p.uses || 0)), last:Math.max(0, +p.last || 0), ...(p.off ? {off:true} : {}), ...(p.fx ? {fx:true} : {})};   // off = dane z Open Food Facts (atrybucja), fx = wspólna baza poprawiona przez użytkowników (część 2b)
+    uses:Math.max(0, Math.floor(+p.uses || 0)), last:Math.max(0, +p.last || 0), ...(p.off ? {off:true} : {}), ...(p.fx ? {fx:true} : {}),
+    ...(p.pk > 0 ? {pk:r1(clampN(p.pk, 0.1, DLIM.qty))} : {})};   // pk = waga całego opakowania (g/ml) – tylko w „Moich produktach”, nie we wspólnej bazie   // off = dane z Open Food Facts (atrybucja), fx = wspólna baza poprawiona przez użytkowników (część 2b)
   return o.n && o.id ? o : null;
 }
 // W bazie „Moje produkty” to mapa {id produktu: produkt} (każdy produkt osobnym polem, zapis scala), lokalnie i w starych
@@ -5039,6 +5040,7 @@ SHEETS.dietQty = s => {
       ${dryHint(live) ? `<p class="note" style="margin:8px 0 0">${DRY_TXT}</p>` : ''}
       ${live && live.off ? `<p class="muted small" style="margin:6px 0 0">Dane: Open Food Facts (ODbL)${live.fx ? ', poprawione przez użytkowników' : ''}</p>` : ''}</div>
     ${(h => `<div id="dq-fix" class="stack"${h ? '' : ' hidden'}>${h}</div>`)(fixCardHTML(s))}
+    ${live && live.pk > 0 ? `<button class="btn" data-act="dqPack" style="width:100%">Całe opakowanie · ${fmtN(live.pk)} ${p.u}</button>` : ''}
     ${pc ? `<div class="field"><span class="lbl">Jednostka</span><div class="seg" role="group" aria-label="Jednostka ilości"><button data-act="dqMode" data-m="q" aria-pressed="${qm}">szt.</button><button data-act="dqMode" data-m="g" aria-pressed="${!qm}">${p.u}</button></div></div>` : ''}
     ${field}
     ${s.toTpl ? '' : `<div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${esc(nm)}</button>`).join('')}</div></div>`}
@@ -5069,6 +5071,7 @@ SHEETS.dietProd = s => {
     <p class="note">Węglowodany bez błonnika – tak jak na polskich etykietach.</p>
     <p class="note" id="dp-dry" role="status"></p>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${fld('pg', 'Porcja (g/ml)', 'opcjonalnie')}<div class="field" style="flex:1.6;min-width:0"><label class="lbl" for="dp-po">Opis porcji</label><input class="input" id="dp-po" maxlength="40" data-bind="dp" data-f="po" value="${esc(f.po)}" placeholder="np. 1 jajko M" autocomplete="off"></div></div>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${fld('pk', 'Opakowanie (g/ml)', 'opcjonalnie')}<p class="note" style="flex:1.6;min-width:0;margin:22px 0 0">Z etykiety; po skanie wpisuje się sama z Open Food Facts. Daje przycisk „Całe opakowanie”.</p></div>
     <p class="small" id="dp-warn" role="status" style="margin:0;color:var(--warn);font-weight:600"></p>
     ${s.fixEan && sharedOn() ? `<label class="toggle"><input type="checkbox" id="dp-rep" data-bind="dpRep" ${s.rep !== false ? 'checked' : ''}>Zgłoś poprawkę do wspólnej bazy (anonimowo)</label>
     <p class="muted small" style="margin:0">Zmieni wspólną bazę, gdy tę samą poprawkę potwierdzą ${FIX_MIN} osoby.</p>` : ''}
@@ -5215,7 +5218,7 @@ async function fixLoad(ean, force){   // stan poprawek produktu; null = nie wiad
     if (!sn.metadata.fromCache && !gs.metadata.fromCache)   // odpowiedź z pamięci podręcznej (offline) nie mówi, jak jest naprawdę
       r = {shared:sn.exists() ? sn.data() : false, groups:gs.docs.map(d => ({...d.data(), key:d.id, kind:d.id[0]})), voted:{w:vw.exists(), n:vn.exists()}};
   } catch {}
-  if (r){ FIXC.set(ean, r); if (r.shared && SCAN_CACHE.has(ean)) SCAN_CACHE.set(ean, fromShared(ean, r.shared)); }
+  if (r){ FIXC.set(ean, r); if (r.shared && SCAN_CACHE.has(ean)){ const old = SCAN_CACHE.get(ean), nw = fromShared(ean, r.shared); if (nw && old && old.pk > 0) nw.pk = old.pk; SCAN_CACHE.set(ean, nw); } }
   else FIXC.delete(ean);
   return r;
 }
@@ -5307,6 +5310,13 @@ async function offGet(ean){   // obiekt produktu | null (brak w OFF) | 'err'
     return j && j.status === 1 && j.product ? j.product : null;
   } catch { return 'err'; } finally { clearTimeout(to); }
 }
+// waga opakowania z pola `quantity` OFF: „500 g”, „1,5 l”, „6 x 100 g”, „250g (2 x 125 g)” → liczba w g/ml albo null (wymaga jednostki g/kg/ml/cl/dl/l)
+function packFromQty(q){
+  const m = String(q || '').replace(/,/g, '.').match(/(?:(\d+)\s*[x×*]\s*)?(\d+(?:\.\d+)?)\s*(kg|g|ml|cl|dl|l)\b/i);
+  if (!m) return null;
+  const mul = { kg:1000, g:1, l:1000, dl:100, cl:10, ml:1 }[m[3].toLowerCase()], v = (m[1] ? +m[1] : 1) * +m[2] * mul;
+  return v > 0 && v <= DLIM.qty ? r1(v) : null;
+}
 function offToProd(ean, o){
   const nu = o.nutriments || {}, nv = k => { const v = nu[k + '_100g']; return v != null && v !== '' && Number.isFinite(+v) ? +v : null; };
   let k = nv('energy-kcal'); if (k == null){ const kj = nv('energy'); if (kj != null) k = kj / 4.184; }
@@ -5314,7 +5324,7 @@ function offToProd(ean, o){
   const r = x => x == null ? null : r1(x);
   return {id:ean, n:String(o.product_name || '').trim().slice(0, 80), brand:String(o.brands || '').split(',')[0].trim().slice(0, 60), u:liquid ? 'ml' : 'g',
     k:k == null ? null : Math.round(k), b:r(nv('proteins')), w:r(nv('carbohydrates')), t:r(nv('fat')), f:r(nv('fiber')),
-    pg:sq > 0 && sq <= DLIM.qty ? r1(sq) : null, po:sq > 0 && sq <= DLIM.qty ? '1 porcja' : '', src:'scan', ean, off:true};
+    pg:sq > 0 && sq <= DLIM.qty ? r1(sq) : null, po:sq > 0 && sq <= DLIM.qty ? '1 porcja' : '', src:'scan', ean, off:true, pk:packFromQty(o.quantity)};
 }
 async function loadZX(){
   if (window.ZXing) return window.ZXing;
@@ -5383,6 +5393,14 @@ async function scanLookup(raw, strict){
   catch { st('Nie udało się wyszukać produktu. Spróbuj ponownie.'); }
   finally { s.busy = false; if (btn) btn.disabled = false; }
 }
+// produkt ze wspólnej bazy (jeszcze nie w „Moich”) nie ma wagi opakowania – odczytaj ją z OFF w tle i dopisz do kopii w pamięci
+async function packTopUp(ean){
+  const c = SCAN_CACHE.get(ean); if (!c || c.pk > 0 || inMine(ean) || !sharedOn()) return;
+  const o = await offGet(ean), pk = o && o !== 'err' ? packFromQty(o.quantity) : null;
+  const c2 = SCAN_CACHE.get(ean); if (!pk || !c2 || inMine(ean)) return;
+  SCAN_CACHE.set(ean, {...c2, pk});
+  const t = topSheet(); if (t && t.type === 'dietQty' && t.pid === ean && !t.entry) renderSheet();
+}
 // kolejność: Moje produkty (pole ean) → wspólna baza → Open Food Facts → ręczne wpisanie
 async function scanResolve(s, ean){
   const meal = s.meal, day = s.day, alive = () => topSheet() === s;
@@ -5390,10 +5408,10 @@ async function scanResolve(s, ean){
   const m = DIET.mine.find(p => p.ean === ean || p.id === ean);
   if (m) return go(() => openDietQty({meal, pid:m.id, day}));
   const sh = await sharedGet(ean); if (!alive()) return;
-  if (sh){ SCAN_CACHE.set(ean, sh); return go(() => openDietQty({meal, pid:ean, day})); }
+  if (sh){ SCAN_CACHE.set(ean, sh); packTopUp(ean); return go(() => openDietQty({meal, pid:ean, day})); }
   const o = await offGet(ean); if (!alive()) return;
   const manual = (note, f, off) => go(() => openSheet({type:'dietProd', id:null, ean, scan:true, off, meal, day, scanNote:note, f}));
-  const blank = {n:'', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''};
+  const blank = {n:'', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:'', pk:''};
   if (o === 'err') return manual(`Nie udało się połączyć z Open Food Facts (brak internetu?). Możesz wpisać wartości z etykiety – kod ${ean} zostanie zapamiętany.`, blank, false);
   if (!o) return manual(`Nie znalazłem kodu ${ean}. Wpisz wartości z etykiety – następnym razem produkt znajdzie się po skanie.`, blank, false);
   const p = offToProd(ean, o);
@@ -5403,7 +5421,7 @@ async function scanResolve(s, ean){
   }
   const fx = x => x == null ? '' : fmtN(x);
   manual('Open Food Facts nie ma pełnych albo poprawnych wartości odżywczych tego produktu – uzupełnij je z etykiety.',
-    {n:p.n, brand:p.brand, u:p.u, k:fx(p.k), b:fx(p.b), w:fx(p.w), t:fx(p.t), f:fx(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}, true);
+    {n:p.n, brand:p.brand, u:p.u, k:fx(p.k), b:fx(p.b), w:fx(p.w), t:fx(p.t), f:fx(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po, pk:p.pk ? fmtN(p.pk) : ''}, true);
 }
 document.addEventListener('visibilitychange', () => {   // aparat nie działa w tle
   if (document.visibilityState === 'hidden'){ if (SCAN){ scanStop(); const el = $('#scan-st'); if (el) el.textContent = 'Aparat wyłączony. Wróć do aplikacji, a włączy się sam.'; } }
@@ -5440,7 +5458,7 @@ Object.assign(ACT, {
     openDietQty({meal:s.meal, pid:p.id, day:sDay(s), toTpl:!!s.toTpl});
   },
   dietQuick(el){ openSheet({type:'dietQuick', meal:el.dataset.meal, day:sDay(topSheet()), entryId:null, f:{n:'', k:'', b:'', w:'', t:''}}); },
-  dietNewProd(el){ openSheet({type:'dietProd', id:null, meal:el.dataset.meal, toTpl:!!topSheet().toTpl, day:sDay(topSheet()), f:{n:topSheet().q || '', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''}}); },
+  dietNewProd(el){ openSheet({type:'dietProd', id:null, meal:el.dataset.meal, toTpl:!!topSheet().toTpl, day:sDay(topSheet()), f:{n:topSheet().q || '', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:'', pk:''}}); },
   dietEntDel(el){   // etap 4.4: usunięcie przesunięciem, z potwierdzeniem (na razie, wybór Kamila) i „Cofnij”
     if (!dietCanEdit()) return;
     const key = dietKey(), r = findEntry(key, el.dataset.id); if (!r) return;
@@ -5461,6 +5479,10 @@ Object.assign(ACT, {
     openDietQty({meal:r.m, pid:r.e.pid, entry:clone(r.e), entryId:r.e.id, g:r.e.g, day:key});
   },
   dqChip(el){ const s = topSheet(); s.g = +el.dataset.v; const i = $('#dq-g'); if (i) i.value = fmtN(s.g); qtyOut(s); },
+  dqPack(){   // całe opakowanie: ilość w g/ml (tryb sztuk przełączamy na g)
+    const s = topSheet(), p = prodOf(s.pid); if (!p || !(p.pk > 0)) return;
+    s.g = r1(p.pk); s.q = null; s.mode = 'g'; s.last = null; renderSheet();
+  },
   dqPortion(){ const s = topSheet(); s.g = s.base.pg; const i = $('#dq-g'); if (i) i.value = fmtN(s.g); qtyOut(s); },
   dqMode(el){
     const s = topSheet(), pg = s.base.pg, m = el.dataset.m; if (!pg || m === s.mode) return;
@@ -5480,7 +5502,7 @@ Object.assign(ACT, {
   },
   dqEditProd(){
     const s = topSheet(), p = prodOf(s.pid); if (!p) return;
-    openSheet({type:'dietProd', id:p.id, scan:p.src === 'scan', off:!!p.off, fx:!!p.fx, fixEan:/^[0-9]{8,14}$/.test(p.ean || '') ? p.ean : '', rep:true, f:{n:p.n, brand:p.brand, u:p.u, k:fmtN(p.k), b:fmtN(p.b), w:fmtN(p.w), t:fmtN(p.t), f:fmtN(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}});
+    openSheet({type:'dietProd', id:p.id, scan:p.src === 'scan', off:!!p.off, fx:!!p.fx, fixEan:/^[0-9]{8,14}$/.test(p.ean || '') ? p.ean : '', rep:true, f:{n:p.n, brand:p.brand, u:p.u, k:fmtN(p.k), b:fmtN(p.b), w:fmtN(p.w), t:fmtN(p.t), f:fmtN(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po, pk:p.pk ? fmtN(p.pk) : ''}});
   },
   dqSave(){
     const s = topSheet(), g = s.g, key = sDay(s), qm = s.mode === 'q' && !!s.base.pg;
@@ -5560,7 +5582,7 @@ Object.assign(ACT, {
   dpUnit(el){ const s = topSheet(); s.f.u = el.dataset.u; $$('[data-act="dpUnit"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.u === s.f.u))); },
   dpSave(){
     const s = topSheet(), f = s.f; if (!dietCanEdit()) return;
-    const v = {n:f.n.trim(), k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t), f:num(f.f), pg:num(f.pg)};
+    const v = {n:f.n.trim(), k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t), f:num(f.f), pg:num(f.pg), pk:num(f.pk)};
     let err = '';
     if (!v.n) err = 'Podaj nazwę produktu.';
     else if (v.k == null) err = 'Podaj kalorie na 100 ' + f.u + '.';
@@ -5568,9 +5590,10 @@ Object.assign(ACT, {
     else if ([v.b, v.w, v.t, v.f].some(x => x != null && (x < 0 || x > DLIM.mac))) err = `Białko, węgle, tłuszcz i błonnik: od 0 do ${DLIM.mac} g na 100 ${f.u}.`;
     else if ((v.b || 0) + (v.w || 0) + (v.t || 0) + (v.f || 0) > DLIM.sum) err = `Suma białka, węgli, tłuszczu i błonnika nie może przekraczać ${DLIM.sum} g na 100 ${f.u}.`;
     else if (v.pg != null && (v.pg <= 0 || v.pg > DLIM.qty)) err = 'Porcja: od 1 do 5000.';
+    else if (v.pk != null && (v.pk <= 0 || v.pk > DLIM.qty)) err = 'Waga opakowania: od 1 do 5000.';
     if (err){ s.err = err; renderSheet(); return; }
     const base = s.id ? (DIET.mine.find(x => x.id === s.id) || prodOf(s.id)) : null;
-    const rec = cleanProd({...(base || {}), id:s.id || s.ean || 'o-' + uid(), n:v.n, brand:f.brand, u:f.u, k:v.k, b:v.b || 0, w:v.w || 0, t:v.t || 0, f:v.f || 0, pg:v.pg || null, po:f.po,
+    const rec = cleanProd({...(base || {}), id:s.id || s.ean || 'o-' + uid(), n:v.n, brand:f.brand, u:f.u, k:v.k, b:v.b || 0, w:v.w || 0, t:v.t || 0, f:v.f || 0, pg:v.pg || null, po:f.po, pk:v.pk || null,
       src:base ? base.src : (s.ean ? 'scan' : 'own'), ean:base ? base.ean : (s.ean || ''), off:base ? base.off : !!s.off, star:base ? base.star : false, uses:base ? base.uses : 0, last:base ? base.last : 0});
     if (!s.id && s.ean) SHARED_NEW.set(rec.id, 'user'); else SHARED_NEW.delete(rec.id);   // poprawka cudzych danych jest osobista – nie trafia do wspólnej bazy
     const i = DIET.mine.findIndex(x => x.id === rec.id);

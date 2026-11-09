@@ -583,6 +583,20 @@ i `diet/{dzień}` nie mają walidacji pól).
 - Test (Playwright, wersja testowa, 390×844 i 360×780, jasny/ciemny): bez błędów i bez przewijania w bok. Zapis `wa`, `sp`, `wg`, `sup` do Firebase niesprawdzalny z sesji – do sprawdzenia przez Kamila na telefonie.
 - Poprawki po przeglądzie (9.11.2026): woda z przycisków +/− idzie do bazy jako przyrost (`FB.increment`, `waDelta`), dokładna wartość z okna „Woda” – jako liczba (`waAbs`); `persistDay` traktuje jako mapę tylko zwykły obiekt. `lastQty` wybiera najpóźniejszy dzień, potem największe `o`; sztuki tylko, gdy porcja produktu się nie zmieniła (`pg`). `dietEntDel` – na razie z potwierdzeniem (`confirmBox`) i nadal z „Cofnij”.
 
+## Przycisk „Całe opakowanie” (9.11.2026)
+- **Wariant tylko „Moje produkty”, bez zmiany reguł bazy:** waga opakowania to pole `pk` (g/ml) produktu w `mine` (`cleanProd`). Nie trafia do `foods/` (`sharedPut`, `fromShared`
+  jej nie znają, `firestore.rules` bez zmian); poprawki głosowane (część 2b) jej nie dotyczą.
+- **Skąd:** przy skanie `offToProd` bierze `pk` z pola `quantity` Open Food Facts (`packFromQty`: „500 g”, „1,5 l”, „6 x 100 g”, „250g (2 x 125 g)”, kg/g/l/dl/cl/ml; mnożnik „N x M”;
+  zapis bez jednostki wagi/objętości albo > 5000 → brak). `serving_size` nie jest używany (to porcja, nie opakowanie). Produkt znaleziony we wspólnej bazie `foods/` nie ma wagi –
+  `packTopUp(ean)` dociąga ją z OFF w tle (tylko dla produktu jeszcze nie w „Moich”; wynik trafia do `SCAN_CACHE`, a do `mine` przy dodaniu). `fixLoad` zachowuje `pk` w `SCAN_CACHE`.
+  Produkty zeskanowane przed tą zmianą nie dostają wagi same – wpisuje się ją ręcznie.
+- **Ręcznie:** pole „Opakowanie (g/ml)” w `dietProd` (nowy i edytowany produkt, 1–5000; puste = brak). Pusta wartość usuwa `pk`.
+- **Przycisk:** w `dietQty` „Całe opakowanie · N g” (`dqPack`) pod nagłówkiem, widoczny tylko gdy produkt ma `pk` (także w edycji wpisu; produkty z bazy ogólnej z CSV go nie mają).
+  Ustawia ilość w g/ml (tryb sztuk przełącza się na g), wpis w dzienniku zapisuje się jak zwykły wpis w gramach.
+- **Test (wersja testowa, 390×844 jasny i ciemny, 360×780 jasny):** bez `pageerror`, bez przewijania w bok; parser (11 zapisów), skan → przycisk → 150 g → zapis `pk` w `mine`,
+  edycja ręczna 200, wartość 9999 odrzucona, puste pole usuwa `pk` i przycisk, produkt z bazy ogólnej bez przycisku, nowy produkt z `pk` i trybem sztuk → g.
+- **Niesprawdzone w sesji:** prawdziwa odpowiedź OFF (`quantity`), `packTopUp` (wymaga sieci i Firebase), zapis `pk` do Firebase.
+
 ## Na później (nie robić bez prośby)
 Zdjęcie talerza (AI – wymaga klucza i pośrednika). Odporność zapisu (ponowna wysyłka po odrzuceniu przez bazę, limit pamięci przeglądarki) –
 opisane w przeglądzie z 9.11.2026, Kamil nie wybrał na teraz.
