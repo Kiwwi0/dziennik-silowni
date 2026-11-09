@@ -30,7 +30,7 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 - Wersja testowa: `python3 -I zrodla/build.py` → `zrodla/dist/index.html` (bez Firebase i bez 3D; dane w localStorage).
 - Test w Playwright (Chrome jest zainstalowany): `chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])`,
   strona podana przez `page.route` (szkielet `<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">
-  </head><body>` + zawartość `dist/index.html`), viewport 390×844, `color_scheme` light i dark. Sprawdzaj: brak `pageerror`,
+  <style>[hidden]{display:none!important}</style></head><body>` – ta reguła jest w prawdziwej stronie (build_web), bez niej ukryta warstwa arkuszy zasłania przyciski) + zawartość `dist/index.html`), viewport 390×844, `color_scheme` light i dark. Sprawdzaj: brak `pageerror`,
   brak przewijania w bok (`document.documentElement.scrollWidth > innerWidth`), zrzut ekranu. Dane testowe: `S.plans = samplePlans()`
   albo `templatePlans(TEMPLATES.find(t => t.id === 'fbw2'))`, potem `render()`. iPhone: `p.devices['iPhone 11 Pro']` bez `default_browser_type`.
 - Wdrożenie: build_web → commit → push `main`. Strona żywa nie jest osiągalna z sesji (proxy), testuj lokalnie.
