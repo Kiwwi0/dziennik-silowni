@@ -1,5 +1,5 @@
 // Pozwala korzystać z aplikacji bez internetu (np. na siłowni).
-const VERSION = 'dziennik-565ed23517';
+const VERSION = 'dziennik-308e32b571';
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const IMAGES = [];
 

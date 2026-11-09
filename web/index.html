@@ -4529,6 +4529,7 @@ function normalizeDays(o){ const out = {}; if (o && typeof o === 'object') for (
 let DIET = normalizeDiet(lsKey('diet') ? LS.get(lsKey('diet'), null) : null); syncMeals();
 let DAYS = normalizeDays(lsKey('dietDays') ? LS.get(lsKey('dietDays'), {}) : {});
 let unsubDiet = null, unsubDays = null, dietDirty = false, dietT = null;
+let dietErr = '';                // kod błędu odczytu dokumentu diety z bazy (puste = brak błędu)
 let dietLoaded = false;          // dokument data/diet przyszedł już z bazy (albo z jej pamięci na tym urządzeniu)
 // Zmiany w „Moich produktach” i celach czekają na wysłanie: produkty (id) do zapisu / usunięcia i znacznik celów.
 // Zapis scala pola dokumentu (merge), więc dwa urządzenia nie nadpisują się nawzajem.
@@ -4640,17 +4641,17 @@ function persistDay(k, put = [], del = [], tr){   // tr: undefined = bez zmian, 
 // (inaczej na nowym urządzeniu pusta lista nadpisałaby zapisane produkty i cele)
 function dietCanEdit(){
   if (!fireOn() || dietLoaded) return true;
-  toast('Chwila, wczytuję dietę z bazy…'); return false;
+  toast(dietErr ? (dietErr === 'permission-denied' ? 'Baza nie wpuszcza do diety (brak dostępu do folderu) – kod: permission-denied.' : `Dieta nie wczytała się z bazy – kod: ${dietErr}.`) : 'Chwila, wczytuję dietę z bazy… Jeśli trwa długo, sprawdź internet.'); return false;
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDiet(); });
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
-function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
+function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietErr = ''; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
-  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear();
+  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietErr = ''; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear();
   DIET = normalizeDiet(LS.get(lsKey('diet'), null)); syncMeals(); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
   unsubDiet = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'diet'), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
-    const wasLoaded = dietLoaded;
+    const wasLoaded = dietLoaded; dietErr = '';
     if (snap.exists() || !snap.metadata.fromCache) dietLoaded = true;
     if (!wasLoaded && dietLoaded && ui.tab === 'historia') render();   // włącza przycisk „Waga” w karcie masy ciała
     if (!snap.exists()) return;
@@ -4668,7 +4669,7 @@ function dietOpen(fid){
     inc.mine.sort(byId);
     const sig = d => JSON.stringify([d.goals, d.goalsT, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort(), d.prof]);
     if (sig(inc) !== sig(DIET)){ DIET = inc; syncMeals(); LS.set(lsKey('diet'), DIET); dietRefresh(); }
-  }, () => {});
+  }, e => { dietErr = (e && e.code) || 'błąd'; });
   const q = FB.query(FB.collection(FB.db, 'folders', fid, 'diet'), FB.where('date', '>=', dietMinKey()));
   unsubDays = FB.onSnapshot(q, snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
