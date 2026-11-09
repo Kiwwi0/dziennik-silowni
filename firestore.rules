@@ -22,6 +22,33 @@ service cloud.firestore {
         && d.updatedAt is int;
     }
 
+    // Wspólna baza produktów (skaner kodów): foods/{ean}. Odczyt dla każdego (get, lista ≤ 30), tylko create, bez update/delete.
+    // Dokument nie zawiera informacji, kto dodał produkt.
+    function validFood(d) {
+      return d.keys().hasOnly(['n', 'brand', 'u', 'k', 'b', 'w', 't', 'f', 'pg', 'po', 'q', 'src', 'at'])
+        && d.keys().hasAll(['n', 'brand', 'u', 'k', 'b', 'w', 't', 'f', 'pg', 'po', 'q', 'src', 'at'])
+        && d.n is string && d.n.size() > 0 && d.n.size() <= 80
+        && d.brand is string && d.brand.size() <= 60
+        && d.u in ['g', 'ml']
+        && d.k is number && d.k >= 0 && d.k <= 900
+        && d.b is number && d.b >= 0 && d.b <= 100
+        && d.w is number && d.w >= 0 && d.w <= 100
+        && d.t is number && d.t >= 0 && d.t <= 100
+        && d.f is number && d.f >= 0 && d.f <= 100
+        && d.b + d.w + d.t + d.f <= 105
+        && (d.pg == null || (d.pg is number && d.pg > 0 && d.pg <= 5000))
+        && d.po is string && d.po.size() <= 40
+        && d.q is string && d.q.size() <= 80
+        && d.src in ['off', 'user']
+        && d.at is int;
+    }
+    match /foods/{ean} {
+      allow get: if ean.matches('^[0-9]{8,14}$');
+      allow list: if request.query.limit <= 30;
+      allow create: if signedIn() && ean.matches('^[0-9]{8,14}$') && validFood(request.resource.data);
+      allow update, delete: if false;
+    }
+
     // Udostępnione plany: shares/{KOD}. Kto zna kod, może go odczytać (bez listy wszystkich kodów).
     // Utworzyć, zmienić i usunąć może tylko urządzenie z dostępem (PIN) do konta-właściciela.
     match /shares/{code} {

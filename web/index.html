@@ -117,6 +117,9 @@ svg.i.s{width:18px;height:18px}
 .dt-add{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:44px;border:0;border-top:1px solid var(--line);background:none;color:var(--accent);font-weight:700}
 .dt-star{color:var(--warn)} .dt-star svg{fill:currentColor;vertical-align:-3px}
 .btn[aria-pressed="true"] svg{fill:var(--warn);stroke:var(--warn)}
+.scan-box{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.scan-box video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-aim{position:absolute;left:8%;right:8%;top:32%;bottom:32%;border:2px solid rgba(255,255,255,.9);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.3);pointer-events:none}
 .dt-out{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;text-align:center;background:var(--surface-2);border-radius:12px;padding:12px 6px}
 .dt-out div{display:grid;gap:2px;min-width:0}
 .dt-out b{font-family:var(--f-display);font-weight:800;font-size:26px;line-height:1}
@@ -1853,6 +1856,7 @@ const ICON = {
   x:'<path d="M6 6l12 12M18 6L6 18"/>', check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>', chev:'<path d="M9 6l6 6-6 6"/>',
   share:'<path d="M12 15V4M8 7.5l4-4 4 4"/><path d="M7 11H6v9.5h12V11h-1"/>',
   star:'<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/>',
+  camera:'<path d="M4 8h3l1.6-2.5h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/>',
   back:'<path d="M15 6l-6 6 6 6"/>', down:'<path d="M6 9l6 6 6-6"/>', up:'<path d="M6 15l6-6 6 6"/>',
   plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>', trash:'<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
@@ -3350,10 +3354,11 @@ const topSheet = () => sheets[sheets.length - 1];
 function sheetHead(title){ return `<div class="sheet-h"><h2>${esc(title)}</h2><button class="iconbtn" data-act="closeSheet" aria-label="Zamknij">${svg('x')}</button></div>`; }
 function renderSheet(){
   const w = $('#sheet-wrap'), el = $('#sheet'), s = topSheet();
+  scanStop();   // aparat działa tylko w arkuszu skanera
   if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); bm3dStop(); bm3dMount(); return; }
   w.hidden = false; el.innerHTML = SHEETS[s.type](s); if (!el.querySelector('.sheet-f')) el.insertAdjacentHTML('beforeend', '<div class="sheet-end"></div>'); el.scrollTop = 0; lockBody();
   if (s.type === 'pick') fillPickList();
-  if (s.type === 'dietAdd') fillDietList(); else if (s.type === 'dietQty') qtyOut(s); else if (s.type === 'dietProd') prodWarn(); else if (s.type === 'dietGoals') goalsHint();
+  if (s.type === 'dietAdd') fillDietList(); else if (s.type === 'dietQty') qtyOut(s); else if (s.type === 'dietProd') prodWarn(); else if (s.type === 'dietGoals') goalsHint(); else if (s.type === 'dietScan') scanStart();
   animMount(); ytMount(); bm3dMount();
   const f = $('[autofocus]', el); if (f && matchMedia('(pointer:fine)').matches) f.focus();
 }
@@ -3480,6 +3485,8 @@ const SHEETS = {
       <div class="field"><label class="lbl" for="st-bar">Gryf do kalkulatora talerzy</label><select class="input" id="st-bar" data-bind="setting" data-f="bar">${[20, 15, 10].map(v => `<option value="${v}" ${+st.bar === v ? 'selected' : ''}>${v} kg</option>`).join('')}</select></div>
       <h3 class="h3">Zapis danych</h3>
       <p class="note">${store.mode === 'fire' ? `Plany i historia folderu „${esc(FOLDER ? FOLDER.name : '')}” zapisują się w internecie. Otworzysz je na każdym urządzeniu, wybierając to samo konto.` : store.mode === 'cloud' ? 'Plany i historia zapisują się na twoim koncie claude.ai, więc widzisz je na telefonie i na komputerze.' : 'Plany i historia zapisują się w tej przeglądarce, na tym urządzeniu. Nie czyść danych witryny i co jakiś czas zrób kopię zapasową poniżej.'}</p>
+      <h3 class="h3">Dane produktów</h3>
+      <p class="note">Skaner kodów kreskowych korzysta z bazy Open Food Facts (openfoodfacts.org, licencja ODbL). Zeskanowane produkty trafiają do wspólnej bazy aplikacji, bez informacji, kto je dodał.</p>
       <h3 class="h3">Kopia zapasowa</h3>
       <div id="bk-box" class="stack">${backupBox(s)}</div>
       <div class="field"><label class="lbl" for="imp">Przywróć z kopii</label><textarea class="input" id="imp" placeholder="Wklej tutaj skopiowane dane"></textarea></div>
@@ -4326,6 +4333,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target && e.target.id === 'newfolder'){ e.preventDefault(); ACT.folderCreate(); }
   if (e.key === 'Enter' && e.target && (e.target.id === 'pin1' || e.target.id === 'pin2')){ e.preventDefault(); if (e.target.id === 'pin1' && $('#pin2')) $('#pin2').focus(); else ACT.pinGo(); }
   if (e.key === 'Enter' && e.target && e.target.id === 'rnfolder'){ e.preventDefault(); ACT.folderRename(); }
+  if (e.key === 'Enter' && e.target && e.target.id === 'scan-ean'){ e.preventDefault(); ACT.scanGo(); }
   if (e.key === 'Enter' && e.target && e.target.id === 'shcode'){ e.preventDefault(); ACT.shareFind(); }
 });
 
@@ -4369,7 +4377,7 @@ function cleanProd(p){
     k:r1(clampN(p.k, 0, DLIM.k)), b:r1(clampN(p.b, 0, DLIM.mac)), w:r1(clampN(p.w, 0, DLIM.mac)), t:r1(clampN(p.t, 0, DLIM.mac)), f:r1(clampN(p.f, 0, DLIM.mac)),
     pg:p.pg > 0 ? r1(clampN(p.pg, 0.1, DLIM.qty)) : null, po:String(p.po || '').trim().slice(0, 40),
     src:['gen', 'own', 'scan'].includes(p.src) ? p.src : 'own', ean:String(p.ean || '').slice(0, 14), star:!!p.star,
-    uses:Math.max(0, Math.floor(+p.uses || 0)), last:Math.max(0, +p.last || 0)};
+    uses:Math.max(0, Math.floor(+p.uses || 0)), last:Math.max(0, +p.last || 0), ...(p.off ? {off:true} : {})};   // off = dane z Open Food Facts (atrybucja)
   return o.n && o.id ? o : null;
 }
 // W bazie „Moje produkty” to mapa {id produktu: produkt} (każdy produkt osobnym polem, zapis scala), lokalnie i w starych
@@ -4533,7 +4541,7 @@ function dietOpen(fid){
 function dietRefresh(){ if (ui.tab === 'dieta') render(); }
 
 /* ---------- produkty i przeliczanie ---------- */
-const prodOf = id => DIET.mine.find(p => p.id === id) || (FOODMAP.has(id) ? {...FOODMAP.get(id), brand:'', src:'gen', ean:'', star:false, uses:0, last:0} : null);
+const prodOf = id => DIET.mine.find(p => p.id === id) || (FOODMAP.has(id) ? {...FOODMAP.get(id), brand:'', src:'gen', ean:'', star:false, uses:0, last:0} : SCAN_CACHE.get(id) || null);
 const inMine = id => DIET.mine.some(p => p.id === id);
 function ensureMine(p){
   let m = DIET.mine.find(x => x.id === p.id);
@@ -4593,11 +4601,14 @@ function fillDietList(){
   } else {
     const ok = t => words.every(w => t.includes(w));
     const mine = DIET.mine.filter(p => ok(norm(p.n + ' ' + p.brand))).sort(mineSort).slice(0, 30);
-    const ids = new Set(DIET.mine.map(p => p.id));
+    const ids = new Set(DIET.mine.flatMap(p => [p.id, p.ean].filter(Boolean)));
     const gen = FOODS.filter(f => !ids.has(f.id) && ok(f.q)).slice(0, 30 - mine.length);
+    const key = words.join(' '), shl = (sharedCache.get(key) || []).filter(p => !ids.has(p.id) && ok(norm(p.n + ' ' + p.brand))).slice(0, 20), busy = SH.busy && SH.key === key;
     if (mine.length) h += `<h3 class="h3">Moje produkty</h3><div class="exlist">${mine.map(p => prodRow(p)).join('')}</div>`;
     if (gen.length) h += `<h3 class="h3">Baza ogólna</h3><div class="exlist">${gen.map(f => prodRow({...f, brand:'', star:false})).join('')}</div>`;
-    if (!h) h = '<p class="muted" style="margin:0">Nic nie znaleziono. Możesz dodać „Nowy produkt” albo „Szybki wpis”.</p>';
+    if (shl.length) h += `<h3 class="h3">Baza wspólna</h3><div class="exlist">${shl.map(p => prodRow(p)).join('')}</div>`;
+    if (!h && !busy) h = '<p class="muted" style="margin:0">Nic nie znaleziono. Możesz dodać „Nowy produkt”, „Szybki wpis” albo zeskanować kod.</p>';
+    if (busy) h += '<p class="muted small" style="margin:0">Szukam we wspólnej bazie…</p>';
   }
   el.innerHTML = h;
 }
@@ -4626,8 +4637,14 @@ function qtyBase(s){
 }
 SHEETS.dietAdd = s => sheetHead('Dodaj: ' + mealName(s.meal)) + `
   <div class="search">${svg('search')}<input class="input" id="dt-q" type="search" data-bind="dietq" placeholder="Szukaj produktu" value="${esc(s.q || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Szukaj produktu"></div>
-  <div class="row"><button class="btn" data-act="dietQuick" data-meal="${s.meal}">Szybki wpis</button><button class="btn" data-act="dietNewProd" data-meal="${s.meal}">Nowy produkt</button></div>
+  <div class="row"><button class="btn primary" data-act="dietScan" data-meal="${s.meal}">${svg('camera', 'i s')}Skanuj</button><button class="btn" data-act="dietQuick" data-meal="${s.meal}">Szybki wpis</button><button class="btn" data-act="dietNewProd" data-meal="${s.meal}">Nowy produkt</button></div>
   <div id="dt-list" class="stack"></div>`;
+SHEETS.dietScan = s => sheetHead('Skanuj kod kreskowy') + `
+  <div class="scan-box"><video id="scan-v" playsinline muted></video><div class="scan-aim" aria-hidden="true"></div></div>
+  <p class="muted small" id="scan-st" role="status" aria-live="polite" style="margin:0;min-height:1.4em"></p>
+  <div class="field"><label class="lbl" for="scan-ean">Albo wpisz cyfry kodu</label>
+    <div class="row" style="flex-wrap:nowrap"><input class="input" id="scan-ean" inputmode="numeric" maxlength="14" data-bind="scanean" value="${esc(s.ean || '')}" placeholder="np. 5900000000000" autocomplete="off" aria-label="Cyfry kodu kreskowego"><button class="btn" data-act="scanGo" style="flex:none">Szukaj</button></div></div>
+  <p class="note">Dane produktów: Open Food Facts (ODbL).</p>`;
 SHEETS.dietQty = s => {
   const p = s.base = qtyBase(s), live = s.pid ? prodOf(s.pid) : null, mine = s.pid && inMine(s.pid) && DIET.mine.find(x => x.id === s.pid);
   const pc = !!p.pg, qm = pc && s.mode === 'q';
@@ -4644,7 +4661,9 @@ SHEETS.dietQty = s => {
   return sheetHead(s.entry ? 'Edytuj wpis' : 'Dodaj do: ' + mealName(s.meal)) + `
     <div><h2 class="ex-title" style="font-size:24px">${esc(p.n)}</h2>${p.brand ? `<p class="muted small" style="margin:2px 0 0">${esc(p.brand)}</p>` : ''}
       <p class="muted small num" style="margin:6px 0 0">${per}: ${fmtN(r1(p.k))} kcal · B ${fmtN(r1(p.b))} · W ${fmtN(r1(p.w))} · T ${fmtN(r1(p.t))}</p>
-      ${pc ? `<p class="muted small num" style="margin:2px 0 0">Porcja: ${esc(p.po || '1 porcja')} · ${fmtN(p.pg)} ${p.u}</p>` : ''}</div>
+      ${pc ? `<p class="muted small num" style="margin:2px 0 0">Porcja: ${esc(p.po || '1 porcja')} · ${fmtN(p.pg)} ${p.u}</p>` : ''}
+      ${dryHint(live) ? `<p class="note" style="margin:8px 0 0">${DRY_TXT}</p>` : ''}
+      ${live && live.off ? '<p class="muted small" style="margin:6px 0 0">Dane: Open Food Facts (ODbL)</p>' : ''}</div>
     ${pc ? `<div class="field"><span class="lbl">Jednostka</span><div class="seg" role="group" aria-label="Jednostka ilości"><button data-act="dqMode" data-m="q" aria-pressed="${qm}">szt.</button><button data-act="dqMode" data-m="g" aria-pressed="${!qm}">${p.u}</button></div></div>` : ''}
     ${field}
     <div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${esc(nm)}</button>`).join('')}</div></div>
@@ -4665,12 +4684,15 @@ SHEETS.dietQuick = s => {
 SHEETS.dietProd = s => {
   const f = s.f, fld = (k, lbl, ph = '0') => `<div class="field" style="flex:1;min-width:0"><label class="lbl" for="dp-${k}">${lbl}</label><input class="input" id="dp-${k}" inputmode="decimal" data-bind="dp" data-f="${k}" value="${esc(f[k])}" placeholder="${ph}" autocomplete="off"></div>`;
   return sheetHead(s.id ? 'Edytuj produkt' : 'Nowy produkt') + `
+    ${s.scanNote ? `<p class="note" role="status" style="margin:0">${esc(s.scanNote)}</p>` : ''}
+    ${s.off ? '<p class="muted small" style="margin:0">Dane: Open Food Facts (ODbL)</p>' : ''}
     <div class="field"><label class="lbl" for="dp-n">Nazwa</label><input class="input" id="dp-n" maxlength="80" data-bind="dp" data-f="n" value="${esc(f.n)}" placeholder="np. Skyr naturalny" autocomplete="off"></div>
     <div class="field"><label class="lbl" for="dp-brand">Marka (opcjonalnie)</label><input class="input" id="dp-brand" maxlength="60" data-bind="dp" data-f="brand" value="${esc(f.brand)}" autocomplete="off"></div>
     <div class="field"><span class="lbl">Wartości są na 100</span><div class="seg" role="group"><button data-act="dpUnit" data-u="g" aria-pressed="${f.u !== 'ml'}">gramów</button><button data-act="dpUnit" data-u="ml" aria-pressed="${f.u === 'ml'}">mililitrów</button></div></div>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${fld('k', 'Kcal', '0')}${fld('b', 'Białko (g)')}</div>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${fld('w', 'Węgle (g)')}${fld('t', 'Tłuszcz (g)')}${fld('f', 'Błonnik (g)')}</div>
     <p class="note">Węglowodany bez błonnika – tak jak na polskich etykietach.</p>
+    <p class="note" id="dp-dry" role="status"></p>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${fld('pg', 'Porcja (g/ml)', 'opcjonalnie')}<div class="field" style="flex:1.6;min-width:0"><label class="lbl" for="dp-po">Opis porcji</label><input class="input" id="dp-po" maxlength="40" data-bind="dp" data-f="po" value="${esc(f.po)}" placeholder="np. 1 jajko M" autocomplete="off"></div></div>
     <p class="small" id="dp-warn" role="status" style="margin:0;color:var(--warn);font-weight:600"></p>
     ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}
@@ -4703,10 +4725,172 @@ function goalsHint(){
   el.textContent = (b || w || t) ? `B×4 + W×4 + T×9 = ${fmtN(kc)} kcal` + (k && Math.abs(kc - k) > 0.1 * k ? ' – różni się od celu kalorii' : '') : 'Makro są opcjonalne. Przelicznik: B×4 + W×4 + T×9 kcal.';
 }
 function prodWarn(){
-  const s = topSheet(), el = $('#dp-warn'); if (!s || s.type !== 'dietProd' || !el) return;
-  const p = {k:num(s.f.k) || 0, b:num(s.f.b) || 0, w:num(s.f.w) || 0, t:num(s.f.t) || 0};
-  el.textContent = sumWarn(p) ? 'Wartości się nie sumują – sprawdź etykietę.' : '';
+  const s = topSheet(); if (!s || s.type !== 'dietProd') return;
+  const el = $('#dp-warn'), dry = $('#dp-dry');
+  if (el){ const p = {k:num(s.f.k) || 0, b:num(s.f.b) || 0, w:num(s.f.w) || 0, t:num(s.f.t) || 0}; el.textContent = sumWarn(p) ? 'Wartości się nie sumują – sprawdź etykietę.' : ''; }
+  if (dry){ dry.textContent = s.scan && dryHint({src:'scan', n:s.f.n}) ? DRY_TXT : ''; dry.hidden = !dry.textContent; }
 }
+
+/* ---------- wspólna baza (foods/{ean}), Open Food Facts i skaner ---------- */
+const SCAN_CACHE = new Map();    // ean → produkt (wspólna baza / Open Food Facts), żeby prodOf znalazł go przed dodaniem do „Moich”
+const SHARED_NEW = new Map();    // id (= ean) → 'off'|'user': produkt, którego nie ma we wspólnej bazie; trafia tam przy pierwszym dodaniu do posiłku
+const sharedCache = new Map();   // znormalizowane zapytanie → wyniki wyszukiwania we wspólnej bazie
+const SH = {key:'', busy:false};
+var SCAN = null, scanSeq = 0;    // var: renderSheet woła scanStop() zanim ten fragment się wykona
+let sharedT = null, zxP = null;
+const sharedOn = () => !!FB.db;
+const ZX_URL = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+const fromShared = (ean, d) => cleanProd({id:ean, n:d.n, brand:d.brand, u:d.u, k:d.k, b:d.b, w:d.w, t:d.t, f:d.f, pg:d.pg, po:d.po, src:'scan', ean, off:d.src === 'off'});
+const phraseKey = q => norm(q || '').split(/\s+/).filter(Boolean).join(' ');
+async function sharedGet(ean){   // produkt | false (na pewno go nie ma) | null (nie wiadomo – brak sieci/uprawnień)
+  if (!sharedOn()) return null;
+  try { const snap = await FB.getDoc(FB.doc(FB.db, 'foods', ean)); return snap.exists() ? (fromShared(ean, snap.data() || {}) || false) : false; }
+  catch { return null; }
+}
+function sharedPut(p, src){   // tylko create – reguły nie pozwalają zmieniać ani usuwać; bez informacji, kto dodał
+  if (!sharedOn() || !FB.uid || !/^[0-9]{8,14}$/.test(p.ean || '')) return;
+  const d = {n:p.n, brand:p.brand || '', u:p.u, k:p.k, b:p.b, w:p.w, t:p.t, f:p.f || 0, pg:p.pg || null, po:p.po || '', q:phraseKey(p.n).slice(0, 80), src, at:Date.now()};
+  FB.setDoc(FB.doc(FB.db, 'foods', p.ean), d).then(() => sharedCache.clear()).catch(() => {});
+}
+function sharedSearch(){   // wyszukiwanie po prefiksie `q` (cała wpisana fraza), z opóźnieniem po wpisywaniu
+  clearTimeout(sharedT);
+  const s = topSheet(); if (!s || s.type !== 'dietAdd') return;
+  const key = phraseKey(s.q); SH.key = key; SH.busy = false;
+  if (!sharedOn() || key.length < 2 || sharedCache.has(key)) return;
+  SH.busy = true;
+  sharedT = setTimeout(async () => {
+    let list = null;
+    try {
+      const snap = await FB.getDocs(FB.query(FB.collection(FB.db, 'foods'), FB.orderBy('q'), FB.startAt(key), FB.endAt(key + ''), FB.limit(30)));
+      list = snap.docs.map(d => fromShared(d.id, d.data() || {})).filter(Boolean);
+    } catch {}
+    if (list){ sharedCache.set(key, list); list.forEach(x => SCAN_CACHE.set(x.id, x)); }
+    if (SH.key === key){ SH.busy = false; const t = topSheet(); if (t && t.type === 'dietAdd') fillDietList(); }
+  }, 350);
+}
+const DRY_RE = /\b(ryz|makaron|spaghetti|penne|fusilli|farfalle|tagliatelle|kasz|kuskus|couscous|komosa|quinoa|bulgur|platki|fasol|soczewic|ciecierzyc|groch|otreby)/;
+const DRY_NOT = /(gotow|w sosie|puszk|konserw|sloik|zup|salatk|chrupi|kukurydzian|czekolad|miodow|musli|granola|baton|chipsy|wafel|ciastk|napoj|jogurt|mleko)/;
+const dryHint = p => !!p && p.src === 'scan' && DRY_RE.test(norm(p.n)) && !DRY_NOT.test(norm(p.n));   // etykieta podaje wartości suchego produktu
+const DRY_TXT = 'Wartości z etykiety – waż przed gotowaniem';
+function gtinOk(d){ let sum = 0; for (let i = 0; i < d.length - 1; i++) sum += +d[d.length - 2 - i] * (i % 2 === 0 ? 3 : 1); return (10 - sum % 10) % 10 === +d[d.length - 1]; }
+function normEan(raw, strict){   // 8, 12 (UPC-A → 13 z zerem), 13 lub 14 cyfr; ręcznie wpisany kod sprawdzamy też cyfrą kontrolną
+  const d = String(raw || '').replace(/\D/g, '');
+  if (![8, 12, 13, 14].includes(d.length) || (strict && !gtinOk(d))) return null;
+  return d.length === 12 ? '0' + d : d;
+}
+const prodOk = p => !!(p.n && p.k != null && p.k >= 0 && p.k <= DLIM.k && [p.b, p.w, p.t].every(x => x != null && x >= 0 && x <= DLIM.mac) && (p.f == null || (p.f >= 0 && p.f <= DLIM.mac)) && p.b + p.w + p.t + (p.f || 0) <= DLIM.sum);
+async function offGet(ean){   // obiekt produktu | null (brak w OFF) | 'err'
+  const ac = new AbortController(), to = setTimeout(() => ac.abort(), 9000);
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,nutriments,serving_quantity,serving_size,quantity`, {signal:ac.signal});
+    if (r.status === 404) return null;
+    if (!r.ok) return 'err';
+    const j = await r.json();
+    return j && j.status === 1 && j.product ? j.product : null;
+  } catch { return 'err'; } finally { clearTimeout(to); }
+}
+function offToProd(ean, o){
+  const nu = o.nutriments || {}, nv = k => { const v = nu[k + '_100g']; return v != null && v !== '' && Number.isFinite(+v) ? +v : null; };
+  let k = nv('energy-kcal'); if (k == null){ const kj = nv('energy'); if (kj != null) k = kj / 4.184; }
+  const qs = String(o.quantity || o.serving_size || ''), liquid = /\d\s*(ml|cl|dl|l)\b/i.test(qs) && !/\d\s*(g|kg)\b/i.test(qs), sq = +o.serving_quantity;
+  const r = x => x == null ? null : r1(x);
+  return {id:ean, n:String(o.product_name || '').trim().slice(0, 80), brand:String(o.brands || '').split(',')[0].trim().slice(0, 60), u:liquid ? 'ml' : 'g',
+    k:k == null ? null : Math.round(k), b:r(nv('proteins')), w:r(nv('carbohydrates')), t:r(nv('fat')), f:r(nv('fiber')),
+    pg:sq > 0 && sq <= DLIM.qty ? r1(sq) : null, po:sq > 0 && sq <= DLIM.qty ? '1 porcja' : '', src:'scan', ean, off:true};
+}
+async function loadZX(){
+  if (window.ZXing) return window.ZXing;
+  zxP ||= new Promise((res, rej) => {   // biblioteka (dokładna wersja) ładuje się dopiero po wejściu do skanera
+    const sc = document.createElement('script'); sc.src = ZX_URL; sc.crossOrigin = 'anonymous'; sc.async = true;
+    sc.onload = () => window.ZXing ? res(window.ZXing) : (zxP = null, rej(new Error('zx')));
+    sc.onerror = () => { zxP = null; rej(new Error('zx')); };
+    document.head.appendChild(sc);
+  });
+  return zxP;
+}
+function zxDecoder(ZX){   // canvas → tekst kodu albo null
+  const hints = new Map([[ZX.DecodeHintType.POSSIBLE_FORMATS, [ZX.BarcodeFormat.EAN_13, ZX.BarcodeFormat.EAN_8, ZX.BarcodeFormat.UPC_A]], [ZX.DecodeHintType.TRY_HARDER, true]]);
+  if (ZX.MultiFormatReader && ZX.HTMLCanvasElementLuminanceSource && ZX.BinaryBitmap && ZX.HybridBinarizer){
+    const rd = new ZX.MultiFormatReader();
+    return cv => { try { return rd.decode(new ZX.BinaryBitmap(new ZX.HybridBinarizer(new ZX.HTMLCanvasElementLuminanceSource(cv))), hints).getText(); } catch { return null; } };
+  }
+  const br = new ZX.BrowserMultiFormatReader(hints);
+  return cv => { try { return br.decodeFromCanvas(cv).getText(); } catch { return null; } };
+}
+function scanStop(){
+  scanSeq++;
+  if (!SCAN) return;
+  clearTimeout(SCAN.t); SCAN.stream.getTracks().forEach(t => t.stop()); SCAN = null;
+  const v = $('#scan-v'); if (v) v.srcObject = null;
+}
+async function scanStart(){
+  const s = topSheet(); if (!s || s.type !== 'dietScan' || s.busy) return;
+  const seq = scanSeq, st = t => { const el = $('#scan-st'); if (el && seq === scanSeq) el.textContent = t; };
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ st('Ta przeglądarka nie udostępnia aparatu. Wpisz cyfry kodu poniżej.'); return; }
+  st('Uruchamiam aparat…');
+  let stream, ZX;
+  try {
+    [stream, ZX] = await Promise.all([
+      navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}}, audio:false}),
+      loadZX().catch(() => null)]);
+  } catch (e){
+    st(e && e.name === 'NotAllowedError' ? 'Brak zgody na aparat. Zezwól na niego w ustawieniach przeglądarki albo wpisz cyfry kodu poniżej.' : 'Nie udało się uruchomić aparatu. Wpisz cyfry kodu poniżej.'); return;
+  }
+  if (seq !== scanSeq || topSheet() !== s){ stream.getTracks().forEach(t => t.stop()); return; }
+  const v = $('#scan-v'); if (!v){ stream.getTracks().forEach(t => t.stop()); return; }
+  const me = SCAN = {stream, t:0}; v.srcObject = stream; v.muted = true; v.setAttribute('playsinline', ''); v.play().catch(() => {});
+  if (!ZX){ st('Aparat działa, ale nie udało się wczytać czytnika kodów (brak internetu?). Wpisz cyfry kodu poniżej.'); return; }
+  let dec; try { dec = zxDecoder(ZX); } catch { st('Czytnik kodów nie działa w tej przeglądarce. Wpisz cyfry kodu poniżej.'); return; }
+  st('Skieruj aparat na kod kreskowy.');
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d', {willReadFrequently:true});
+  const tick = () => {
+    if (SCAN !== me) return;
+    if (v.readyState >= 2 && v.videoWidth){
+      const w = Math.min(v.videoWidth, 960); cv.width = w; cv.height = Math.round(w * v.videoHeight / v.videoWidth); cx.drawImage(v, 0, 0, cv.width, cv.height);
+      const txt = dec(cv), ean = txt && normEan(txt, false);
+      if (ean){ scanLookup(ean, false); return; }
+    }
+    me.t = setTimeout(tick, 150);
+  };
+  tick();
+}
+async function scanLookup(raw, strict){
+  const s = topSheet(); if (!s || s.type !== 'dietScan' || s.busy) return;
+  const st = t => { const el = $('#scan-st'); if (el) el.textContent = t; };
+  const ean = normEan(raw, strict);
+  if (!ean){ st('Kod ma złą liczbę cyfr albo cyfrę kontrolną – sprawdź cyfry (8, 12 lub 13).'); return; }
+  s.busy = true; scanStop(); st('Szukam produktu ' + ean + '…');
+  const btn = $('[data-act="scanGo"]'); if (btn) btn.disabled = true;
+  try { await scanResolve(s, ean); }
+  catch { st('Nie udało się wyszukać produktu. Spróbuj ponownie.'); }
+  finally { s.busy = false; if (btn) btn.disabled = false; }
+}
+// kolejność: Moje produkty (pole ean) → wspólna baza → Open Food Facts → ręczne wpisanie
+async function scanResolve(s, ean){
+  const meal = s.meal, day = s.day, alive = () => topSheet() === s;
+  const go = fn => { if (alive()){ sheets.pop(); fn(); } };   // zamknij skaner, otwórz następny arkusz
+  const m = DIET.mine.find(p => p.ean === ean || p.id === ean);
+  if (m) return go(() => openDietQty({meal, pid:m.id, day}));
+  const sh = await sharedGet(ean); if (!alive()) return;
+  if (sh){ SCAN_CACHE.set(ean, sh); return go(() => openDietQty({meal, pid:ean, day})); }
+  const o = await offGet(ean); if (!alive()) return;
+  const manual = (note, f, off) => go(() => openSheet({type:'dietProd', id:null, ean, scan:true, off, meal, day, scanNote:note, f}));
+  const blank = {n:'', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''};
+  if (o === 'err') return manual(`Nie udało się połączyć z Open Food Facts (brak internetu?). Możesz wpisać wartości z etykiety – kod ${ean} zostanie zapamiętany.`, blank, false);
+  if (!o) return manual(`Nie znalazłem kodu ${ean}. Wpisz wartości z etykiety – następnym razem produkt znajdzie się po skanie.`, blank, false);
+  const p = offToProd(ean, o);
+  if (prodOk(p)){
+    const c = cleanProd(p); SCAN_CACHE.set(ean, c); SHARED_NEW.set(ean, 'off');
+    return go(() => openDietQty({meal, pid:ean, day}));
+  }
+  const fx = x => x == null ? '' : fmtN(x);
+  manual('Open Food Facts nie ma pełnych albo poprawnych wartości odżywczych tego produktu – uzupełnij je z etykiety.',
+    {n:p.n, brand:p.brand, u:p.u, k:fx(p.k), b:fx(p.b), w:fx(p.w), t:fx(p.t), f:fx(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}, true);
+}
+document.addEventListener('visibilitychange', () => {   // aparat nie działa w tle
+  if (document.visibilityState === 'hidden'){ if (SCAN){ scanStop(); const el = $('#scan-st'); if (el) el.textContent = 'Aparat wyłączony. Wróć do aplikacji, a włączy się sam.'; } }
+  else { const s = topSheet(); if (s && s.type === 'dietScan' && !s.busy && !SCAN) scanStart(); }
+});
 
 /* ---------- akcje ---------- */
 function openDietQty(o){
@@ -4721,6 +4905,8 @@ Object.assign(ACT, {
   dietDay(el){ const k = shiftKey(dietKey(), +el.dataset.d); if (k > dietToday() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
   dietToday(){ if (ui.dietDay){ ui.dietDay = null; render(); } },
   dietAdd(el){ openSheet({type:'dietAdd', meal:el.dataset.meal, q:'', day:dietKey()}); },
+  dietScan(el){ openSheet({type:'dietScan', meal:el.dataset.meal, day:sDay(topSheet()), ean:'', busy:false}); },
+  scanGo(){ const i = $('#scan-ean'); scanLookup(i ? i.value : '', true); },
   dietPick(el){
     const s = topSheet(), p = prodOf(el.dataset.id); if (!p) return;
     openDietQty({meal:s.meal, pid:p.id, day:sDay(s)});
@@ -4751,7 +4937,7 @@ Object.assign(ACT, {
   },
   dqEditProd(){
     const s = topSheet(), p = prodOf(s.pid); if (!p) return;
-    openSheet({type:'dietProd', id:p.id, f:{n:p.n, brand:p.brand, u:p.u, k:fmtN(p.k), b:fmtN(p.b), w:fmtN(p.w), t:fmtN(p.t), f:fmtN(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}});
+    openSheet({type:'dietProd', id:p.id, scan:p.src === 'scan', off:!!p.off, f:{n:p.n, brand:p.brand, u:p.u, k:fmtN(p.k), b:fmtN(p.b), w:fmtN(p.w), t:fmtN(p.t), f:fmtN(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}});
   },
   dqSave(){
     const s = topSheet(), g = s.g, key = sDay(s), qm = s.mode === 'q' && !!s.base.pg;
@@ -4766,6 +4952,7 @@ Object.assign(ACT, {
     }
     const p = prodOf(s.pid); if (!p || !dietCanEdit()) return;
     const mine = ensureMine(p); mine.uses++; mine.last = Date.now(); persistDiet([mine.id]);
+    if (SHARED_NEW.has(mine.id)){ sharedPut(mine, SHARED_NEW.get(mine.id)); SHARED_NEW.delete(mine.id); }   // pierwszy raz: do wspólnej bazy
     const id = uid(); (dayW(key).meals[s.meal] ||= []).push({id, pid:p.id, n:p.n, g:r1(g), ...m, o:Date.now(), ...pc, ...(p.u === 'ml' ? {u:'ml'} : {})});
     persistDay(key, [id]); sheets.length = 0; renderSheet(); render(); toast('Dodano: ' + p.n);
   },
@@ -4809,8 +4996,9 @@ Object.assign(ACT, {
     else if (v.pg != null && (v.pg <= 0 || v.pg > DLIM.qty)) err = 'Porcja: od 1 do 5000.';
     if (err){ s.err = err; renderSheet(); return; }
     const base = s.id ? (DIET.mine.find(x => x.id === s.id) || prodOf(s.id)) : null;
-    const rec = cleanProd({...(base || {}), id:s.id || 'o-' + uid(), n:v.n, brand:f.brand, u:f.u, k:v.k, b:v.b || 0, w:v.w || 0, t:v.t || 0, f:v.f || 0, pg:v.pg || null, po:f.po,
-      src:base ? base.src : 'own', ean:base ? base.ean : '', star:base ? base.star : false, uses:base ? base.uses : 0, last:base ? base.last : 0});
+    const rec = cleanProd({...(base || {}), id:s.id || s.ean || 'o-' + uid(), n:v.n, brand:f.brand, u:f.u, k:v.k, b:v.b || 0, w:v.w || 0, t:v.t || 0, f:v.f || 0, pg:v.pg || null, po:f.po,
+      src:base ? base.src : (s.ean ? 'scan' : 'own'), ean:base ? base.ean : (s.ean || ''), off:base ? base.off : !!s.off, star:base ? base.star : false, uses:base ? base.uses : 0, last:base ? base.last : 0});
+    if (!s.id && s.ean) SHARED_NEW.set(rec.id, 'user'); else SHARED_NEW.delete(rec.id);   // poprawka cudzych danych jest osobista – nie trafia do wspólnej bazy
     const i = DIET.mine.findIndex(x => x.id === rec.id);
     if (i >= 0) DIET.mine[i] = rec; else DIET.mine.push(rec);
     persistDiet([rec.id]);
@@ -4853,7 +5041,8 @@ Object.assign(ACT, {
 });
 Object.assign(BIND, {
   dmName(t){ const m = DIET.meals.find(x => x.id === t.dataset.id), n = t.value.trim().slice(0, MEAL_NAME_MAX); if (!m || !n || m.n === n) return; m.n = n; syncMeals(); persistDiet([], [], false, true); render(); },
-  dietq(t){ topSheet().q = t.value; fillDietList(); },
+  dietq(t){ topSheet().q = t.value; sharedSearch(); fillDietList(); },
+  scanean(t){ const d = t.value.replace(/\D/g, ''); if (d !== t.value) t.value = d; topSheet().ean = d; },
   dqq(t){
     const s = topSheet(), pg = s.base.pg, max = Math.floor(DLIM.qty / pg * 100) / 100; let v = num(t.value);
     if (v != null && v > max){ v = max; t.value = fmtN(v); toast(`Maksymalnie ${fmtN(max)} szt.`); }

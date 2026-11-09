@@ -1,5 +1,5 @@
 // Pozwala korzystać z aplikacji bez internetu (np. na siłowni).
-const VERSION = 'dziennik-b35e414fa6';
+const VERSION = 'dziennik-11697ee691';
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const IMAGES = [];
 
@@ -47,7 +47,8 @@ self.addEventListener('fetch', (event) => {
     })());
     return;
   }
-  if (url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/')) {
+  if (url.hostname.endsWith('openfoodfacts.org')) return;   // odpowiedzi API nigdy nie trafiają do pamięci podręcznej
+  if ((url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/')) || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/@zxing/library@'))) {
     // Biblioteka bazy danych: wersja w adresie się nie zmienia, więc wystarczy pamięć podręczna.
     event.respondWith((async () => {
       const cache = await caches.open('libs');

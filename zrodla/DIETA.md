@@ -173,6 +173,17 @@ Sprawdź też, że pozostałe 4 zakładki wyglądają jak przed zmianą.
 - Service worker (`build_web.py`): nie zapisuje odpowiedzi z openfoodfacts.org w pamięci podręcznej.
 - Kamery i OFF nie da się sprawdzić z sesji (proxy) – test odczytu na wygenerowanych obrazkach kodów, resztę testuje Olek na telefonie.
 
+### Stan części 2 (zbudowane, listopad 2026)
+- Kod: `app.html`, sekcja „wspólna baza (foods/{ean}), Open Food Facts i skaner”: `sharedGet/sharedPut/sharedSearch`, `offGet/offToProd`, `loadZX/zxDecoder`,
+  `scanStart/scanStop/scanLookup/scanResolve`, `SHEETS.dietScan`, `dryHint`. Kolejność szukania kodu: Moje (`ean`/id) → `foods/{ean}` → OFF → ręczny `dietProd`.
+- Kod 12-cyfrowy (UPC-A) zapisujemy jako 13 cyfr z zerem z przodu. Ręcznie wpisany kod sprawdzamy cyfrą kontrolną, odczyt z aparatu tylko długością.
+- Produkt z OFF ma w `mine` pole `off:true` (atrybucja „Dane: Open Food Facts (ODbL)” w `dietQty`/`dietProd` i w ustawieniach). Id zeskanowanego produktu = ean.
+- Do `foods/` trafia produkt przy pierwszym dodaniu do posiłku (`SHARED_NEW`): `src:'off'` (nietknięte dane OFF) albo `src:'user'` (wpisane ręcznie). Poprawka produktu
+  z OFF w `dietProd` jest osobista i nie jest wysyłana. Reguły tylko `create`, więc zła wartość we wspólnej bazie zostaje do ręcznej poprawki w konsoli Firebase.
+- Podpowiedź „waż przed gotowaniem”: dopasowanie po nazwie (`DRY_RE`, wyjątki `DRY_NOT`), bo zeskanowany produkt nie ma kategorii.
+- Biblioteka ZXing 0.21.3 z jsdelivr, bez SRI (nie dało się policzyć skrótu bez dostępu do CDN); service worker trzyma ją w cache `libs`, a OFF pomija.
+- **Niesprawdzone w sesji:** prawdziwy odczyt kodu przez ZXing i kamera na iPhonie (Safari i ekran główny) – test z atrapą ZXing sprawdził tylko resztę przepływu.
+
 ## CZĘŚĆ 3 – dodatki do diety (Olek chce to zrobić; kolejność i szczegóły ustalić z nim przed budową)
 Kandydaci, każdy jako osobny, mały etap (najpierw zapytać Olka, od czego zacząć i jak ma działać):
 - ważenie i wykres masy ciała (średnia 7-dniowa),

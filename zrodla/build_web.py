@@ -183,7 +183,8 @@ self.addEventListener('fetch', (event) => {{
     }})());
     return;
   }}
-  if (url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/')) {{
+  if (url.hostname.endsWith('openfoodfacts.org')) return;   // odpowiedzi API nigdy nie trafiają do pamięci podręcznej
+  if ((url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/')) || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/@zxing/library@'))) {{
     // Biblioteka bazy danych: wersja w adresie się nie zmienia, więc wystarczy pamięć podręczna.
     event.respondWith((async () => {{
       const cache = await caches.open('libs');
