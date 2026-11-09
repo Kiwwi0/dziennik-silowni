@@ -74,6 +74,11 @@ svg.i.s{width:18px;height:18px}
 .dt-bar{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;margin-top:4px}
 .dt-date{min-height:44px;padding:4px 12px;border:1px solid var(--line);background:var(--surface);border-radius:12px;display:grid;justify-items:center;align-content:center;line-height:1.2;color:var(--ink)}
 .dt-date b{font-weight:700}
+.dt-mid{display:grid;gap:6px;justify-items:center;min-width:0}
+.dt-mid .dt-date{width:100%}
+.dt-tr{position:relative;min-height:28px;padding:2px 14px;border-radius:999px;border:1px dashed var(--line);background:transparent;color:var(--ink-2);font-size:12.5px;font-weight:600}
+.dt-tr::after{content:"";position:absolute;inset:-8px -6px}
+.dt-tr.man{border-style:solid;background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .dt-date span{font-size:12.5px;color:var(--muted)}
 .iconbtn:disabled{opacity:.4;cursor:default}
 .dt-sum{display:grid;gap:12px}
@@ -2916,7 +2921,7 @@ const ACT = {
     let d; try { d = JSON.parse($('#imp').value); } catch { toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (!d || d.app !== 'dziennik-silowni' || !d.state){ toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (d.diet && !dietCanEdit()) return;
-    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty” i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety i profil kalkulatora zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
+    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty” i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety (zwykłe i treningowe) oraz profil kalkulatora zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
       S = normalize(d.state); S.plans.forEach(p => { delete p.share; }); commit();   // kody udostępnień zostają przy oryginałach
       const have = new Set(SESS.map(s => s.id));
       for (const s of sortSess((d.sessions || []).filter(s => s && s.id && !have.has(s.id)))) await saveSession(s);
@@ -2930,15 +2935,18 @@ const ACT = {
         DIET.meals.push(...addM); syncMeals();
         const addW = Object.keys(inc.wt).filter(k => !(k in DIET.wt));   // pomiary masy: brakujące dni dochodzą, istniejące zostają
         for (const k of addW) DIET.wt[k] = inc.wt[k];
+        const tg = inc.goalsT, anyT = !!(tg.k || tg.b || tg.w || tg.t); if (anyT) DIET.goalsT = tg;   // cele treningowe: zastępowane tylko, gdy kopia je ma
         const profIn = !!inc.prof; if (profIn) DIET.prof = inc.prof;   // profil kalkulatora: zastępowany tylko, gdy kopia go ma
-        persistDiet(add, [], anyGoal, addM.length > 0, addW, [], profIn);
+        persistDiet(add, [], anyGoal, addM.length > 0, addW, [], profIn, anyT);
       }
       if (d.dietDays && typeof d.dietDays === 'object'){   // dni scalane po wpisach: brakujące dochodzą, istniejące zostają
         const inc = normalizeDays(d.dietDays);
         for (const k of Object.keys(inc)){
           const day = dayW(k), have = new Set(Object.values(day.meals).flat().map(x => x.id)), add = [];
           for (const m of Object.keys(inc[k].meals)) for (const x of inc[k].meals[m]) if (!have.has(x.id)){ (day.meals[m] ||= []).push(x); add.push(x.id); }
-          if (add.length){ for (const m of Object.keys(day.meals)) day.meals[m].sort((a, b) => a.o - b.o); persistDay(k, add); }
+          const tr = typeof day.tr !== 'boolean' && typeof inc[k].tr === 'boolean' ? inc[k].tr : undefined;   // ręczny znacznik dnia: dochodzi tylko, gdy obecny dzień go nie ma
+          if (tr !== undefined) day.tr = tr;
+          if (add.length || tr !== undefined){ for (const m of Object.keys(day.meals)) day.meals[m].sort((a, b) => a.o - b.o); persistDay(k, add, [], tr); }
         }
       }
       sheets.length = 0; renderSheet(); render(); toast('Przywrócono dane.');
@@ -3191,12 +3199,12 @@ function cleanProd(p){
 // kopiach – tablica. Czytamy oba kształty.
 const byId = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 function normalizeDiet(d){
-  const g = (d && d.goals) || {}, goal = (v, hi) => { const n = num(v); return n != null && n > 0 ? Math.min(hi, n) : null; };
+  const g = (d && d.goals) || {}, gT = (d && d.goalsT) || {}, goal = (v, hi) => { const n = num(v); return n != null && n > 0 ? Math.min(hi, n) : null; };
   const seen = new Set(), mine = [];
   const raw = d && d.mine, list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.entries(raw).map(([id, x]) => x && typeof x === 'object' ? {...x, id} : null) : [];
   for (const p of list){ const c = cleanProd(p); if (c && !seen.has(c.id)){ seen.add(c.id); mine.push(c); } }
   mine.sort(byId);
-  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), wt:cleanWt(d && d.wt), prof:cleanProf(d && d.prof), v:1};
+  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, goalsT:{k:goal(gT.k, DLIM.gk), b:goal(gT.b, DLIM.gmac), w:goal(gT.w, DLIM.gmac), t:goal(gT.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), wt:cleanWt(d && d.wt), prof:cleanProf(d && d.prof), v:1};
 }
 // profil do kalkulatora zapotrzebowania: {sex:'m'|'k', by:rok urodzenia, h:wzrost cm, pal, goal:'red'|'utr'|'masa'} (brakujące pola = null)
 const PALS = [1.2, 1.375, 1.55, 1.725, 1.9], PROF_GOALS = ['red', 'utr', 'masa'];
@@ -3226,14 +3234,14 @@ function cleanEntry(e, i = 0){
 // Dzień w pamięci: {meals:{sn:[…], …}}. W bazie: {date, e:{[id]:{…wpis, m:posiłek}}} – każdy wpis to osobne pole,
 // więc zapis scala wpisy i nie nadpisze tych, których to urządzenie nie wczytało. Czytamy też stary format {meals}.
 function normalizeDay(d){
-  const meals = Object.fromEntries(MEALS.map(([m]) => [m, []])), seen = new Set();   // posiłki spoza listy (usunięte) też zostają
-  if (!d || typeof d !== 'object') return {meals};
+  const meals = Object.fromEntries(MEALS.map(([m]) => [m, []])), seen = new Set(), tr = d && typeof d === 'object' && typeof d.tr === 'boolean' ? {tr:d.tr} : {};   // tr = dzień treningowy ustawiony ręcznie (brak = automatycznie)   // posiłki spoza listy (usunięte) też zostają
+  if (!d || typeof d !== 'object') return {meals, ...tr};
   const add = (m, x, i) => { const c = cleanEntry(x, i); if (c && !seen.has(c.id)){ seen.add(c.id); (meals[m] ||= []).push(c); } };
   const old = d.meals && typeof d.meals === 'object' ? d.meals : {};
   for (const m of Object.keys(old)) if (mealIdOk(m) && Array.isArray(old[m])) old[m].forEach((x, i) => add(m, x, i));
   if (d.e && typeof d.e === 'object') for (const [id, x] of Object.entries(d.e)) if (x && typeof x === 'object' && mealIdOk(x.m)) add(x.m, {...x, id}, 0);
   for (const m of Object.keys(meals)) meals[m].sort((a, b) => a.o - b.o);
-  return {meals};
+  return {meals, ...tr};
 }
 function normalizeDays(o){ const out = {}; if (o && typeof o === 'object') for (const k of Object.keys(o)) if (dayKeyOk(k)) out[k] = normalizeDay(o[k]); return out; }
 
@@ -3245,7 +3253,7 @@ let dietLoaded = false;          // dokument data/diet przyszedł już z bazy (a
 // Zapis scala pola dokumentu (merge), więc dwa urządzenia nie nadpisują się nawzajem.
 const dietPut = new Set(), dietDel = new Set();
 const wtPut = new Set(), wtDel = new Set();   // dni pomiarów masy ciała do zapisu / usunięcia
-let dietGoalsDirty = false, dietMealsDirty = false, dietProfDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
+let dietGoalsDirty = false, dietGoalsTDirty = false, dietMealsDirty = false, dietProfDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
 const DAY_OLD = new Set();       // dni zapisane w bazie starym formatem {meals} – przy najbliższym zapisie przechodzą na nowy
 const dayOf = k => DAYS[k] || blankDay();
 // dwa warianty tego samego dnia → suma wpisów (wg id; wpis z b wygrywa, także gdy zmienił posiłek)
@@ -3254,6 +3262,7 @@ function mergeDays(a, b){
   for (const day of [a, b]) for (const m of Object.keys(day.meals)) for (const e of day.meals[m]) all.set(e.id, {e, m});
   for (const {e, m} of all.values()) (out.meals[m] ||= []).push(e);
   for (const m of Object.keys(out.meals)) out.meals[m].sort((x, y) => x.o - y.o);
+  const tr = typeof b.tr === 'boolean' ? b.tr : a.tr; if (typeof tr === 'boolean') out.tr = tr;
   return out;
 }
 function backupBox(s){
@@ -3266,38 +3275,52 @@ function backupBox(s){
 }
 const bkRefresh = s => { const el = $('#bk-box'); if (el && topSheet() === s) el.innerHTML = backupBox(s); };
 const dayW = k => DAYS[k] || (DAYS[k] = blankDay());
+// dzień treningowy: znacznik ręczny (DAYS[k].tr) albo automatycznie – zapisany trening z tą datą / trwający trening dzisiaj
+function isTrainDay(k){
+  const d = DAYS[k]; if (d && typeof d.tr === 'boolean') return d.tr;
+  if (SESS.some(x => x && x.date && dayKey(new Date(x.date)) === k)) return true;
+  return !!(ACTIVE && k === dietToday() && dayKey(new Date(ACTIVE.startedAt)) === k && (!ACTIVE.folder || !FOLDER || ACTIVE.folder === FOLDER.id));
+}
+// cel dnia: w dzień treningowy – cele treningowe (brakujące makro ze zwykłych), inaczej zwykłe
+function goalsFor(k){
+  const G = DIET.goals, T = DIET.goalsT;
+  if (!T || !(T.k || T.b || T.w || T.t) || !isTrainDay(k)) return G;
+  return {k:T.k ?? G.k, b:T.b ?? G.b, w:T.w ?? G.w, t:T.t ?? G.t};
+}
 
 /* ---------- zapis ---------- */
 // put = id produktów dodanych/zmienionych, del = id usuniętych, goals = zmieniono cele
 // wp / wd = dni pomiarów masy ciała dodanych/zmienionych / usuniętych
-function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], wd = [], prof = false){
+function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], wd = [], prof = false, goalsT = false){
   const k = lsKey('diet'); if (k) LS.set(k, DIET);
   if (!fireOn()) return;
   for (const id of put){ dietPut.add(id); dietDel.delete(id); }
   for (const id of del){ dietDel.add(id); dietPut.delete(id); }
   if (goals) dietGoalsDirty = true;
+  if (goalsT) dietGoalsTDirty = true;
   if (meals) dietMealsDirty = true;
   if (prof) dietProfDirty = true;
   for (const k of wp){ wtPut.add(k); wtDel.delete(k); }
   for (const k of wd){ wtDel.add(k); wtPut.delete(k); }
-  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietMealsDirty && !dietProfDirty && !wtPut.size && !wtDel.size) return;
+  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietGoalsTDirty && !dietMealsDirty && !dietProfDirty && !wtPut.size && !wtDel.size) return;
   dietDirty = true; clearTimeout(dietT); dietT = setTimeout(flushDiet, 600);
 }
 function flushDiet(){
   clearTimeout(dietT);
   if (!dietDirty || !fireOn()) return;
   dietDirty = false;
-  const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, meals = dietMealsDirty, prof = dietProfDirty, old = DIET_OLD, G = DIET.goals;
+  const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, goalsT = dietGoalsTDirty, meals = dietMealsDirty, prof = dietProfDirty, old = DIET_OLD, G = DIET.goals, T = DIET.goalsT;
   const wp = [...wtPut], wd = [...wtDel];
-  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false; dietProfDirty = false; wtPut.clear(); wtDel.clear();
-  const ref = FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'diet'), gdoc = {k:G.k ?? null, b:G.b ?? null, w:G.w ?? null, t:G.t ?? null};
+  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear();
+  const ref = FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'diet'), gdoc = {k:G.k ?? null, b:G.b ?? null, w:G.w ?? null, t:G.t ?? null}, tdoc = {k:T.k ?? null, b:T.b ?? null, w:T.w ?? null, t:T.t ?? null};
   let job;
   if (old){   // stary format: jednorazowo cały dokument w nowym kształcie (mapa produktów)
     const mine = {}; for (const x of DIET.mine) mine[x.id] = clone(x);
-    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, mine, meals:clone(DIET.meals), wt:{...DIET.wt}, ...(DIET.prof ? {prof:clone(DIET.prof)} : {})});
+    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, goalsT:tdoc, mine, meals:clone(DIET.meals), wt:{...DIET.wt}, ...(DIET.prof ? {prof:clone(DIET.prof)} : {})});
   } else {
     const data = {v:2}, mine = {};
     if (goals) data.goals = gdoc;
+    if (goalsT) data.goalsT = tdoc;
     if (prof && DIET.prof) data.prof = clone(DIET.prof);   // profil zapisuje się w całości (małe pole)
     if (meals) data.meals = clone(DIET.meals);   // lista posiłków zapisuje się w całości (ostatnia zmiana wygrywa)
     for (const id of put){ const x = DIET.mine.find(p => p.id === id); if (x) mine[id] = clone(x); }
@@ -3310,14 +3333,14 @@ function flushDiet(){
     job = FB.setDoc(ref, data, {merge:true});
   }
   job.catch(() => {   // nie poszło: zmiany wracają do kolejki
-    put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (meals) dietMealsDirty = true; if (prof) dietProfDirty = true; if (old) DIET_OLD = true;
+    put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (goalsT) dietGoalsTDirty = true; if (meals) dietMealsDirty = true; if (prof) dietProfDirty = true; if (old) DIET_OLD = true;
     wp.forEach(k => { if (!wtDel.has(k)) wtPut.add(k); }); wd.forEach(k => { if (!wtPut.has(k)) wtDel.add(k); });
     toast('Nie udało się zapisać diety w bazie.');
   });
 }
 // put = id wpisów dodanych/zmienionych, del = id usuniętych. Zapis scala (merge), więc wpisy z innych urządzeń
 // i dni spoza wczytanych 60 dni zostają nienaruszone.
-function persistDay(k, put = [], del = []){
+function persistDay(k, put = [], del = [], tr){   // tr: undefined = bez zmian, true/false = ustaw ręcznie, null = wróć do automatu
   const lk = lsKey('dietDays'); if (lk) LS.set(lk, DAYS);
   if (!fireOn()) return;
   const old = DAY_OLD.has(k), e = {};
@@ -3328,6 +3351,7 @@ function persistDay(k, put = [], del = []){
   }
   for (const id of del) e[id] = FB.deleteField();
   const data = {date:k, e};
+  if (tr !== undefined) data.tr = tr === null ? FB.deleteField() : tr;
   if (old){ data.meals = FB.deleteField(); DAY_OLD.delete(k); }
   FB.setDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'diet', k), data, {merge:true}).catch(() => toast('Nie udało się zapisać dnia w bazie.'));
 }
@@ -3339,9 +3363,9 @@ function dietCanEdit(){
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDiet(); });
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
-function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
+function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
-  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; wtPut.clear(); wtDel.clear();
+  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear();
   DIET = normalizeDiet(LS.get(lsKey('diet'), null)); syncMeals(); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
   unsubDiet = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'diet'), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
@@ -3355,12 +3379,13 @@ function dietOpen(fid){
     for (const id of dietPut){ const x = DIET.mine.find(p => p.id === id), i = inc.mine.findIndex(p => p.id === id); if (x){ if (i >= 0) inc.mine[i] = x; else inc.mine.push(x); } }
     if (dietDel.size) inc.mine = inc.mine.filter(p => !dietDel.has(p.id));
     if (dietGoalsDirty) inc.goals = DIET.goals;
+    if (dietGoalsTDirty) inc.goalsT = DIET.goalsT;
     if (dietMealsDirty) inc.meals = DIET.meals;
     if (dietProfDirty) inc.prof = DIET.prof;
     for (const k of wtPut) if (DIET.wt[k] != null) inc.wt[k] = DIET.wt[k];
     for (const k of wtDel) delete inc.wt[k];
     inc.mine.sort(byId);
-    const sig = d => JSON.stringify([d.goals, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort(), d.prof]);
+    const sig = d => JSON.stringify([d.goals, d.goalsT, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort(), d.prof]);
     if (sig(inc) !== sig(DIET)){ DIET = inc; syncMeals(); LS.set(lsKey('diet'), DIET); dietRefresh(); }
   }, () => {});
   const q = FB.query(FB.collection(FB.db, 'folders', fid, 'diet'), FB.where('date', '>=', dietMinKey()));
@@ -3402,11 +3427,12 @@ function dietBar(val, goal, sm){
   return `<div class="dt-meter${sm ? ' sm' : ''}${over ? ' over' : ''}" role="img" aria-label="${goal > 0 ? pct + '% celu' + (over ? ', cel przekroczony' : '') : 'brak celu'}"><i style="width:${pct}%"></i></div>`;
 }
 function vDiet(){
-  const key = dietKey(), today = dietToday(), tot = dayTotals(key), G = DIET.goals, hasGoal = !!(G.k || G.b || G.w || G.t);
+  const key = dietKey(), today = dietToday(), tot = dayTotals(key), G = goalsFor(key), hasGoal = !!(G.k || G.b || G.w || G.t);
   const lbl = key === today ? 'Dziś' : key === shiftKey(today, -1) ? 'Wczoraj' : fmtDate(keyToDate(key).toISOString(), {weekday:'long'});
   let h = `<div class="wrap stack">
     <div class="dt-bar"><button class="iconbtn" data-act="dietDay" data-d="-1" aria-label="Dzień wcześniej" ${key <= dietMinKey() ? 'disabled' : ''}>${svg('back')}</button>
-      <button class="dt-date" data-act="dietToday" aria-label="${esc(lbl)}, ${esc(fmtDate(keyToDate(key).toISOString(), {day:'numeric', month:'long', year:'numeric'}))}. Wróć do dziś"><b>${esc(lbl)}</b><span>${esc(fmtDate(keyToDate(key).toISOString(), {day:'numeric', month:'long'}))}</span></button>
+      <div class="dt-mid"><button class="dt-date" data-act="dietToday" aria-label="${esc(lbl)}, ${esc(fmtDate(keyToDate(key).toISOString(), {day:'numeric', month:'long', year:'numeric'}))}. Wróć do dziś"><b>${esc(lbl)}</b><span>${esc(fmtDate(keyToDate(key).toISOString(), {day:'numeric', month:'long'}))}</span></button>
+      ${(() => { const man = DAYS[key] && typeof DAYS[key].tr === 'boolean', tr = isTrainDay(key); return `<button class="dt-tr${man ? ' man' : ''}" data-act="dietTr" aria-label="${tr ? 'Dzień treningowy' : 'Dzień odpoczynku'}, ${man ? 'ustawiony ręcznie' : 'wykryty automatycznie'}. Stuknij, aby zmienić">${tr ? 'Trening' : 'Odpoczynek'}</button>`; })()}</div>
       <button class="iconbtn" data-act="dietDay" data-d="1" aria-label="Dzień później" ${key >= today ? 'disabled' : ''}>${svg('chev')}</button></div>`;
   const over = G.k && tot.k > G.k;
   h += `<section class="card dt-sum" aria-label="Podsumowanie dnia"><div class="dt-kc"><div><span class="big num">${fmtG(tot.k)}</span> <span class="of num">${G.k ? '/ ' + fmtG(G.k) + ' ' : ''}kcal</span></div>
@@ -3551,8 +3577,11 @@ SHEETS.dietMeals = s => {
     ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}`;
 };
 SHEETS.dietGoals = s => {
-  const fld = (k, lbl) => `<div class="field"><label class="lbl" for="dg-${k}">${lbl}</label><input class="input" id="dg-${k}" inputmode="decimal" data-bind="dg" data-f="${k}" value="${esc(s.f[k])}" placeholder="–" autocomplete="off"></div>`;
-  return sheetHead('Dzienne cele') + `<button class="btn" data-act="dietCalc" style="width:100%">Oblicz z kalkulatora</button>
+  const f = s.tab === 't' ? s.fT : s.f, tabs = [['n', 'Zwykły dzień'], ['t', 'Dzień treningowy']];
+  const fld = (k, lbl) => `<div class="field"><label class="lbl" for="dg-${k}">${lbl}</label><input class="input" id="dg-${k}" inputmode="decimal" data-bind="dg" data-f="${k}" value="${esc(f[k])}" placeholder="–" autocomplete="off"></div>`;
+  return sheetHead('Dzienne cele') + `<div class="chips" role="group" aria-label="Rodzaj dnia">${tabs.map(([v, l]) => `<button class="chip" data-act="dgTab" data-v="${v}" aria-pressed="${s.tab === v}">${l}</button>`).join('')}</div>
+    ${s.tab === 't' ? `<div class="row" style="flex-wrap:nowrap;align-items:center"><span class="note" style="flex:1;min-width:0;margin:0">Puste pole = jak w zwykły dzień. Cele treningowe działają w dni z zapisanym treningiem (albo ustawione ręcznie na pasku daty).</span><button class="btn sm" data-act="dgCopy">Skopiuj ze zwykłego</button></div>` : ''}
+    <button class="btn" data-act="dietCalc" style="width:100%">Oblicz z kalkulatora</button>
     ${fld('k', 'Kalorie (kcal)')}
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start"><div style="flex:1;min-width:0">${fld('b', 'Białko (g)')}</div><div style="flex:1;min-width:0">${fld('w', 'Węgle (g)')}</div><div style="flex:1;min-width:0">${fld('t', 'Tłuszcz (g)')}</div></div>
     <p class="note num" id="dg-hint" aria-live="polite"></p>
@@ -3561,7 +3590,7 @@ SHEETS.dietGoals = s => {
 };
 function goalsHint(){
   const s = topSheet(), el = $('#dg-hint'); if (!s || s.type !== 'dietGoals' || !el) return;
-  const b = num(s.f.b) || 0, w = num(s.f.w) || 0, t = num(s.f.t) || 0, k = num(s.f.k);
+  const f = s.tab === 't' ? s.fT : s.f, b = num(f.b) || 0, w = num(f.w) || 0, t = num(f.t) || 0, k = num(f.k);
   const kc = Math.round(4 * b + 4 * w + 9 * t);
   el.textContent = (b || w || t) ? `B×4 + W×4 + T×9 = ${fmtN(kc)} kcal` + (k && Math.abs(kc - k) > 0.1 * k ? ' – różni się od celu kalorii' : '') : 'Makro są opcjonalne. Przelicznik: B×4 + W×4 + T×9 kcal.';
 }
@@ -3870,14 +3899,30 @@ Object.assign(ACT, {
       DIET.meals = DIET.meals.filter(x => x.id !== m.id); syncMeals(); persistDiet([], [], false, true); render();
     });
   },
-  dietGoals(){ const G = DIET.goals; openSheet({type:'dietGoals', f:{k:G.k ? fmtN(G.k) : '', b:G.b ? fmtN(G.b) : '', w:G.w ? fmtN(G.w) : '', t:G.t ? fmtN(G.t) : ''}}); goalsHint(); },
+  dietGoals(){
+    const G = DIET.goals, T = DIET.goalsT, fm = o => ({k:o.k ? fmtN(o.k) : '', b:o.b ? fmtN(o.b) : '', w:o.w ? fmtN(o.w) : '', t:o.t ? fmtN(o.t) : ''});
+    openSheet({type:'dietGoals', tab:'n', f:fm(G), fT:fm(T)}); goalsHint();
+  },
+  dgTab(el){ const s = topSheet(); if (!s || s.type !== 'dietGoals' || s.tab === el.dataset.v) return; s.tab = el.dataset.v; s.err = ''; renderSheet(); goalsHint(); },
+  dgCopy(){ const s = topSheet(); if (!s || s.type !== 'dietGoals') return; s.fT = {...s.f}; s.err = ''; renderSheet(); goalsHint(); },
+  dietTr(){
+    const k = dietKey(), cur = DAYS[k] && typeof DAYS[k].tr === 'boolean' ? DAYS[k].tr : null, next = cur === null ? true : cur ? false : null;
+    if (next === null) delete DAYS[k].tr; else dayW(k).tr = next;
+    persistDay(k, [], [], next); render();
+    const T = DIET.goalsT, none = !(T.k || T.b || T.w || T.t), tr = isTrainDay(k);
+    toast((next === null ? `Automatycznie: ${tr ? 'dzień treningowy (jest zapisany trening)' : 'dzień odpoczynku (brak zapisanego treningu)'}.` : `Ustawiono ręcznie: ${tr ? 'dzień treningowy' : 'dzień odpoczynku'}.`) + (none ? ' Cele treningowe nie są ustawione – cele bez zmian.' : ''));
+  },
   dgSave(){
-    const s = topSheet(), f = s.f, v = {k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t)}; if (!dietCanEdit()) return;
-    if (v.k != null && (v.k < 0 || v.k > DLIM.gk)){ s.err = `Kalorie: od 0 do ${DLIM.gk}.`; renderSheet(); goalsHint(); return; }
-    if ([v.b, v.w, v.t].some(x => x != null && (x < 0 || x > DLIM.gmac))){ s.err = `Makro: od 0 do ${DLIM.gmac} g.`; renderSheet(); goalsHint(); return; }
-    const g = x => x != null && x > 0 ? r1(x) : null;
-    DIET.goals = {k:g(v.k), b:g(v.b), w:g(v.w), t:g(v.t)};
-    persistDiet([], [], true); sheets.length = 0; renderSheet(); render(); toast('Zapisano cele.');
+    const s = topSheet(); if (!dietCanEdit()) return;
+    const rd = f => ({k:num(f.k), b:num(f.b), w:num(f.w), t:num(f.t)}), vn = rd(s.f), vt = rd(s.fT);
+    for (const [tab, v] of [['n', vn], ['t', vt]]){   // błąd pokazujemy w zakładce, której dotyczy
+      const pre = tab === 't' ? 'Dzień treningowy – ' : '';
+      if (v.k != null && (v.k < 0 || v.k > DLIM.gk)){ s.tab = tab; s.err = `${pre}Kalorie: od 0 do ${DLIM.gk}.`; renderSheet(); goalsHint(); return; }
+      if ([v.b, v.w, v.t].some(x => x != null && (x < 0 || x > DLIM.gmac))){ s.tab = tab; s.err = `${pre}Makro: od 0 do ${DLIM.gmac} g.`; renderSheet(); goalsHint(); return; }
+    }
+    const g = x => x != null && x > 0 ? r1(x) : null, mk = v => ({k:g(v.k), b:g(v.b), w:g(v.w), t:g(v.t)});
+    DIET.goals = mk(vn); const nt = mk(vt), tCh = JSON.stringify(nt) !== JSON.stringify(DIET.goalsT); DIET.goalsT = nt;
+    persistDiet([], [], true, false, [], [], false, tCh); sheets.length = 0; renderSheet(); render(); toast('Zapisano cele.');
   },
 });
 Object.assign(BIND, {
@@ -3896,7 +3941,7 @@ Object.assign(BIND, {
   },
   df(t){ topSheet().f[t.dataset.f] = t.value; },
   dp(t){ const s = topSheet(); s.f[t.dataset.f] = t.value; prodWarn(); },
-  dg(t){ topSheet().f[t.dataset.f] = t.value; goalsHint(); },
+  dg(t){ const s = topSheet(); (s.tab === 't' ? s.fT : s.f)[t.dataset.f] = t.value; goalsHint(); },
 });
 
 /* ---------- kalkulator zapotrzebowania (etap 3.2): arkusz otwierany z „Dziennych celów” ---------- */
@@ -3971,12 +4016,13 @@ Object.assign(ACT, {
   dcApply(){
     const s = topSheet(); if (!s || s.type !== 'dietCalc' || !dietCanEdit()) return;
     const r = calcRead(s); if (!r.p) return;
-    const n = calcNeeds(r.p, r.kg), today = dietToday(), wp = [];
+    const n = calcNeeds(r.p, r.kg), today = dietToday(), wp = [], below = sheets[sheets.length - 2], isT = !!(below && below.type === 'dietGoals' && below.tab === 't');   // kalkulator wypełnia tylko aktywną zakładkę
     if (!s.wt){ DIET.wt[today] = r1(r.kg); wp.push(today); }   // masa wpisana w arkuszu = pomiar na dziś
-    DIET.goals = {k:n.kcal, b:n.b, w:n.w, t:n.t}; DIET.prof = cleanProf(r.p);
-    persistDiet([], [], true, false, wp, [], true);
+    if (isT) DIET.goalsT = {k:n.kcal, b:n.b, w:n.w, t:n.t}; else DIET.goals = {k:n.kcal, b:n.b, w:n.w, t:n.t};
+    DIET.prof = cleanProf(r.p);
+    persistDiet([], [], !isT, false, wp, [], true, isT);
     sheets.pop(); const under = topSheet();
-    if (under && under.type === 'dietGoals') Object.assign(under.f, {k:fmtN(n.kcal), b:fmtN(n.b), w:fmtN(n.w), t:fmtN(n.t)});
+    if (under && under.type === 'dietGoals') Object.assign(isT ? under.fT : under.f, {k:fmtN(n.kcal), b:fmtN(n.b), w:fmtN(n.w), t:fmtN(n.t)});
     renderSheet(); render(); toast('Cele ustawione z kalkulatora.');
   },
 });

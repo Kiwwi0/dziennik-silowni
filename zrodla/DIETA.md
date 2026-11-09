@@ -391,6 +391,23 @@ Wszystkie miejsca pokazujące cel dnia (karta podsumowania, paski) używają `go
 **Test:** cele zwykłe 2500, treningowe 2800; dzień z sesją w `SESS` → 2800; przełącznik na odpoczynek → 2500; powrót do auto;
 odświeżenie (stan `tr` zostaje); dzień bez `goalsT` → zwykłe cele.
 
+#### Stan etapu 3.3 (zbudowane, 9.11.2026)
+- **Dane:** `DIET.goalsT` (`normalizeDiet`: te same limity co `goals`, brak → wszystkie `null`; stary dokument działa bez zmian). Osobna flaga `dietGoalsTDirty`,
+  `persistDiet(put, del, goals, meals, wp, wd, prof, goalsT)` – 8. parametr; `flushDiet` wysyła `goalsT` z merge (stary format v:1 – w pełnym zapisie), przy błędzie wraca
+  do kolejki; snapshot nakłada oczekujące `goalsT`, podpis porównania je zawiera; `dietOpen`/`dietClose` czyszczą flagę. Dzień: `normalizeDay` zachowuje `tr` (tylko boolean),
+  `persistDay(k, put, del, tr)` – 4. parametr (`undefined` bez zmian, `true`/`false` ustaw, `null` → `deleteField()`); `mergeDays` (eksport) przenosi `tr`.
+- **Import kopii:** `goalsT` zastępowane tylko, gdy kopia ma jakąkolwiek wartość; `tr` dnia dochodzi tylko, gdy obecny dzień go nie ma (tekst potwierdzenia uzupełniony).
+- **Liczenie:** `isTrainDay(k)` (`DAYS[k].tr`, inaczej zapisany trening z `SESS` o tym `dayKey` albo trwający `ACTIVE` dzisiaj w tym folderze), `goalsFor(k)` (dzień treningowy
+  i `goalsT` ma wartość → `goalsT`, brakujące makro ze zwykłych celów; inaczej `goals`). Używa go `vDiet` (karta podsumowania i paski) – etapy 3.4+ mają też używać `goalsFor(dzień)`.
+- **Wygląd:** w `SHEETS.dietGoals` chipy „Zwykły dzień” / „Dzień treningowy” (`s.tab`, pola `s.f` / `s.fT`, ACT `dgTab`), w drugiej zakładce opis „puste = jak w zwykły dzień”
+  i „Skopiuj ze zwykłego” (ACT `dgCopy`); `dgSave` waliduje obie zakładki (błąd przełącza na właściwą), `goalsHint` liczy dla aktywnej. Kalkulator (`dcApply`) wypełnia i zapisuje tylko
+  aktywną zakładkę. Plakietka „Trening” / „Odpoczynek” pod datą (`.dt-mid`, `.dt-tr`; obrys przerywany = automatycznie, wypełniona = ręcznie), ACT `dietTr`: automatycznie → ręcznie
+  trening → ręcznie odpoczynek → automatycznie, toast opisuje stan (i że `goalsT` jest puste, więc cele bez zmian).
+- **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – 76 sprawdzeń, bez `pageerror`, bez przewijania w bok (Dieta, arkusz, pozostałe zakładki); cele 2500 / 2800 (B 160),
+  dzień bez sesji → 2500, z sesją w `SESS` → 2800, pełny cykl przełącznika, ręczny odpoczynek przy sesji → 2500, odświeżenie (`tr` i cele zostają), wczoraj → zwykłe, brak `goalsT` → zwykłe,
+  „Skopiuj ze zwykłego”, kalkulator wypełnia tylko zakładkę treningową (2710 kcal, B 145) i nie rusza zwykłych celów. Zapis `goalsT` i `tr` do Firebase niesprawdzony na żywo
+  (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+
 ### Etap 3.4 – podsumowanie tygodnia (karta w Diecie)
 **Liczenie:** tydzień pon–nd zawierający wybrany dzień (dni przyszłe pomijane). Dni z ≥ 1 wpisem = „dni z wpisami”.
 Średnie kcal, B, W, T z dni z wpisami (do 0,1, kcal do całości). Dzień **w celu**: kcal w zakresie ±10% `goalsFor(dzień).k`
