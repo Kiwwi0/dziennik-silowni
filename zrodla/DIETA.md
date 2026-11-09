@@ -500,8 +500,82 @@ odświeżenie; dzień z „Innym posiłkiem”.
   edycja (nazwa, ilość 50→100 g, usunięcie składnika), sekcja „Gotowe” w wyszukiwarce, nowy gotowy posiłek ze składnikiem z wyszukiwarki, usunięcie, odświeżenie strony (dane zostają), limity 50 / 30 / 40 znaków, stary dokument bez `tpl`.
   Zapis `tpl` i kopii dni do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Kamila.
 
+## CZĘŚĆ 4 – wygoda na co dzień (plan ustalony z Kamilem 9.11.2026, budowa w osobnym czacie)
+Pięć etapów w jednym czacie budującym (Sonnet), **w tej kolejności**: 4.1–4.4 są małe, 4.5 jest średni. Po każdym etapie: test (wersja testowa),
+dopisanie „Stan etapu 4.x (zbudowane)”. Na końcu jeden build_web, commit, push. Potem przegląd `git diff` przez Opus w krótkim czacie.
+Zasady wspólne jak w części 3 (osobne pola, merge, kolejka zmian, `normalizeDiet`/`normalizeDay` z wartościami domyślnymi, istniejące klasy CSS,
+oba motywy, 390×844 i 360×780, odświeżenie strony, pozostałe zakładki bez zmian). **Reguły Firebase się nie zmieniają** (dokumenty `data/diet`
+i `diet/{dzień}` nie mają walidacji pól).
+
+### Etap 4.1 – szybkie przyciski ilości (`dietQty`)
+- W trybie g/ml pod polem ilości rząd chipów **50 · 100 · 150 · 200** (jednostka produktu: g albo ml). Stuknięcie ustawia `s.g` i przelicza makro
+  tą samą drogą co BIND `dqg` (bez przerysowania arkusza, jeśli się da). Aktywny chip podświetlony, gdy `s.g` jest równe jego wartości.
+- W trybie sztuk chipów nie ma (jest licznik − / +). Działa też w trybie „do zestawu” (`toTpl`).
+- Przycisk porcji (`dqPortion`) zostaje bez zmian. 360 px: chipy mieszczą się w jednym rzędzie albo zawijają się (bez przewijania w bok).
+
+### Etap 4.2 – domyślna ilość = ostatnio użyta
+- `openDietQty` dla **nowego** wpisu (bez `entry`) szuka w `DAYS` najnowszego wpisu z tym samym `pid` (największe `o`; tylko wczytane dni, bez nowych pól w bazie).
+  - Ostatni wpis w sztukach (`q`) i produkt ma porcję → tryb sztuk, `s.q = q`.
+  - Ostatni wpis w gramach → tryb g, `s.g = g` (także gdy produkt ma porcję).
+  - Brak wpisu → jak dziś (produkt z porcją: 1 szt., bez porcji: 100 g).
+- Nie dotyczy edycji wpisu ani dodawania gotowego posiłku. Mała podpowiedź pod polem: „Jak ostatnio” (znika po zmianie ilości).
+- Funkcja pomocnicza `lastQty(pid)` → `{g, q}` albo `null`.
+
+### Etap 4.3 – „zostało B … g” przy białku
+- W karcie podsumowania dnia (`vDiet`, kolumna Białko): gdy `goalsFor(dzień).b` jest ustawione i zjedzone białko < cel – drobny tekst pod paskiem
+  „zostało 37 g” (`muted`, zaokrąglenie do całości). Po osiągnięciu celu tekstu nie ma (przekroczenie nadal tylko kolorem ostrzegawczym, jak dziś).
+- Tylko białko (węgle i tłuszcz bez zmian). Szerokość 360 px – tekst nie łamie kolumn.
+
+### Etap 4.4 – usuwanie wpisu przesunięciem w lewo
+- Wpisy w posiłkach (`.dt-ent` w `vDiet`, także „Inny posiłek”) dostają ten sam mechanizm co plany (`SW`, `swSet`, `swClose`, `SW_W`): przesunięcie
+  w lewo odsłania przycisk „Usuń”. Stuknięcie wpisu nadal otwiera edycję; po przesunięciu stuknięcie jest zjadane (`SW.eat`), jak w planach.
+- Uogólnienie kodu: `swSet` szuka dziś `.plan-link` – zmienić na wspólną klasę elementu przesuwanego (np. `.sw-in`, dodana też w planach) i dopasować CSS
+  (`.sw > .sw-in`). **Przesuwanie planów musi działać jak przed zmianą** (osobny test).
+- Usunięcie wpisu **bez okna potwierdzenia**, za to toast „Usunięto · Cofnij” (`toastUndo`, 7 s). Cofnij wstawia ten sam wpis (to samo `id`, `o`, posiłek)
+  i zapisuje dzień (`persistDay(dzień, [id])`). Zapis usunięcia: `persistDay(dzień, [], [id])`. Bez prawa edycji diety (`dietCanEdit`) – jak przy innych zmianach.
+- ACT np. `dietEntDel` (`data-meal`, `data-id`). Uwaga na zwijanie: otwarty „Usuń” zamyka się po stuknięciu gdzie indziej i po `render()`.
+
+### Etap 4.5 – woda i suplementy
+**Woda**
+- Dzień: pole `wa` (ml, liczba całkowita 0–10000) w dokumencie `diet/{dzień}`; brak pola = 0. localStorage w obiekcie dnia. `normalizeDay` je zachowuje.
+- Cel: pole `wg` (ml, 0–10000 albo `null`) w `data/diet`, zapis jak `goals` (flaga, merge). W `dietGoals` pole „Woda (ml)” pod makro (w zakładce „Zwykły dzień”;
+  cele treningowe wody nie mają). Podpowiedź pod polem: „Zwykle ok. 2,0 l (kobiety) – 2,5 l (mężczyźni) dziennie z napojów i jedzenia (EFSA 2010)”.
+- Wygląd: w `vDiet` pod kartą „Tydzień” zwarta karta **„Woda”**: „1,25 / 2,5 l” + cienki pasek (gdy jest cel), przyciski **+250 ml**, **+500 ml** i „−”
+  (odejmuje 250, nie poniżej 0). Stuknięcie liczby → mały arkusz z polem ml (dokładna wartość). Bez celu: sama liczba i przyciski.
+- Zapis: `persistDay` dostaje 5. parametr `x` (obiekt dodatkowych pól dnia, np. `{wa:1250}`; wartość `null` → `deleteField()`). Szybkie stukanie: zapis z
+  opóźnieniem ok. 600 ms (jeden zapis po serii stuknięć).
+- Napoje dodane jako produkty **nie** liczą się do wody (prosto i przewidywalnie).
+
+**Suplementy**
+- Lista osoby: pole `sup` w `data/diet`: `{[id]: {id, n (1–40 znaków), d: dawka (tekst do 30 znaków, np. „5 g”), o: kolejność}}`, każdy osobnym polem (merge,
+  usunięcie `deleteField()`), kolejka `supPut`/`supDel` jak `tpl`. Id `s-` + `uid()`. Najwyżej 20.
+- Dzień: pole `sp` w `diet/{dzień}`: `{[id suplementu]: true}`; odhaczenie → `deleteField()` dla tego klucza (merge).
+- Wygląd: gdy lista nie jest pusta – karta **„Suplementy”** pod kartą „Woda”: chipy z nazwą (i dawką), stuknięcie = wzięte / niewzięte tego dnia (wzięty = chip
+  wypełniony z ✓). Na dole zakładki (rząd z „Posiłki”, „Cele”) przycisk **„Suplementy”** → arkusz `dietSup`: lista (nazwa, dawka, strzałki kolejności, usuwanie
+  z potwierdzeniem), pole „Nowy suplement”. Rząd przycisków na dole może zawinąć się do dwóch linii przy 360 px.
+- Usunięcie suplementu z listy nie kasuje odhaczeń w dniach (po prostu się nie pokazują). Suplementy nie mają makro (odżywka białkowa to produkt w bazie, kategoria „suplementy”).
+
+**Wspólne dla 4.5**
+- `mergeDays` (eksport) i import kopii: `wa` – zostaje obecna wartość, gdy dzień ją ma, inaczej z kopii; `sp` – suma odhaczeń; `wg` zastępowane tylko, gdy kopia
+  je ma; `sup` – brakujące dochodzą (do 20), istniejące zostają. Tekst potwierdzenia importu uzupełnić.
+- Kopiowanie dnia (3.5) **nie** kopiuje `wa` ani `sp` (jak `tr`). Gotowe posiłki bez zmian.
+- `dietClose`/`dietOpen` czyszczą nowe kolejki i flagi; snapshot nakłada oczekujące `wg`/`sup`, podpis porównania je zawiera.
+- Karta „Tydzień” bez zmian (woda i suplementy w tygodniu – ewentualnie później).
+
+### Test części 4 (wersja testowa)
+390×844 i 360×780, jasny i ciemny, brak `pageerror`, brak przewijania w bok (Dieta, `dietQty`, `dietGoals`, `dietSup`, arkusz wody, Plany).
+- 4.1: chip 150 → 150 g i makro przeliczone; produkt w ml pokazuje „ml”; tryb sztuk bez chipów.
+- 4.2: płatki 80 g wczoraj → dziś okno otwiera się z 80 g; jajko 3 szt. → 3 szt.; produkt bez historii → 100 g / 1 szt.; edycja wpisu bez zmian.
+- 4.3: cel B 160, zjedzone 43 → „zostało 117 g”; po przekroczeniu tekst znika.
+- 4.4: przesunięcie wpisu → „Usuń” → wpis znika, „Cofnij” przywraca to samo `id`; stuknięcie bez przesunięcia otwiera edycję; **przesuwanie planów działa jak dawniej**.
+- 4.5: +250 ×3, −1 → 500 ml; dokładna wartość z arkusza; cel 2500 → pasek; suplement dodany, odhaczony, zmiana dnia (inne dni nieodhaczone), usunięcie z listy;
+  kopia dnia nie przenosi wody ani suplementów; odświeżenie – wszystko zostaje; stary dokument bez `wg`/`sup` i dzień bez `wa`/`sp` działają.
+- Zrzuty tylko na końcu: zakładka Dieta (z wodą i suplementami), `dietQty` z chipami, przesunięty wpis – oba motywy.
+- Zapis `wa`, `sp`, `wg`, `sup` do Firebase niesprawdzalny z sesji – do sprawdzenia przez Kamila na telefonie.
+
 ## Na później (nie robić bez prośby)
-Woda, suplementy, zdjęcie talerza (AI – wymaga klucza i pośrednika).
+Zdjęcie talerza (AI – wymaga klucza i pośrednika). Odporność zapisu (ponowna wysyłka po odrzuceniu przez bazę, limit pamięci przeglądarki) –
+opisane w przeglądzie z 9.11.2026, Kamil nie wybrał na teraz.
 
 ## Poprawka: wczytanie diety z bazy
 - Objaw: „Zapisz cele” (i inne zmiany w diecie) kończyło się toastem „Chwila, wczytuję dietę z bazy…”, także po odświeżeniu.
