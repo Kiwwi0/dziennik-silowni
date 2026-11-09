@@ -496,6 +496,16 @@ main{padding-block:2px 28px}
 .exlist > .wt-row:first-child{border-top:0}
 .wt-row b{font-variant-numeric:tabular-nums}
 .wt-row .small{text-align:right;font-variant-numeric:tabular-nums}
+.dc-pal{display:grid;gap:6px}
+.dc-pal button{display:grid;gap:2px;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit;font-weight:600}
+.dc-pal button small{font-weight:400;color:var(--muted)}
+.dc-pal button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.dc-pal button[aria-pressed="true"] small{color:inherit;opacity:.8}
+.dc-out{display:grid;gap:8px}
+.dc-mac{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dc-mac .tile .v{font-size:20px}
+.dc-mac .tile .l{overflow-wrap:anywhere}
+.dc-src{font-size:11.5px;color:var(--muted);margin:0}
 .chart{position:relative;width:100%;touch-action:pan-y}
 .chart svg{display:block;max-width:100%}
 .chart .grid line{stroke:var(--line);stroke-width:1}
@@ -2143,7 +2153,7 @@ let rzT; addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(
 
 /* ====================== arkusze ====================== */
 function openSheet(s){ sheets.push(s); renderSheet(); }
-function closeSheet(){ sheets.pop(); renderSheet(); }
+function closeSheet(){ const t = topSheet(); if (t && t.type === 'dietCalc') calcSaveProf(); sheets.pop(); renderSheet(); }
 const topSheet = () => sheets[sheets.length - 1];
 function sheetHead(title){ return `<div class="sheet-h"><h2>${esc(title)}</h2><button class="iconbtn" data-act="closeSheet" aria-label="Zamknij">${svg('x')}</button></div>`; }
 function renderSheet(){
@@ -2152,7 +2162,7 @@ function renderSheet(){
   if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); bm3dStop(); bm3dMount(); return; }
   w.hidden = false; el.innerHTML = SHEETS[s.type](s); if (!el.querySelector('.sheet-f')) el.insertAdjacentHTML('beforeend', '<div class="sheet-end"></div>'); el.scrollTop = 0; lockBody();
   if (s.type === 'pick') fillPickList();
-  if (s.type === 'dietAdd') fillDietList(); else if (s.type === 'dietQty') qtyOut(s); else if (s.type === 'dietProd') prodWarn(); else if (s.type === 'dietGoals') goalsHint(); else if (s.type === 'dietScan') scanStart();
+  if (s.type === 'dietAdd') fillDietList(); else if (s.type === 'dietQty') qtyOut(s); else if (s.type === 'dietProd') prodWarn(); else if (s.type === 'dietGoals') goalsHint(); else if (s.type === 'dietCalc') calcOut(); else if (s.type === 'dietScan') scanStart();
   animMount(); ytMount(); bm3dMount();
   const f = $('[autofocus]', el); if (f && matchMedia('(pointer:fine)').matches) f.focus();
 }
@@ -2906,7 +2916,7 @@ const ACT = {
     let d; try { d = JSON.parse($('#imp').value); } catch { toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (!d || d.app !== 'dziennik-silowni' || !d.state){ toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (d.diet && !dietCanEdit()) return;
-    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty” i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
+    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty” i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety i profil kalkulatora zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
       S = normalize(d.state); S.plans.forEach(p => { delete p.share; }); commit();   // kody udostępnień zostają przy oryginałach
       const have = new Set(SESS.map(s => s.id));
       for (const s of sortSess((d.sessions || []).filter(s => s && s.id && !have.has(s.id)))) await saveSession(s);
@@ -2920,7 +2930,8 @@ const ACT = {
         DIET.meals.push(...addM); syncMeals();
         const addW = Object.keys(inc.wt).filter(k => !(k in DIET.wt));   // pomiary masy: brakujące dni dochodzą, istniejące zostają
         for (const k of addW) DIET.wt[k] = inc.wt[k];
-        persistDiet(add, [], anyGoal, addM.length > 0, addW);
+        const profIn = !!inc.prof; if (profIn) DIET.prof = inc.prof;   // profil kalkulatora: zastępowany tylko, gdy kopia go ma
+        persistDiet(add, [], anyGoal, addM.length > 0, addW, [], profIn);
       }
       if (d.dietDays && typeof d.dietDays === 'object'){   // dni scalane po wpisach: brakujące dochodzą, istniejące zostają
         const inc = normalizeDays(d.dietDays);
@@ -3185,7 +3196,16 @@ function normalizeDiet(d){
   const raw = d && d.mine, list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.entries(raw).map(([id, x]) => x && typeof x === 'object' ? {...x, id} : null) : [];
   for (const p of list){ const c = cleanProd(p); if (c && !seen.has(c.id)){ seen.add(c.id); mine.push(c); } }
   mine.sort(byId);
-  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), wt:cleanWt(d && d.wt), v:1};
+  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), wt:cleanWt(d && d.wt), prof:cleanProf(d && d.prof), v:1};
+}
+// profil do kalkulatora zapotrzebowania: {sex:'m'|'k', by:rok urodzenia, h:wzrost cm, pal, goal:'red'|'utr'|'masa'} (brakujące pola = null)
+const PALS = [1.2, 1.375, 1.55, 1.725, 1.9], PROF_GOALS = ['red', 'utr', 'masa'];
+function cleanProf(o){
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  const yr = new Date().getFullYear(), by = o.by == null || o.by === '' ? NaN : Math.round(+o.by), h = o.h == null || o.h === '' ? NaN : Math.round(+o.h), pal = +o.pal;
+  const p = {sex:o.sex === 'm' || o.sex === 'k' ? o.sex : null, by:Number.isFinite(by) && yr - by >= 14 && yr - by <= 100 ? by : null,
+    h:Number.isFinite(h) && h >= 120 && h <= 230 ? h : null, pal:PALS.includes(pal) ? pal : null, goal:PROF_GOALS.includes(o.goal) ? o.goal : null};
+  return Object.values(p).some(v => v != null) ? p : null;
 }
 // masa ciała: {'RRRR-MM-DD': kg}, jeden pomiar na dzień, 30–300 kg co 0,1
 const WT_MIN = 30, WT_MAX = 300;
@@ -3225,7 +3245,7 @@ let dietLoaded = false;          // dokument data/diet przyszedł już z bazy (a
 // Zapis scala pola dokumentu (merge), więc dwa urządzenia nie nadpisują się nawzajem.
 const dietPut = new Set(), dietDel = new Set();
 const wtPut = new Set(), wtDel = new Set();   // dni pomiarów masy ciała do zapisu / usunięcia
-let dietGoalsDirty = false, dietMealsDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
+let dietGoalsDirty = false, dietMealsDirty = false, dietProfDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
 const DAY_OLD = new Set();       // dni zapisane w bazie starym formatem {meals} – przy najbliższym zapisie przechodzą na nowy
 const dayOf = k => DAYS[k] || blankDay();
 // dwa warianty tego samego dnia → suma wpisów (wg id; wpis z b wygrywa, także gdy zmienił posiłek)
@@ -3250,33 +3270,35 @@ const dayW = k => DAYS[k] || (DAYS[k] = blankDay());
 /* ---------- zapis ---------- */
 // put = id produktów dodanych/zmienionych, del = id usuniętych, goals = zmieniono cele
 // wp / wd = dni pomiarów masy ciała dodanych/zmienionych / usuniętych
-function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], wd = []){
+function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], wd = [], prof = false){
   const k = lsKey('diet'); if (k) LS.set(k, DIET);
   if (!fireOn()) return;
   for (const id of put){ dietPut.add(id); dietDel.delete(id); }
   for (const id of del){ dietDel.add(id); dietPut.delete(id); }
   if (goals) dietGoalsDirty = true;
   if (meals) dietMealsDirty = true;
+  if (prof) dietProfDirty = true;
   for (const k of wp){ wtPut.add(k); wtDel.delete(k); }
   for (const k of wd){ wtDel.add(k); wtPut.delete(k); }
-  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietMealsDirty && !wtPut.size && !wtDel.size) return;
+  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietMealsDirty && !dietProfDirty && !wtPut.size && !wtDel.size) return;
   dietDirty = true; clearTimeout(dietT); dietT = setTimeout(flushDiet, 600);
 }
 function flushDiet(){
   clearTimeout(dietT);
   if (!dietDirty || !fireOn()) return;
   dietDirty = false;
-  const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, meals = dietMealsDirty, old = DIET_OLD, G = DIET.goals;
+  const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, meals = dietMealsDirty, prof = dietProfDirty, old = DIET_OLD, G = DIET.goals;
   const wp = [...wtPut], wd = [...wtDel];
-  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false; wtPut.clear(); wtDel.clear();
+  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false; dietProfDirty = false; wtPut.clear(); wtDel.clear();
   const ref = FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'diet'), gdoc = {k:G.k ?? null, b:G.b ?? null, w:G.w ?? null, t:G.t ?? null};
   let job;
   if (old){   // stary format: jednorazowo cały dokument w nowym kształcie (mapa produktów)
     const mine = {}; for (const x of DIET.mine) mine[x.id] = clone(x);
-    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, mine, meals:clone(DIET.meals), wt:{...DIET.wt}});
+    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, mine, meals:clone(DIET.meals), wt:{...DIET.wt}, ...(DIET.prof ? {prof:clone(DIET.prof)} : {})});
   } else {
     const data = {v:2}, mine = {};
     if (goals) data.goals = gdoc;
+    if (prof && DIET.prof) data.prof = clone(DIET.prof);   // profil zapisuje się w całości (małe pole)
     if (meals) data.meals = clone(DIET.meals);   // lista posiłków zapisuje się w całości (ostatnia zmiana wygrywa)
     for (const id of put){ const x = DIET.mine.find(p => p.id === id); if (x) mine[id] = clone(x); }
     for (const id of del) mine[id] = FB.deleteField();
@@ -3288,7 +3310,7 @@ function flushDiet(){
     job = FB.setDoc(ref, data, {merge:true});
   }
   job.catch(() => {   // nie poszło: zmiany wracają do kolejki
-    put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (meals) dietMealsDirty = true; if (old) DIET_OLD = true;
+    put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (meals) dietMealsDirty = true; if (prof) dietProfDirty = true; if (old) DIET_OLD = true;
     wp.forEach(k => { if (!wtDel.has(k)) wtPut.add(k); }); wd.forEach(k => { if (!wtPut.has(k)) wtDel.add(k); });
     toast('Nie udało się zapisać diety w bazie.');
   });
@@ -3317,9 +3339,9 @@ function dietCanEdit(){
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDiet(); });
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
-function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
+function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
-  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; wtPut.clear(); wtDel.clear();
+  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; wtPut.clear(); wtDel.clear();
   DIET = normalizeDiet(LS.get(lsKey('diet'), null)); syncMeals(); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
   unsubDiet = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'diet'), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
@@ -3334,10 +3356,11 @@ function dietOpen(fid){
     if (dietDel.size) inc.mine = inc.mine.filter(p => !dietDel.has(p.id));
     if (dietGoalsDirty) inc.goals = DIET.goals;
     if (dietMealsDirty) inc.meals = DIET.meals;
+    if (dietProfDirty) inc.prof = DIET.prof;
     for (const k of wtPut) if (DIET.wt[k] != null) inc.wt[k] = DIET.wt[k];
     for (const k of wtDel) delete inc.wt[k];
     inc.mine.sort(byId);
-    const sig = d => JSON.stringify([d.goals, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort()]);
+    const sig = d => JSON.stringify([d.goals, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort(), d.prof]);
     if (sig(inc) !== sig(DIET)){ DIET = inc; syncMeals(); LS.set(lsKey('diet'), DIET); dietRefresh(); }
   }, () => {});
   const q = FB.query(FB.collection(FB.db, 'folders', fid, 'diet'), FB.where('date', '>=', dietMinKey()));
@@ -3529,7 +3552,8 @@ SHEETS.dietMeals = s => {
 };
 SHEETS.dietGoals = s => {
   const fld = (k, lbl) => `<div class="field"><label class="lbl" for="dg-${k}">${lbl}</label><input class="input" id="dg-${k}" inputmode="decimal" data-bind="dg" data-f="${k}" value="${esc(s.f[k])}" placeholder="–" autocomplete="off"></div>`;
-  return sheetHead('Dzienne cele') + `${fld('k', 'Kalorie (kcal)')}
+  return sheetHead('Dzienne cele') + `<button class="btn" data-act="dietCalc" style="width:100%">Oblicz z kalkulatora</button>
+    ${fld('k', 'Kalorie (kcal)')}
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start"><div style="flex:1;min-width:0">${fld('b', 'Białko (g)')}</div><div style="flex:1;min-width:0">${fld('w', 'Węgle (g)')}</div><div style="flex:1;min-width:0">${fld('t', 'Tłuszcz (g)')}</div></div>
     <p class="note num" id="dg-hint" aria-live="polite"></p>
     ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}
@@ -3874,6 +3898,89 @@ Object.assign(BIND, {
   dp(t){ const s = topSheet(); s.f[t.dataset.f] = t.value; prodWarn(); },
   dg(t){ topSheet().f[t.dataset.f] = t.value; goalsHint(); },
 });
+
+/* ---------- kalkulator zapotrzebowania (etap 3.2): arkusz otwierany z „Dziennych celów” ---------- */
+const PAL_TXT = {1.2:['1,2', 'Praca siedząca, bez treningów'], 1.375:['1,375', '1–3 treningi w tygodniu'], 1.55:['1,55', '3–5 treningów w tygodniu'], 1.725:['1,725', '6–7 treningów lub praca fizyczna'], 1.9:['1,9', 'Bardzo ciężka praca + treningi']};
+const CALC_GOALS = {red:'Redukcja', utr:'Utrzymanie', masa:'Masa'};
+const r5 = v => Math.round(v / 5) * 5, r10 = v => Math.round(v / 10) * 10;
+function calcWeight(){   // skąd bierzemy masę: średnia 7 dni z dziś, inaczej ostatni pomiar, inaczej pole w arkuszu
+  const a = wtAvg7(dietToday()); if (a != null) return {kg:a, txt:`z średniej 7 dni: ${fmtKg(a)} kg`};
+  const d = wtDays(); if (d.length){ const k = d[d.length - 1]; return {kg:DIET.wt[k], txt:`z ostatniego pomiaru (${fmtDate(keyToDate(k), {day:'numeric', month:'short'})}): ${fmtKg(DIET.wt[k])} kg`}; }
+  return null;
+}
+// Mifflin-St Jeor (1990); białko Morton i in. 2018, Helms i in. 2014; tłuszcz 25% kcal, min 0,6 g/kg; węgle = reszta
+function calcNeeds(p, kg){
+  const age = new Date().getFullYear() - p.by, h = p.h;
+  const bmr = 10 * kg + 6.25 * h - 5 * age + (p.sex === 'm' ? 5 : -161), tdee = bmr * p.pal;
+  let kcal = r10(tdee * (p.goal === 'red' ? 0.8 : p.goal === 'masa' ? 1.1 : 1)); const floor = Math.ceil(bmr / 10) * 10, floored = kcal < floor; if (floored) kcal = floor;
+  const bmi = kg / ((h / 100) ** 2), ref = 25 * (h / 100) ** 2, high = bmi >= 30, pk = high ? ref : kg;
+  const b = r5(pk * (p.goal === 'red' ? 2.2 : 1.8)), t = r5(Math.max(kcal * 0.25 / 9, 0.6 * kg)), w = Math.max(0, r5((kcal - 4 * b - 9 * t) / 4));
+  return {bmr, tdee, kcal, b, w, t, floored, high, ref};
+}
+function calcRead(s){   // → {p, kg} gdy wszystko poprawne, inaczej {err}
+  const f = s.f, yr = new Date().getFullYear(), by = num(f.by), h = num(f.h), kg = s.wt ? s.wt.kg : num(f.kg);
+  if (by != null && (!Number.isInteger(by) || yr - by < 14 || yr - by > 100)) return {err:'Rok urodzenia: wiek od 14 do 100 lat.'};
+  if (h != null && (h < 120 || h > 230)) return {err:'Wzrost: od 120 do 230 cm.'};
+  if (!s.wt && kg != null && (kg < WT_MIN || kg > WT_MAX)) return {err:`Masa: od ${WT_MIN} do ${WT_MAX} kg.`};
+  if (!f.sex || by == null || h == null || kg == null || !f.pal || !f.goal) return {err:'Uzupełnij wszystkie pola, żeby zobaczyć wynik.', incomplete:true};
+  return {p:{sex:f.sex, by, h:Math.round(h), pal:+f.pal, goal:f.goal}, kg};
+}
+SHEETS.dietCalc = s => {
+  const f = s.f, chip = (k, v, lbl) => `<button class="chip" data-act="dcSet" data-k="${k}" data-v="${v}" aria-pressed="${String(f[k]) === String(v)}">${lbl}</button>`;
+  return sheetHead('Kalkulator zapotrzebowania') + `
+    <div class="field"><span class="lbl">Płeć</span><div class="chips" role="group" aria-label="Płeć">${chip('sex', 'm', 'Mężczyzna')}${chip('sex', 'k', 'Kobieta')}</div></div>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-start"><div class="field" style="flex:1;min-width:0"><label class="lbl" for="dc-by">Rok urodzenia</label><input class="input" id="dc-by" inputmode="numeric" data-bind="dc" data-f="by" value="${esc(f.by)}" placeholder="np. 1998" autocomplete="off"></div>
+    <div class="field" style="flex:1;min-width:0"><label class="lbl" for="dc-h">Wzrost (cm)</label><input class="input" id="dc-h" inputmode="numeric" data-bind="dc" data-f="h" value="${esc(f.h)}" placeholder="np. 180" autocomplete="off"></div></div>
+    ${s.wt ? `<p class="note">Masa ciała ${esc(s.wt.txt)}.</p>` : `<div class="field"><label class="lbl" for="dc-kg">Masa ciała (kg)</label><input class="input" id="dc-kg" inputmode="decimal" data-bind="dc" data-f="kg" value="${esc(f.kg)}" placeholder="np. 75,4" autocomplete="off"><span class="note">Zapiszę ją jako pomiar na dziś.</span></div>`}
+    <div class="field"><span class="lbl">Aktywność</span><div class="dc-pal" role="group" aria-label="Aktywność">${PALS.map(v => `<button data-act="dcSet" data-k="pal" data-v="${v}" aria-pressed="${+f.pal === v}">${PAL_TXT[v][0]} <small>${PAL_TXT[v][1]}</small></button>`).join('')}</div></div>
+    <div class="field"><span class="lbl">Cel</span><div class="chips" role="group" aria-label="Cel">${PROF_GOALS.map(g => chip('goal', g, CALC_GOALS[g])).join('')}</div></div>
+    <div class="dc-out" id="dc-out" aria-live="polite"></div>
+    <div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn primary" data-act="dcApply" id="dc-apply" disabled>Ustaw jako cele</button></div>`;
+};
+function calcOut(){
+  const s = topSheet(), el = $('#dc-out'); if (!s || s.type !== 'dietCalc' || !el) return;
+  const r = calcRead(s), btn = $('#dc-apply'); if (btn) btn.disabled = !r.p;
+  if (!r.p){ el.innerHTML = `<p class="note"${r.incomplete ? '' : ' style="color:var(--bad);font-weight:600"'}>${esc(r.err)}</p>`; return; }
+  const n = calcNeeds(r.p, r.kg), tile = (l, v, u) => `<div class="tile"><div class="l">${l}</div><div class="v">${v}${u ? ` <small>${u}</small>` : ''}</div></div>`;
+  const pc = (g, c) => Math.round(g * c / n.kcal * 100), mac = (l, g, c) => tile(l, fmtN(g), `g · ${pc(g, c)}%`);
+  el.innerHTML = `<div class="tiles">${tile('Podstawowa przemiana (BMR)', fmtN(Math.round(n.bmr)), 'kcal')}${tile('Zapotrzebowanie (TDEE)', fmtN(Math.round(n.tdee)), 'kcal')}</div>
+    <div class="tiles" style="grid-template-columns:minmax(0,1fr)">${tile(`Cel: ${CALC_GOALS[r.p.goal].toLowerCase()}`, fmtN(n.kcal), 'kcal dziennie')}</div>
+    <div class="dc-mac">${mac('Białko', n.b, 4)}${mac('Węgle', n.w, 4)}${mac('Tłuszcz', n.t, 9)}</div>
+    ${n.floored ? '<p class="note">Nie schodź poniżej podstawowej przemiany materii – cel ustawiony na jej poziomie.</p>' : ''}
+    ${n.high ? `<p class="note">BMI ≥ 30: białko liczone od masy dla BMI 25 (${fmtN(r1(n.ref))} kg).</p>` : ''}
+    ${n.w < 50 ? `<p class="note" style="color:var(--bad);font-weight:600">Mało węglowodanów (${fmtN(n.w)} g). Rozważ wyższy cel kalorii.</p>` : ''}
+    <p class="note">To punkt startu – po 2–3 tygodniach skoryguj o trend wagi.</p>
+    <p class="dc-src">Źródła: Mifflin i in. 1990 (BMR); Morton i in. 2018, Helms i in. 2014, ISSN 2017 (białko); tłuszcz 25% kcal, min. 0,6 g/kg.</p>`;
+}
+function calcSaveProf(){
+  const s = topSheet(); if (!s || s.type !== 'dietCalc') return;
+  const f = s.f, p = cleanProf({sex:f.sex, by:num(f.by), h:num(f.h), pal:f.pal, goal:f.goal});
+  if (p && JSON.stringify(p) !== JSON.stringify(DIET.prof)){ DIET.prof = p; persistDiet([], [], false, false, [], [], true); }
+}
+Object.assign(ACT, {
+  dietCalc(){
+    if (!dietCanEdit()) return;
+    const p = DIET.prof || {}, w = calcWeight();
+    openSheet({type:'dietCalc', wt:w, f:{sex:p.sex || '', by:p.by != null ? String(p.by) : '', h:p.h != null ? String(p.h) : '', pal:p.pal != null ? String(p.pal) : '', goal:p.goal || '', kg:''}});
+  },
+  dcSet(el){
+    const s = topSheet(); if (!s) return; s.f[el.dataset.k] = el.dataset.v;
+    $$(`[data-act="dcSet"][data-k="${el.dataset.k}"]`, $('#sheet')).forEach(b => b.setAttribute('aria-pressed', b.dataset.v === el.dataset.v));
+    calcOut();
+  },
+  dcApply(){
+    const s = topSheet(); if (!s || s.type !== 'dietCalc' || !dietCanEdit()) return;
+    const r = calcRead(s); if (!r.p) return;
+    const n = calcNeeds(r.p, r.kg), today = dietToday(), wp = [];
+    if (!s.wt){ DIET.wt[today] = r1(r.kg); wp.push(today); }   // masa wpisana w arkuszu = pomiar na dziś
+    DIET.goals = {k:n.kcal, b:n.b, w:n.w, t:n.t}; DIET.prof = cleanProf(r.p);
+    persistDiet([], [], true, false, wp, [], true);
+    sheets.pop(); const under = topSheet();
+    if (under && under.type === 'dietGoals') Object.assign(under.f, {k:fmtN(n.kcal), b:fmtN(n.b), w:fmtN(n.w), t:fmtN(n.t)});
+    renderSheet(); render(); toast('Cele ustawione z kalkulatora.');
+  },
+});
+Object.assign(BIND, { dc(t){ const s = topSheet(); if (!s) return; s.f[t.dataset.f] = t.value; calcOut(); } });
 
 /* ---------- masa ciała: arkusze i akcje (karta i wykres przy wykresach historii) ---------- */
 SHEETS.wtAdd = s => {

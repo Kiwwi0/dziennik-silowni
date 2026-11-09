@@ -357,6 +357,24 @@ z wypełnionymi polami; „Anuluj” nic nie zmienia poza `prof`. Pod wynikiem: 
 **Test:** m, rok 1990 (wiek 36 w 2026), 180 cm, 80 kg, PAL 1,55, utrzymanie: BMR 1750, TDEE 2712,5 → 2710 kcal, B 144 → 145 g,
 T 75 g (25%, ≥ 48 g), W = (2710 − 145·4 − 75·9)/4 = 363,75 → 365 g (węgle liczone z zaokrąglonych B i T). Redukcja i BMI ≥ 30 – osobny przypadek. Zapis celów.
 
+#### Stan etapu 3.2 (zbudowane, 9.11.2026)
+- **Dane:** `DIET.prof` (`cleanProf` w `normalizeDiet`: `sex`, `by` – wiek 14–100, `h` 120–230, `pal` z `PALS`, `goal` z `PROF_GOALS`; brakujące pola = `null`,
+  zupełnie puste = `null`; stary dokument → `null`). Zapis całego pola: flaga `dietProfDirty`, `persistDiet(put, del, goals, meals, wp, wd, prof)` –
+  nowy 7. parametr; `flushDiet` wysyła `prof` z merge (stary format v:1 – w pełnym zapisie), przy błędzie wraca do kolejki; snapshot nakłada
+  oczekujący profil, podpis porównania zawiera `prof`; `dietOpen`/`dietClose` czyszczą flagę. Import kopii: profil zastępowany tylko, gdy kopia go ma.
+- **Liczenie:** `calcNeeds(p, kg)` (BMR Mifflin-St Jeor, TDEE, cel kcal ×0,8/×1/×1,1 do 10 kcal, nie mniej niż BMR (`floored`), białko 2,2/1,8 g/kg
+  – przy BMI ≥ 30 od masy dla BMI 25 (`high`, `ref`), tłuszcz 25% kcal i min. 0,6 g/kg, węgle = reszta z zaokrąglonych B i T; gramy do 5 g),
+  `calcRead(s)` (walidacja pól → `{p, kg}` albo `{err}`), `calcWeight()` (średnia 7 dni z dziś → ostatni pomiar → brak = pole w arkuszu).
+- **Wygląd:** w `SHEETS.dietGoals` na górze przycisk „Oblicz z kalkulatora” (ACT `dietCalc`) → `SHEETS.dietCalc`: chipy płci i celu, rok urodzenia, wzrost,
+  masa (informacja albo pole), lista aktywności `.dc-pal` z opisami; wynik na żywo w `#dc-out` (`calcOut`, bez przerysowywania arkusza): BMR, TDEE,
+  cel kcal, B/W/T w g i % kcal, ostrzeżenia (podłoga BMR, BMI ≥ 30, węgle < 50 g), tekst „punkt startu”, drobne źródła. ACT `dietCalc`, `dcSet`, `dcApply`; BIND `dc`.
+  „Ustaw jako cele” zapisuje `goals` + `prof` (masa z pola → pomiar na dziś w `wt`), wraca do `dietGoals` z wypełnionymi polami. „Anuluj”/X/tło
+  zapisują tylko profil (`calcSaveProf` w `closeSheet`), cele bez zmian. Klasy CSS `.dc-pal`, `.dc-out`, `.dc-mac`, `.dc-src`. Kod przed arkuszami masy ciała.
+- **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – bez `pageerror`, bez przewijania w bok; przypadek z planu (m, 1990, 180 cm, 80 kg, PAL 1,55,
+  utrzymanie: BMR 1750, TDEE 2712,5, 2710 kcal, B 145, T 75, W 365), redukcja (2170 kcal, B 175, T 60, W 235), BMI ≥ 30 (B 145 z masy 81 kg), podłoga BMR,
+  walidacja roku i wzrostu, „Anuluj” zapisuje tylko profil, „Ustaw jako cele” wypełnia pola celów, masa z pola → pomiar, odświeżenie (profil i cele zostają),
+  zakładki bez zmian. Zapis `prof` do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+
 ### Etap 3.3 – inne cele w dni treningowe
 **Dane:** pole `goalsT:{k,b,w,t}` w dokumencie diety (każde makro osobnym polem, jak `goals`; puste = `null`).
 W dniu: pole `tr` w dokumencie dnia `folders/{fid}/diet/{dzień}`: `true` / `false` = ręcznie ustawione, brak pola = automatycznie
