@@ -173,6 +173,15 @@ Sprawdź też, że pozostałe 4 zakładki wyglądają jak przed zmianą.
 - Service worker (`build_web.py`): nie zapisuje odpowiedzi z openfoodfacts.org w pamięci podręcznej.
 - Kamery i OFF nie da się sprawdzić z sesji (proxy) – test odczytu na wygenerowanych obrazkach kodów, resztę testuje Olek na telefonie.
 
+## CZĘŚĆ 3 – dodatki do diety (Olek chce to zrobić; kolejność i szczegóły ustalić z nim przed budową)
+Kandydaci, każdy jako osobny, mały etap (najpierw zapytać Olka, od czego zacząć i jak ma działać):
+- ważenie i wykres masy ciała (średnia 7-dniowa),
+- kalkulator zapotrzebowania (Mifflin-St Jeor) podpowiadający cele,
+- inne cele w dni treningowe,
+- kopiowanie dnia (i wpisu) na inny dzień,
+- podsumowanie tygodnia (średnie kcal i makro, dni w celu),
+- gotowe posiłki / przepisy (zestaw produktów dodawany jednym stuknięciem).
+Każdy etap: rozpisać plan w tym pliku, zbudować, przetestować (jasny/ciemny, 390 i 360 px), wdrożyć. Nowe pola w bazie – zapis scalający jak dla dni.
+
 ## Na później (nie robić bez prośby)
-Ważenie i wykres masy ciała (średnia 7-dniowa), kalkulator zapotrzebowania (Mifflin-St Jeor), inne cele w dni treningowe,
-gotowe posiłki/przepisy, kopiowanie dnia, woda, suplementy, podsumowanie tygodnia, zdjęcie talerza (AI – wymaga klucza i pośrednika).
+Woda, suplementy, zdjęcie talerza (AI – wymaga klucza i pośrednika).
