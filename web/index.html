@@ -198,6 +198,12 @@ main{padding-block:2px 28px}
 .empty h2{font-family:var(--f-display);font-size:26px;text-transform:uppercase;line-height:1;margin:0}
 .empty p{margin:0;color:var(--ink-2);max-width:52ch}
 .note{font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:flex-start}
+.fixcard{display:grid;gap:8px;padding:12px}
+.fixcard p{margin:0}
+.fixcard .fx-l{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.fixcard .fx-h{font-weight:700;font-size:14.5px}
+.fixcard .fx-v{font-size:13px;color:var(--muted)}
+.fixcard .row{gap:8px}
 
 /* miniatury i animacja ruchu */
 .thumb{display:block;width:60px;aspect-ratio:3/2;border-radius:6px;overflow:hidden;background:#fff;border:1px solid var(--line);flex:none}
@@ -4513,7 +4519,7 @@ function cleanProd(p){
     k:r1(clampN(p.k, 0, DLIM.k)), b:r1(clampN(p.b, 0, DLIM.mac)), w:r1(clampN(p.w, 0, DLIM.mac)), t:r1(clampN(p.t, 0, DLIM.mac)), f:r1(clampN(p.f, 0, DLIM.mac)),
     pg:p.pg > 0 ? r1(clampN(p.pg, 0.1, DLIM.qty)) : null, po:String(p.po || '').trim().slice(0, 40),
     src:['gen', 'own', 'scan'].includes(p.src) ? p.src : 'own', ean:String(p.ean || '').slice(0, 14), star:!!p.star,
-    uses:Math.max(0, Math.floor(+p.uses || 0)), last:Math.max(0, +p.last || 0), ...(p.off ? {off:true} : {})};   // off = dane z Open Food Facts (atrybucja)
+    uses:Math.max(0, Math.floor(+p.uses || 0)), last:Math.max(0, +p.last || 0), ...(p.off ? {off:true} : {}), ...(p.fx ? {fx:true} : {})};   // off = dane z Open Food Facts (atrybucja), fx = wspólna baza poprawiona przez użytkowników (część 2b)
   return o.n && o.id ? o : null;
 }
 // W bazie „Moje produkty” to mapa {id produktu: produkt} (każdy produkt osobnym polem, zapis scala), lokalnie i w starych
@@ -4931,7 +4937,8 @@ SHEETS.dietQty = s => {
       <p class="muted small num" style="margin:6px 0 0">${per}: ${fmtN(r1(p.k))} kcal · B ${fmtN(r1(p.b))} · W ${fmtN(r1(p.w))} · T ${fmtN(r1(p.t))}</p>
       ${pc ? `<p class="muted small num" style="margin:2px 0 0">Porcja: ${esc(p.po || '1 porcja')} · ${fmtN(p.pg)} ${p.u}</p>` : ''}
       ${dryHint(live) ? `<p class="note" style="margin:8px 0 0">${DRY_TXT}</p>` : ''}
-      ${live && live.off ? '<p class="muted small" style="margin:6px 0 0">Dane: Open Food Facts (ODbL)</p>' : ''}</div>
+      ${live && live.off ? `<p class="muted small" style="margin:6px 0 0">Dane: Open Food Facts (ODbL)${live.fx ? ', poprawione przez użytkowników' : ''}</p>` : ''}</div>
+    ${(h => `<div id="dq-fix" class="stack"${h ? '' : ' hidden'}>${h}</div>`)(fixCardHTML(s))}
     ${pc ? `<div class="field"><span class="lbl">Jednostka</span><div class="seg" role="group" aria-label="Jednostka ilości"><button data-act="dqMode" data-m="q" aria-pressed="${qm}">szt.</button><button data-act="dqMode" data-m="g" aria-pressed="${!qm}">${p.u}</button></div></div>` : ''}
     ${field}
     ${s.toTpl ? '' : `<div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${esc(nm)}</button>`).join('')}</div></div>`}
@@ -4953,7 +4960,7 @@ SHEETS.dietProd = s => {
   const f = s.f, fld = (k, lbl, ph = '0') => `<div class="field" style="flex:1;min-width:0"><label class="lbl" for="dp-${k}">${lbl}</label><input class="input" id="dp-${k}" inputmode="decimal" data-bind="dp" data-f="${k}" value="${esc(f[k])}" placeholder="${ph}" autocomplete="off"></div>`;
   return sheetHead(s.id ? 'Edytuj produkt' : 'Nowy produkt') + `
     ${s.scanNote ? `<p class="note" role="status" style="margin:0">${esc(s.scanNote)}</p>` : ''}
-    ${s.off ? '<p class="muted small" style="margin:0">Dane: Open Food Facts (ODbL)</p>' : ''}
+    ${s.off ? `<p class="muted small" style="margin:0">Dane: Open Food Facts (ODbL)${s.fx ? ', poprawione przez użytkowników' : ''}</p>` : ''}
     <div class="field"><label class="lbl" for="dp-n">Nazwa</label><input class="input" id="dp-n" maxlength="80" data-bind="dp" data-f="n" value="${esc(f.n)}" placeholder="np. Skyr naturalny" autocomplete="off"></div>
     <div class="field"><label class="lbl" for="dp-brand">Marka (opcjonalnie)</label><input class="input" id="dp-brand" maxlength="60" data-bind="dp" data-f="brand" value="${esc(f.brand)}" autocomplete="off"></div>
     <div class="field"><span class="lbl">Wartości są na 100</span><div class="seg" role="group"><button data-act="dpUnit" data-u="g" aria-pressed="${f.u !== 'ml'}">gramów</button><button data-act="dpUnit" data-u="ml" aria-pressed="${f.u === 'ml'}">mililitrów</button></div></div>
@@ -4963,6 +4970,8 @@ SHEETS.dietProd = s => {
     <p class="note" id="dp-dry" role="status"></p>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${fld('pg', 'Porcja (g/ml)', 'opcjonalnie')}<div class="field" style="flex:1.6;min-width:0"><label class="lbl" for="dp-po">Opis porcji</label><input class="input" id="dp-po" maxlength="40" data-bind="dp" data-f="po" value="${esc(f.po)}" placeholder="np. 1 jajko M" autocomplete="off"></div></div>
     <p class="small" id="dp-warn" role="status" style="margin:0;color:var(--warn);font-weight:600"></p>
+    ${s.fixEan && sharedOn() ? `<label class="toggle"><input type="checkbox" id="dp-rep" data-bind="dpRep" ${s.rep !== false ? 'checked' : ''}>Zgłoś poprawkę do wspólnej bazy (anonimowo)</label>
+    <p class="muted small" style="margin:0">Zmieni wspólną bazę, gdy tę samą poprawkę potwierdzą ${FIX_MIN} osoby.</p>` : ''}
     ${s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : ''}
     ${s.id && inMine(s.id) ? '<div class="row"><button class="btn danger sm" data-act="dpDelete">Usuń z moich produktów</button></div>' : ''}
     <div class="sheet-f"><button class="btn primary" data-act="dpSave">Zapisz produkt</button></div>`;
@@ -5012,7 +5021,7 @@ var SCAN = null, scanSeq = 0;    // var: renderSheet woła scanStop() zanim ten 
 let sharedT = null, zxP = null;
 const sharedOn = () => !!FB.db;
 const ZX_URL = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
-const fromShared = (ean, d) => cleanProd({id:ean, n:d.n, brand:d.brand, u:d.u, k:d.k, b:d.b, w:d.w, t:d.t, f:d.f, pg:d.pg, po:d.po, src:'scan', ean, off:d.src === 'off'});
+const fromShared = (ean, d) => cleanProd({id:ean, n:d.n, brand:d.brand, u:d.u, k:d.k, b:d.b, w:d.w, t:d.t, f:d.f, pg:d.pg, po:d.po, src:'scan', ean, off:d.src === 'off', fx:!!(d.fw || d.fn)});
 const phraseKey = q => norm(q || '').split(/\s+/).filter(Boolean).join(' ');
 async function sharedGet(ean){   // produkt | false (na pewno go nie ma) | null (nie wiadomo – brak sieci/uprawnień)
   if (!sharedOn()) return null;
@@ -5039,6 +5048,127 @@ function sharedSearch(){   // wyszukiwanie po prefiksie `q` (cała wpisana fraza
     if (list){ sharedCache.set(key, list); list.forEach(x => SCAN_CACHE.set(x.id, x)); }
     if (SH.key === key){ SH.busy = false; const t = topSheet(); if (t && t.type === 'dietAdd') fillDietList(); }
   }, 350);
+}
+/* ---------- weryfikacja danych zeskanowanych produktów (część 2b) ---------- */
+// Poprawka wspólnej bazy foods/{ean}: dwa rodzaje, głosowane osobno – „w” (wartości) i „n” (nazwa z marką). Jedno urządzenie (uid) = jeden głos
+// na rodzaj na produkt. Gdy tę samą wersję potwierdzą FIX_MIN osoby (i ma więcej głosów niż obecna), zastępuje dane w foods/{ean}.
+const FIX_MIN = 3;   // próg awansu – zmieniać razem z `g.c >= 3` w firestore.rules
+const FIXC = new Map();   // ean → {shared: dokument foods/{ean} | false, groups:[{key, kind, c, …dane}], voted:{w, n}}
+const FIX_KINDS = ['w', 'n'];
+const FIX_LBL = {k:'kcal', b:'B', w:'W', t:'T', f:'błonnik', pg:'porcja', po:'opis porcji', u:'jednostka'};
+const fixRound = (v, d) => Math.round((+v || 0) * d) / d;
+function fixVal(k, o){   // wartość pola po zaokrągleniu porównawczym: kcal i porcja do 1, makro do 0,1
+  if (k === 'u') return o.u === 'ml' ? 'ml' : 'g';
+  if (k === 'po') return String(o.po || '').trim();
+  if (k === 'pg') return o.pg > 0 ? fixRound(o.pg, 1) : null;
+  return fixRound(o[k], k === 'k' ? 1 : 10);
+}
+function fixCanon(kind, p){
+  if (kind === 'n') return phraseKey(p.n) + '|' + phraseKey(p.brand);
+  return JSON.stringify(['u', 'k', 'b', 'w', 't', 'f', 'pg', 'po'].map(k => fixVal(k, p)));
+}
+async function fixKey(kind, p){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fixCanon(kind, p)));
+  return kind + '_' + [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 12);
+}
+const fixData = (kind, p) => kind === 'n' ? {n:String(p.n || '').trim().slice(0, 80), brand:String(p.brand || '').trim().slice(0, 60)}
+  : {u:p.u === 'ml' ? 'ml' : 'g', k:r1(+p.k || 0), b:r1(+p.b || 0), w:r1(+p.w || 0), t:r1(+p.t || 0), f:r1(+p.f || 0), pg:p.pg > 0 ? r1(+p.pg) : null, po:String(p.po || '').trim().slice(0, 40)};
+const fixName = o => String(o.n || '') + (o.brand ? ' · ' + o.brand : '');
+function fixDiff(a, b){   // różnice mojej kopii (a) ze wspólną bazą (b): [{kind, field, mine, shared}]
+  const out = [];
+  if (fixCanon('w', a) !== fixCanon('w', b))
+    for (const k of ['k', 'b', 'w', 't', 'f', 'pg', 'po', 'u']){ const x = fixVal(k, a), y = fixVal(k, b); if (x !== y) out.push({kind:'w', field:k, mine:x, shared:y}); }
+  if (fixCanon('n', a) !== fixCanon('n', b)) out.push({kind:'n', field:'n', mine:fixName(a), shared:fixName(b)});
+  return out;
+}
+const fixShow = (k, v) => v == null || v === '' ? '–' : k === 'po' || k === 'u' ? String(v) : fmtN(v);
+const fixLine = d => d.kind === 'n' ? `nazwa: „${d.mine}” · wspólna „${d.shared}”` : `${FIX_LBL[d.field]} ${fixShow(d.field, d.mine)} · wspólna ${fixShow(d.field, d.shared)}`;
+const fixBrief = (kind, g) => kind === 'n' ? 'nazwa: „' + fixName(g) + '”' : `${fmtN(g.k)} kcal · B ${fmtN(g.b)} · W ${fmtN(g.w)} · T ${fmtN(g.t)}` + (g.pg ? ` · porcja ${fmtN(g.pg)}` : '');
+const fixHideKey = () => lsKey('fixHide');
+const fixHidden = () => { const k = fixHideKey(); const a = k ? LS.get(k, []) : []; return new Set(Array.isArray(a) ? a : []); };
+async function fixLoad(ean, force){   // stan poprawek produktu; null = nie wiadomo (brak sieci, brak logowania, tryb lokalny)
+  if (!sharedOn() || !FB.uid || !/^[0-9]{8,14}$/.test(ean || '')) return null;
+  if (!force && FIXC.has(ean)) return FIXC.get(ean);
+  let r = null;
+  try {
+    const [sn, gs, vw, vn] = await Promise.all([
+      FB.getDoc(FB.doc(FB.db, 'foods', ean)),
+      FB.getDocs(FB.query(FB.collection(FB.db, 'foods', ean, 'fix'), FB.limit(10))),
+      FB.getDoc(FB.doc(FB.db, 'foods', ean, 'v', 'w_' + FB.uid)),
+      FB.getDoc(FB.doc(FB.db, 'foods', ean, 'v', 'n_' + FB.uid))]);
+    if (!sn.metadata.fromCache && !gs.metadata.fromCache)   // odpowiedź z pamięci podręcznej (offline) nie mówi, jak jest naprawdę
+      r = {shared:sn.exists() ? sn.data() : false, groups:gs.docs.map(d => ({...d.data(), key:d.id, kind:d.id[0]})), voted:{w:vw.exists(), n:vn.exists()}};
+  } catch {}
+  if (r){ FIXC.set(ean, r); if (r.shared && SCAN_CACHE.has(ean)) SCAN_CACHE.set(ean, fromShared(ean, r.shared)); }
+  else FIXC.delete(ean);
+  return r;
+}
+async function fixVote(ean, kind, p, key0){   // → {st:'promoted'|'voted'|'dup'|'nofood'|'err', c}
+  if (!sharedOn() || !FB.uid || !FB.runTransaction) return {st:'err'};
+  const key = key0 || await fixKey(kind, p), at = Date.now();
+  const foodRef = FB.doc(FB.db, 'foods', ean), fixRef = FB.doc(FB.db, 'foods', ean, 'fix', key), vRef = FB.doc(FB.db, 'foods', ean, 'v', kind + '_' + FB.uid);
+  let r;
+  try {
+    r = await FB.runTransaction(FB.db, async tx => {
+      const fs = await tx.get(foodRef), xs = await tx.get(fixRef), vs = await tx.get(vRef);
+      if (!fs.exists()) return {st:'nofood'};
+      if (vs.exists()) return {st:'dup'};
+      const food = fs.data(), g = xs.exists() ? xs.data() : fixData(kind, p), c = (xs.exists() ? (g.c || 0) : 0) + 1;
+      tx.set(vRef, {g:key});
+      if (xs.exists()) tx.update(fixRef, {c, at}); else tx.set(fixRef, {...g, c, at});
+      const cur = food[kind === 'w' ? 'cw' : 'cn'] || 1;
+      if (c >= FIX_MIN && c > cur && fixCanon(kind, g) !== fixCanon(kind, food)){
+        tx.update(foodRef, kind === 'w'
+          ? {u:g.u, k:g.k, b:g.b, w:g.w, t:g.t, f:g.f, pg:g.pg == null ? null : g.pg, po:g.po, fw:key, cw:c, at}
+          : {n:g.n, brand:g.brand, q:phraseKey(g.n).slice(0, 80), fn:key, cn:c, at});
+        return {st:'promoted', c};
+      }
+      return {st:'voted', c};
+    });
+  } catch { return {st:'err'}; }
+  if (r.st !== 'nofood'){ sharedCache.clear(); await fixLoad(ean, true); }
+  return r;
+}
+function fixToast(res){
+  const r = ['promoted', 'voted', 'dup', 'err'].map(st => res.find(x => x.st === st)).find(Boolean); if (!r) return;
+  toast(r.st === 'promoted' ? 'Wspólna baza poprawiona' : r.st === 'voted' ? (r.c < FIX_MIN ? `Zgłoszono anonimowo (${r.c} z ${FIX_MIN})` : 'Zgłoszono anonimowo')
+    : r.st === 'dup' ? 'To urządzenie już zgłosiło poprawkę tego produktu' : 'Nie udało się zgłosić poprawki (brak internetu?)');
+}
+async function fixReport(ean, p, kinds){
+  const res = []; for (const k of kinds) res.push(await fixVote(ean, k, p));
+  fixToast(res); fixPaint();
+}
+async function fixAuto(rec){   // po zapisie osobistej poprawki: zgłoś rodzaje, które różnią się od wspólnej bazy
+  const c = await fixLoad(rec.ean); if (!c || !c.shared) return;
+  const kinds = [...new Set(fixDiff(rec, c.shared).map(d => d.kind))]; if (!kinds.length) return;
+  const todo = kinds.filter(k => !c.voted[k]);
+  if (todo.length) await fixReport(rec.ean, rec, todo); else fixToast([{st:'dup'}]);
+}
+function fixCardHTML(s){
+  const p = s.pid && prodOf(s.pid); if (!p || !/^[0-9]{8,14}$/.test(p.ean || '') || !sharedOn()) return '';
+  const c = FIXC.get(p.ean); if (!c || !c.shared) return '';
+  const hide = fixHidden(), diffs = inMine(p.id) ? fixDiff(p, c.shared) : [];
+  const grp = {};   // najwyżej jedna grupa na rodzaj: z największą liczbą głosów, różna od obecnej, nieukryta, bez mojego głosu
+  for (const k of FIX_KINDS)
+    grp[k] = c.voted[k] ? null : c.groups.filter(g => g.kind === k && fixCanon(k, g) !== fixCanon(k, c.shared) && !hide.has(p.ean + ':' + g.key)).sort((a, b) => b.c - a.c)[0] || null;
+  let out = '';
+  if (diffs.length){
+    const mineKinds = [...new Set(diffs.map(d => d.kind))];
+    const rep = mineKinds.filter(k => !c.voted[k] && !(grp[k] && fixCanon(k, grp[k]) === fixCanon(k, p)));   // zgłoszenie takie jak moje pokazuje karta niżej
+    out += `<div class="card fixcard"><p class="fx-l">Wspólna baza</p><p class="fx-h">Twoje dane różnią się od wspólnej bazy</p>
+      <div>${diffs.slice(0, 5).map(d => `<p class="fx-v num">${esc(fixLine(d))}</p>`).join('')}${diffs.length > 5 ? `<p class="fx-v">…i ${diffs.length - 5} więcej</p>` : ''}</div>
+      <div class="row"><button class="btn sm" data-act="fixUse">Użyj wspólnych</button>${rep.length ? '<button class="btn sm" data-act="fixMine">Zgłoś moje</button>' : ''}</div></div>`;
+  }
+  for (const k of FIX_KINDS){
+    const g = grp[k]; if (!g) continue;
+    out += `<div class="card fixcard"><p class="fx-l">Wspólna baza</p><p class="fx-h">Zgłoszona poprawka · ${g.c} z ${FIX_MIN} potwierdzeń</p><p class="fx-v num">${esc(fixBrief(k, g))}</p>
+      <div class="row"><button class="btn sm" data-act="fixConfirm" data-kind="${k}" data-key="${esc(g.key)}">Zgodne z moją etykietą</button><button class="btn sm" data-act="fixHide" data-key="${esc(g.key)}">Ukryj</button></div></div>`;
+  }
+  return out;
+}
+function fixPaint(){
+  const s = topSheet(), el = $('#dq-fix'); if (!s || s.type !== 'dietQty' || !el) return;
+  const h = fixCardHTML(s); el.innerHTML = h; el.hidden = !h;
 }
 const DRY_RE = /\b(ryz|makaron|spaghetti|penne|fusilli|farfalle|tagliatelle|kasz|kuskus|couscous|komosa|quinoa|bulgur|platki|fasol|soczewic|ciecierzyc|groch|otreby)/;
 const DRY_NOT = /(gotow|w sosie|puszk|konserw|sloik|zup|salatk|chrupi|kukurydzian|czekolad|miodow|musli|granola|baton|chipsy|wafel|ciastk|napoj|jogurt|mleko)/;
@@ -5171,6 +5301,8 @@ function openDietQty(o){
   else if (b && b.pg){ s.mode = 'q'; s.q = 1; s.g = r1(b.pg); }
   else s.g = 100;
   openSheet(s);
+  const p0 = s.pid && prodOf(s.pid);
+  if (p0 && p0.ean) fixLoad(p0.ean).then(fixPaint);   // karta „Wspólna baza” dorysowuje się po odczycie, nie blokuje dodawania
 }
 const sDay = s => (s && s.day) || dietKey();   // dzień, na którym otwarto arkusz
 Object.assign(ACT, {
@@ -5211,7 +5343,7 @@ Object.assign(ACT, {
   },
   dqEditProd(){
     const s = topSheet(), p = prodOf(s.pid); if (!p) return;
-    openSheet({type:'dietProd', id:p.id, scan:p.src === 'scan', off:!!p.off, f:{n:p.n, brand:p.brand, u:p.u, k:fmtN(p.k), b:fmtN(p.b), w:fmtN(p.w), t:fmtN(p.t), f:fmtN(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}});
+    openSheet({type:'dietProd', id:p.id, scan:p.src === 'scan', off:!!p.off, fx:!!p.fx, fixEan:/^[0-9]{8,14}$/.test(p.ean || '') ? p.ean : '', rep:true, f:{n:p.n, brand:p.brand, u:p.u, k:fmtN(p.k), b:fmtN(p.b), w:fmtN(p.w), t:fmtN(p.t), f:fmtN(p.f), pg:p.pg ? fmtN(p.pg) : '', po:p.po}});
   },
   dqSave(){
     const s = topSheet(), g = s.g, key = sDay(s), qm = s.mode === 'q' && !!s.base.pg;
@@ -5265,6 +5397,29 @@ Object.assign(ACT, {
     dayW(key).meals[r.m] = dayW(key).meals[r.m].filter(x => x.id !== r.e.id);
     persistDay(key, [], [r.e.id]); sheets.length = 0; renderSheet(); render(); toast('Usunięto wpis.');
   },
+  fixUse(){
+    const s = topSheet(), p = prodOf(s.pid), c = p && FIXC.get(p.ean), m = p && DIET.mine.find(x => x.id === p.id);
+    if (!m || !c || !c.shared || !dietCanEdit()) return;
+    const sh = c.shared, d = fixDiff(m, sh);
+    if (d.some(x => x.kind === 'w')) Object.assign(m, {u:sh.u === 'ml' ? 'ml' : 'g', k:r1(sh.k), b:r1(sh.b), w:r1(sh.w), t:r1(sh.t), f:r1(sh.f || 0), pg:sh.pg > 0 ? r1(sh.pg) : null, po:String(sh.po || '')});
+    if (d.some(x => x.kind === 'n')) Object.assign(m, {n:String(sh.n), brand:String(sh.brand || '')});
+    if (sh.fw || sh.fn) m.fx = true; else delete m.fx;
+    persistDiet([m.id]); renderSheet(); toast('Użyto wartości ze wspólnej bazy.');
+  },
+  fixMine(){
+    const s = topSheet(), p = prodOf(s.pid), c = p && FIXC.get(p.ean); if (!p || !c || !c.shared || !inMine(p.id)) return;
+    const kinds = [...new Set(fixDiff(p, c.shared).map(d => d.kind))].filter(k => !c.voted[k]);
+    if (kinds.length) fixReport(p.ean, p, kinds);
+  },
+  fixConfirm(el){
+    const s = topSheet(), p = prodOf(s.pid), c = p && FIXC.get(p.ean), kind = el.dataset.kind, g = c && c.groups.find(x => x.key === el.dataset.key);
+    if (!g || !FIX_KINDS.includes(kind)) return;
+    fixVote(p.ean, kind, g, g.key).then(r => { fixToast([r]); fixPaint(); });
+  },
+  fixHide(el){
+    const s = topSheet(), p = prodOf(s.pid), k = fixHideKey(); if (!p || !k) return;
+    const h = fixHidden(); h.add(p.ean + ':' + el.dataset.key); LS.set(k, [...h].slice(-200)); fixPaint();
+  },
   dpUnit(el){ const s = topSheet(); s.f.u = el.dataset.u; $$('[data-act="dpUnit"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.u === s.f.u))); },
   dpSave(){
     const s = topSheet(), f = s.f; if (!dietCanEdit()) return;
@@ -5284,6 +5439,7 @@ Object.assign(ACT, {
     const i = DIET.mine.findIndex(x => x.id === rec.id);
     if (i >= 0) DIET.mine[i] = rec; else DIET.mine.push(rec);
     persistDiet([rec.id]);
+    if (s.fixEan && s.rep !== false && sharedOn() && rec.ean === s.fixEan) fixAuto(rec);   // osobista poprawka + anonimowe zgłoszenie do wspólnej bazy
     if ((s.meal || s.toTpl) && !s.id){ sheets.pop(); openDietQty({meal:s.meal, pid:rec.id, day:sDay(s), toTpl:!!s.toTpl}); toast('Zapisano produkt.'); }
     else { sheets.pop(); renderSheet(); render(); toast('Zapisano produkt.'); }
   },
@@ -5353,6 +5509,7 @@ Object.assign(BIND, {
   },
   df(t){ topSheet().f[t.dataset.f] = t.value; },
   dp(t){ const s = topSheet(); s.f[t.dataset.f] = t.value; prodWarn(); },
+  dpRep(t){ topSheet().rep = t.checked; },
   dg(t){ const s = topSheet(); (s.tab === 't' ? s.fT : s.f)[t.dataset.f] = t.value; goalsHint(); },
 });
 

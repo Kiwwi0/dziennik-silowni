@@ -22,11 +22,16 @@ service cloud.firestore {
         && d.updatedAt is int;
     }
 
-    // Wspólna baza produktów (skaner kodów): foods/{ean}. Odczyt dla każdego (get, lista ≤ 30), tylko create, bez update/delete.
+    // Wspólna baza produktów (skaner kodów): foods/{ean}. Odczyt dla każdego (get, lista ≤ 30), create; update tylko jako awans poprawki (część 2b), bez delete.
     // Dokument nie zawiera informacji, kto dodał produkt.
+    // Opcjonalne pola fw/fn (klucz grupy, z której pochodzą obecne wartości/nazwa) i cw/cn (liczba jej głosów) ustawia tylko awans poprawki (część 2b).
     function validFood(d) {
-      return d.keys().hasOnly(['n', 'brand', 'u', 'k', 'b', 'w', 't', 'f', 'pg', 'po', 'q', 'src', 'at'])
+      return d.keys().hasOnly(['n', 'brand', 'u', 'k', 'b', 'w', 't', 'f', 'pg', 'po', 'q', 'src', 'at', 'fw', 'fn', 'cw', 'cn'])
         && d.keys().hasAll(['n', 'brand', 'u', 'k', 'b', 'w', 't', 'f', 'pg', 'po', 'q', 'src', 'at'])
+        && (!('fw' in d) || (d.fw is string && d.fw.matches('^w_[0-9a-f]{12}$')))
+        && (!('fn' in d) || (d.fn is string && d.fn.matches('^n_[0-9a-f]{12}$')))
+        && (!('cw' in d) || (d.cw is int && d.cw >= 1 && d.cw <= 1000))
+        && (!('cn' in d) || (d.cn is int && d.cn >= 1 && d.cn <= 1000))
         && d.n is string && d.n.size() > 0 && d.n.size() <= 80
         && d.brand is string && d.brand.size() <= 60
         && d.u in ['g', 'ml']
@@ -42,11 +47,70 @@ service cloud.firestore {
         && d.src in ['off', 'user']
         && d.at is int;
     }
+    // Poprawki wspólnej bazy (część 2b). FIX_MIN = 3 – zmieniać razem ze stałą FIX_MIN w app.html.
+    //  foods/{ean}/fix/{key} – grupa zgłoszeń jednej wersji (w_… wartości, n_… nazwa z marką), tylko liczniki, bez informacji o głosujących.
+    //  foods/{ean}/v/{vid}   – głos urządzenia (vid = rodzaj + '_' + uid), czytelny tylko dla właściciela, bez zmian i usuwania.
+    // Napisy nie są wycinane (key[0:2]) ani doklejane do ścieżek – rodzaj bierzemy z split('_'), a własny głos składamy w $() z uid.
+    function voteNew(ean, key) {
+      let v = /databases/$(database)/documents/foods/$(ean)/v/$(key.split('_')[0] + '_' + request.auth.uid);
+      return !exists(v) && existsAfter(v) && getAfter(v).data.g == key;
+    }
+    function numOk(x, hi) { return x is number && x >= 0 && x <= hi; }
+    function validFix(key, d) {
+      return d.c == 1 && d.at is int
+        && (key.matches('^w_.*')
+          ? (d.keys().hasOnly(['u', 'k', 'b', 'w', 't', 'f', 'pg', 'po', 'c', 'at'])
+            && d.keys().hasAll(['u', 'k', 'b', 'w', 't', 'f', 'pg', 'po', 'c', 'at'])
+            && d.u in ['g', 'ml'] && numOk(d.k, 900) && numOk(d.b, 100) && numOk(d.w, 100) && numOk(d.t, 100) && numOk(d.f, 100)
+            && d.b + d.w + d.t + d.f <= 105
+            && (d.pg == null || (d.pg is number && d.pg > 0 && d.pg <= 5000))
+            && d.po is string && d.po.size() <= 40)
+          : (d.keys().hasOnly(['n', 'brand', 'c', 'at']) && d.keys().hasAll(['n', 'brand', 'c', 'at'])
+            && d.n is string && d.n.size() > 0 && d.n.size() <= 80
+            && d.brand is string && d.brand.size() <= 60));
+    }
+    // Awans: grupa ma ≥ 3 głosy i więcej niż wersja obecna; nowe wartości dokładnie z grupy (getAfter – licznik z tej samej transakcji).
+    function promoW(ean) {
+      let nw = request.resource.data;
+      let g = getAfter(/databases/$(database)/documents/foods/$(ean)/fix/$(nw.fw)).data;
+      return nw.diff(resource.data).affectedKeys().hasOnly(['k', 'b', 'w', 't', 'f', 'u', 'pg', 'po', 'fw', 'cw', 'at'])
+        && g.c >= 3 && g.c > resource.data.get('cw', 1) && nw.cw == g.c
+        && nw.k == g.k && nw.b == g.b && nw.w == g.w && nw.t == g.t && nw.f == g.f && nw.u == g.u && nw.pg == g.pg && nw.po == g.po;
+    }
+    function promoN(ean) {
+      let nw = request.resource.data;
+      let g = getAfter(/databases/$(database)/documents/foods/$(ean)/fix/$(nw.fn)).data;
+      return nw.diff(resource.data).affectedKeys().hasOnly(['n', 'brand', 'q', 'fn', 'cn', 'at'])
+        && g.c >= 3 && g.c > resource.data.get('cn', 1) && nw.cn == g.c
+        && nw.n == g.n && nw.brand == g.brand;
+    }
     match /foods/{ean} {
       allow get: if ean.matches('^[0-9]{8,14}$');
       allow list: if request.query.limit <= 30;
-      allow create: if signedIn() && ean.matches('^[0-9]{8,14}$') && validFood(request.resource.data);
-      allow update, delete: if false;
+      allow create: if signedIn() && ean.matches('^[0-9]{8,14}$') && validFood(request.resource.data)
+        && !request.resource.data.keys().hasAny(['fw', 'fn', 'cw', 'cn']);
+      allow update: if signedIn() && validFood(request.resource.data) && (promoW(ean) || promoN(ean));
+      allow delete: if false;
+
+      match /v/{vid} {
+        allow get: if signedIn() && (vid == 'w_' + request.auth.uid || vid == 'n_' + request.auth.uid);
+        allow list, update, delete: if false;
+        allow create: if signedIn() && (vid == 'w_' + request.auth.uid || vid == 'n_' + request.auth.uid)
+          && request.resource.data.keys().hasOnly(['g']) && request.resource.data.keys().hasAll(['g'])
+          && request.resource.data.g is string
+          && request.resource.data.g.matches('^' + vid.split('_')[0] + '_[0-9a-f]{12}$');
+      }
+      match /fix/{key} {
+        allow get: if true;
+        allow list: if request.query.limit <= 10;
+        allow delete: if false;
+        allow create: if signedIn() && ean.matches('^[0-9]{8,14}$') && key.matches('^[wn]_[0-9a-f]{12}$')
+          && exists(/databases/$(database)/documents/foods/$(ean)) && validFix(key, request.resource.data) && voteNew(ean, key);
+        allow update: if signedIn() && key.matches('^[wn]_[0-9a-f]{12}$')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['c', 'at'])
+          && request.resource.data.c == resource.data.c + 1 && request.resource.data.at is int
+          && voteNew(ean, key);
+      }
     }
 
     // Udostępnione plany: shares/{KOD}. Kto zna kod, może go odczytać (bez listy wszystkich kodów).

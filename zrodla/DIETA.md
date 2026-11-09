@@ -283,6 +283,29 @@ Aplikacja działa w całości w przeglądarce (bez serwera), więc źródło mus
 - Zrzuty tylko na końcu: `dietQty` z kartą (oba przypadki) i `dietProd` z polem wyboru, oba motywy. Po budowie przegląd zmian przez Opus w krótkim czacie
   (`git diff`, szczególnie `firestore.rules`).
 
+### Stan części 2b (zbudowane, 9.11.2026)
+- **Reguły (`firestore.rules`):** `validFood` rozszerzone o opcjonalne `fw/fn/cw/cn` (fw ↔ `^w_[0-9a-f]{12}$`, fn ↔ `^n_…`, cw/cn int 1–1000); `create` w `foods/`
+  odrzuca te pola (ustawia je tylko awans). `update` w `foods/{ean}` tylko jako awans: `promoW` / `promoN` (zmienione pola z listy, `getAfter` grupy `fix`,
+  `c >= 3`, `c > cw|cn` (domyślnie 1), `cw|cn == c`, pola równe polom grupy). Nowe: `foods/{ean}/v/{vid}` (`get` tylko własny, `create` bez zmian i usuwania, `{g}`),
+  `foods/{ean}/fix/{key}` (`get` każdy, `list` z limitem ≤ 10, `create` z `validFix` + `voteNew`, `update` tylko `c`+1 i `at`). Funkcje: `voteNew`, `numOk`, `validFix`, `promoW`, `promoN`.
+  **Odstępstwo od planu:** zamiast wycinania `key[0:2]` rodzaj bierze `key.split('_')[0]`, a własny głos to `$(rodzaj + '_' + request.auth.uid)` w ścieżce
+  (nie sprawdziłem, czy reguły obsługują wycinanie napisów i doklejanie do ścieżek, a w sesji nie ma emulatora). Wynik wdrożenia reguł: `gh run list -R Kiwwi0/dziennik-silowni -w rules.yml -L 1`.
+- **Kod (`app.html`, sekcja „weryfikacja danych zeskanowanych produktów (część 2b)”, przed `DRY_RE`):** `FIX_MIN`, `FIXC`, `fixVal/fixCanon/fixKey/fixData/fixDiff`,
+  `fixLoad` (1× `getDoc` produktu, lista `fix` z limitem 10, 2× własny głos; odpowiedź z pamięci podręcznej = „nie wiadomo” → brak karty), `fixVote` (`runTransaction`:
+  głos + `fix` create/update + ewentualny awans `foods/`), `fixToast`, `fixReport`, `fixAuto` (po zapisie w `dietProd`), `fixCardHTML`/`fixPaint`.
+  ACT: `fixUse`, `fixMine`, `fixConfirm`, `fixHide`; BIND `dpRep`. Produkt ma pole `fx` (wspólna baza poprawiona przez użytkowników; `cleanProd`, `fromShared`) –
+  stąd dopisek „Dane: Open Food Facts (ODbL), poprawione przez użytkowników” w `dietQty` i `dietProd`. Ukryte zgłoszenia: `lsKey('fixHide')` (do 200 wpisów `ean:key`).
+- **Wygląd:** w `dietQty` pod nagłówkiem `#dq-fix` (ukryty, gdy pusty): karta „Twoje dane różnią się od wspólnej bazy” (do 5 różnic, „Użyj wspólnych”, „Zgłoś moje”)
+  i karta „Zgłoszona poprawka · N z 3 potwierdzeń” („Zgodne z moją etykietą”, „Ukryj”); „Użyj wspólnych” zmienia w kopii tylko różniące się rodzaje (wartości i/lub nazwę),
+  zostają ★, `uses`, `last`. „Zgłoś moje” znika, gdy rodzaj już zgłoszony albo gdy zgłoszenie takie jak moje jest widoczne niżej. W `dietProd` (edycja produktu z `ean`,
+  Firebase włączony) pole „Zgłoś poprawkę do wspólnej bazy (anonimowo)”, domyślnie zaznaczone (`s.fixEan`, `s.rep`).
+- **Test (wersja testowa + atrapa Firebase w Playwright, symulacja reguł jak w `firestore.rules`):** 390×844 i 360×780, jasny i ciemny – bez `pageerror`, bez przewijania w bok.
+  Scenariusz z planu przeszedł: u1 poprawia kcal → grupa c:1, `foods/` bez zmian → drugi głos u1 odrzucony → u2 widzi „1 z 3” → 2 → u3 potwierdza → `foods/` ma nowe wartości,
+  `fw`, `cw:3` → u4 ze starą kopią widzi różnicę i „Użyj wspólnych”; osobno rodzaj `n` (awans nazwy, `q` przeliczone, wartości bez zmian), „Ukryj”, brak karty offline
+  i w trybie lokalnym, odznaczone pole = brak zgłoszenia, `update` `foods/` bez awansu odrzucony w atrapie.
+- **Niesprawdzone w sesji:** prawdziwe reguły Firestore (atrapa to moje lustro reguł, nie emulator – składnię sprawdza dopiero wdrożenie workflow), prawdziwe głosowanie z trzech
+  urządzeń (iPhone Olka, Windows, telefon Marty) i `crypto.subtle` na iPhonie (wymaga https – strona jest na https). Nie zrobiono jeszcze przeglądu `git diff` przez Opus (szczególnie `firestore.rules`).
+
 ## CZĘŚĆ 3 – dodatki do diety (plan ustalony z Olkiem 9.11.2026, budowa w osobnych czatach)
 Pięć etapów, **w tej kolejności, każdy osobno**: zbudować → przetestować → wdrożyć → dopisać „Stan etapu 3.x (zbudowane)” pod jego planem.
 Zasady wspólne:
