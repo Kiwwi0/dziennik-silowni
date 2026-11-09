@@ -68,6 +68,12 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 6. **Manekin i mięśnie** (kosztowny) – `src/muscles.js` (`MUSCLE_EX` – mięśnie ćwiczeń), `src/anim_body.js` (płaski manekin `BODYMAP`,
    `bodyMapFigs`), `src/miesnie3d.js` (obracany 3D, three.js, model `web/models/miesnie.glb` 4,5 MB); w app.html `bodyMap`,
    `exMuscles`, `BM3`, `bm3dMount`; `zrodla/model3d/` – jak powstał model (BodyParts3D, licencja CC BY-SA). Nie generuj modelu od nowa bez zgody.
-7. **Dieta** (jeszcze nie ma) i **aplikacja na iPhone'a** (`DziennikSilowni/`) – osobne czaty.
+7. **Dieta** – w budowie, cały plan i ustalenia w `zrodla/DIETA.md` (czytaj go zamiast tego czatu); dane startowe
+   produktów `zrodla/content/produkty.csv`. **Aplikacja na iPhone'a** (`DziennikSilowni/`) – osobny czat.
+
+## Oszczędzanie limitu (Olek ma plan Pro)
+Duże zadania: plan pisze Opus (do pliku w repo), buduje Sonnet w nowym czacie, sprawdza Opus w nowym, krótkim czacie
+(czyta tylko `git diff` / zmiany z commita). Gdy zadanie lepiej zrobić w nowym czacie, powiedz to Olkowi wprost
+i podaj gotowe zdanie do wklejenia oraz model do wybrania (Sonnet / Opus).
 
 Po każdej zmianie: build_web, test (jasny i ciemny, 390 px), commit, push, krótkie podsumowanie dla Olka po polsku.
