@@ -573,6 +573,15 @@ i `diet/{dzień}` nie mają walidacji pól).
 - Zrzuty tylko na końcu: zakładka Dieta (z wodą i suplementami), `dietQty` z chipami, przesunięty wpis – oba motywy.
 - Zapis `wa`, `sp`, `wg`, `sup` do Firebase niesprawdzalny z sesji – do sprawdzenia przez Kamila na telefonie.
 
+### Stan części 4 (zbudowane, 9.11.2026)
+- **4.1** `dietQty`: rząd chipów `QTY_CHIPS` (50 · 100 · 150 · 200 + jednostka) pod polem ilości w trybie g/ml, ACT `dqChip`, aktywny chip przez `aria-pressed` (odświeża `qtyOut`). Tryb sztuk bez chipów.
+- **4.2** `lastQty(pid)` → `{g, q}` z wczytanych dni (największe `o`); `openDietQty` dla nowego wpisu (także składnika zestawu) ustawia ostatnią ilość i pokazuje „Jak ostatnio” (`s.last`, `#dq-last`; znika po zmianie ilości lub trybu).
+- **4.3** pod paskiem białka `zostało N g` (`.dt-left`), tylko gdy jest cel B i zjedzone < cel.
+- **4.4** wspólny mechanizm przesuwania: klasa `.sw-in` (plany i wpisy), `swSet` i CSS `.sw > .sw-in`; ACT `dietEntDel` (bez potwierdzenia, `toastUndo` „Usunięto”, Cofnij wstawia ten sam wpis i zapisuje dzień).
+- **4.5** woda: `DAYS[k].wa`, `DIET.wg`, `setWater` (zapis po 600 ms, `waPend`, `waFlush`), karta `dietWaterCard`, arkusz `dietWater`, pole „Woda (ml)” w `dietGoals` (tylko zwykły dzień). Suplementy: `DIET.sup` (`cleanSup`, `supList`), `DAYS[k].sp`, karta `dietSupCard`, arkusz `dietSup`, ACT `supTake/supAdd/supMove/supDel`, BIND `supName/supDose`.
+  `persistDay(k, put, del, tr, x)` – `x` to dodatkowe pola dnia (`null` → usuń; w mapach `null` → usuń klucz). `persistDiet(..., wg, sp, sd)`. Scalanie: `mergeDays` i import kopii obsługują `wa`, `sp`, `wg`, `sup`.
+- Test (Playwright, wersja testowa, 390×844 i 360×780, jasny/ciemny): bez błędów i bez przewijania w bok. Zapis `wa`, `sp`, `wg`, `sup` do Firebase niesprawdzalny z sesji – do sprawdzenia przez Kamila na telefonie.
+
 ## Na później (nie robić bez prośby)
 Zdjęcie talerza (AI – wymaga klucza i pośrednika). Odporność zapisu (ponowna wysyłka po odrzuceniu przez bazę, limit pamięci przeglądarki) –
 opisane w przeglądzie z 9.11.2026, Kamil nie wybrał na teraz.
