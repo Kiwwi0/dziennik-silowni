@@ -455,6 +455,28 @@ Stan zwinięcia w `LS` (nie w bazie).
 **Test:** kopia posiłku wczoraj→dziś, kopia dnia, „Cofnij”; zapisanie posiłku jako gotowego, dodanie ×1,5 (sprawdzić liczby), edycja, usunięcie;
 odświeżenie; dzień z „Innym posiłkiem”.
 
+#### Stan etapu 3.5 (zbudowane, 9.11.2026)
+- **Dane:** `DIET.tpl` = mapa `{[id]: {id, n, items, uses, last}}` (`cleanTpl` w `normalizeDiet`: id `[A-Za-z0-9_-]` do 60 znaków, nazwa do 40, do 30 składników, do 50 posiłków; `tplItem` = wpis bez `id`/`o`/`m`;
+  stary dokument → `{}`). Kolejka `tplPut`/`tplDel`; `persistDiet(put, del, goals, meals, wp, wd, prof, goalsT, tp, td)` – dwa nowe parametry (9. i 10.); `flushDiet` wysyła `tpl:{[id]: gotowy | deleteField()}`
+  z merge (lista `items` to tablica, więc zapisuje się w całości; stary format v:1 – cały `tpl` w pełnym zapisie), przy błędzie id wracają do kolejki; snapshot nakłada oczekujące posiłki, podpis porównania zawiera `tpl`;
+  `dietOpen`/`dietClose` czyszczą kolejkę. Import kopii: brakujące gotowe posiłki dochodzą (do limitu 50), istniejące zostają (tekst potwierdzenia uzupełniony). Eksport – `tpl` jest w `diet`.
+- **Kopiowanie:** w nagłówku posiłku „⋯” (`.dt-more`, tylko gdy są wpisy; także „Inny posiłek”) → `dietMealMenu`: „Kopiuj na…” (`mealCopy` → `dietCopy`) i „Zapisz jako gotowy posiłek” (`mealTpl`). Na dole zakładki „Kopiuj dzień”
+  (`dietCopyDay`, tylko gdy dzień ma wpisy). `SHEETS.dietCopy` (`scope:'day'|'meal'`, `copySource`): `input type=date` (max = dziś, min = okno 60 dni w trybie Firebase), skróty „Na dziś” / „Na wczoraj” (`dcDay`), chipy posiłku docelowego (`dcMeal`);
+  źródło = dziś → pole puste. `dcGo` waliduje (brak daty, przyszłość, poza oknem, ten sam dzień przy kopii dnia, ten sam dzień i posiłek przy kopii posiłku), dopisuje kopie z nowym `id` (`uid()`) i `o = Date.now()+i`
+  (kolejność zachowana), wpisy z usuniętych posiłków trafiają do pierwszego posiłku z listy, `tr` nie jest kopiowane, `persistDay(d, nowe id)`; po kopii widok przechodzi na dzień docelowy.
+  Nowy `toastUndo(msg, fn)` (toast z przyciskiem „Cofnij”, 7 s, `ACT.toastUndo`, CSS `#toast.act`, `.toast-btn`) – „Skopiowano 5 wpisów” i „Cofnij” usuwa dokładnie dopisane wpisy (`persistDay(d, [], ids)`).
+- **Gotowe posiłki:** `dietAdd` ma przełącznik „Produkty | Gotowe” (`s.tab`, ACT `dtTab`; domyślnie Produkty). „Gotowe”: lista (`tplList`: `uses`, `last`, nazwa; wiersz `tplRow`: nazwa, liczba składników, B, kcal), filtr po nazwie, przycisk
+  „Nowy gotowy posiłek” (`tplNew`). W zakładce „Produkty” wpisanie tekstu pokazuje sekcję „Gotowe” (do 10) nad „Moimi produktami”. Stuknięcie → `SHEETS.dietTpl` (`tplOpen`): lista składników przeskalowana na żywo (`tplScale`, `tplOut`), chipy ×0,5 ×1 ×1,5 ×2 (`tplMult`)
+  i własny mnożnik 0,1–10 (BIND `tplMult`), chipy posiłku (ponownie użyte `dqMeal`), sumy, „Dodaj” (`tplUse`: osobne wpisy; g, `q`, makro × mnożnik, przy sztukach `g = q × pg`; blokada, gdy ilość wyjdzie poza 0,1–5000 albo `q` < 0,01; `uses++`/`last` gotowego posiłku
+  i `uses++` produktów z `pid` obecnych w `mine`), „Edytuj” (`tplEdit`) i „Usuń” z potwierdzeniem (`tplDel`). `SHEETS.dietTplEdit` (szkic w stanie arkusza: `tid`, `n`, `items`): nazwa, składniki z ilością i kcal (stuknięcie = zmiana ilości, X = usunięcie),
+  „Dodaj składnik” (`tplItemAdd` → `dietAdd` z `toTpl:true` – bez skanera, szybkiego wpisu i przełącznika, z „Nowy produkt” → `dietQty` z `toTpl:true`: tytuł „Dodaj do zestawu” / „Edytuj składnik”, bez wyboru posiłku i „Usuń”;
+  `dqSave` w tym trybie wpisuje składnik do szkicu i wraca do `dietTplEdit`), sumy, „Zapisz” (`tplSave`: nazwa 1–40 znaków, 1–30 składników, do 50 posiłków). „Zapisz jako gotowy posiłek” z menu otwiera ten sam arkusz z wpisami posiłku i nazwą „Śniadanie 9.11”.
+  Składniki bez ilości (szybki wpis) są w gotowym posiłku, ale ich ilości nie da się edytować (tylko usunąć); mnożnik skaluje im same makro. CSS `.tp-seg`, `.tp-ing`, `.tp-mult`. Kod arkuszy i akcji jest przed `route()`.
+- **Test (wersja testowa):** 390×844 i 360×780, jasny i ciemny – bez `pageerror`, bez przewijania w bok (Dieta, wszystkie nowe arkusze, błędy walidacji, pozostałe zakładki): kopia posiłku wczoraj→dziś (3 wpisy, nowe `id`) i „Cofnij” (źródło bez zmian),
+  kopia dnia (kolejność, „Inny posiłek” → Śniadanie, `tr` niekopiowane), walidacje dat i posiłku, zapis gotowego posiłku z menu (nazwa domyślna, składniki bez `id`/`o`/`m`), dodanie ×1,5 (75 g → 277,5 kcal; 300 ml → 150 kcal; suma 427,5 kcal), mnożnik 0 zablokowany,
+  edycja (nazwa, ilość 50→100 g, usunięcie składnika), sekcja „Gotowe” w wyszukiwarce, nowy gotowy posiłek ze składnikiem z wyszukiwarki, usunięcie, odświeżenie strony (dane zostają), limity 50 / 30 / 40 znaków, stary dokument bez `tpl`.
+  Zapis `tpl` i kopii dni do Firebase niesprawdzony na żywo (strona nieosiągalna z sesji) – do sprawdzenia przez Olka.
+
 ## Na później (nie robić bez prośby)
 Woda, suplementy, zdjęcie talerza (AI – wymaga klucza i pośrednika).
 

@@ -133,7 +133,18 @@ svg.i.s{width:18px;height:18px}
 .dt-meal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .dt-meal-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:12px 14px 8px}
 .dt-meal-h h2{margin:0;font-family:var(--f-display);font-weight:800;font-size:21px;line-height:1;text-transform:uppercase;letter-spacing:.02em}
-.dt-meal-h .s{font-size:13px;color:var(--muted);text-align:right}
+.dt-meal-h .s{font-size:13px;color:var(--muted);text-align:right;margin-left:auto}
+.dt-meal-h .dt-more{flex:none;align-self:center;width:36px;height:32px;margin:-6px -8px -6px 0;border:0;background:none;color:var(--muted);font-size:22px;font-weight:800;line-height:1;border-radius:8px}
+.dt-meal-h .dt-more:focus-visible{outline:2px solid var(--accent)}
+.tp-seg{display:flex}.tp-seg button{flex:1}
+.tp-ing{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.tp-ing:first-child{border-top:0}
+.tp-ing .n{font-weight:600;overflow-wrap:anywhere}.tp-ing .m{font-size:12.5px;color:var(--muted);display:block}
+.tp-ing .k{font-weight:700;white-space:nowrap}
+.tp-ing button.tp-ed{border:0;background:none;text-align:left;padding:0;color:var(--ink);min-width:0}
+.tp-ing button.tp-ed:disabled{color:var(--ink);opacity:1}
+.tp-mult{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tp-mult .input{width:84px;text-align:center}
 .dt-ent{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:none;padding:10px 14px;color:var(--ink)}
 .exlist > .dt-ent:first-child{border-top:0}
 .dt-ent .n{font-weight:600;overflow-wrap:anywhere}
@@ -563,6 +574,8 @@ main{padding-block:2px 28px}
 
 #toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;font-weight:600;font-size:14px;max-width:calc(100% - 32px);opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
+#toast.act{pointer-events:auto;display:flex;align-items:center;gap:6px;padding:4px 6px 4px 14px}
+.toast-btn{border:0;background:none;color:inherit;font:inherit;font-weight:800;text-decoration:underline;padding:8px 10px;min-height:44px}
 @media (prefers-reduced-motion: reduce){#toast{transition:none}}
 /* animacje ćwiczeń */
 .media.anim{background:var(--surface-2);display:grid;overflow:visible;flex:none}
@@ -1934,8 +1947,13 @@ const LS = {
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   del(k){ try { localStorage.removeItem(k); } catch {} },
 };
-let toastT;
-function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+let toastT, undoFn = null;
+function toast(msg){ const t = $('#toast'); undoFn = null; t.classList.remove('act'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+// toast z przyciskiem „Cofnij” (kopiowanie w diecie): dłużej widoczny i klikalny
+function toastUndo(msg, fn){
+  const t = $('#toast'); undoFn = fn; t.innerHTML = `<span>${esc(msg)}</span><button class="toast-btn" data-act="toastUndo">Cofnij</button>`;
+  t.classList.add('show', 'act'); clearTimeout(toastT); toastT = setTimeout(() => { t.classList.remove('show', 'act'); undoFn = null; }, 7000);
+}
 
 /* ====================== stan ====================== */
 function blankState(){ return {v:2, plans:[], custom:[], settings:{...DEF_SETTINGS}}; }
@@ -3468,7 +3486,7 @@ function renderSheet(){
   if (!s){ w.hidden = true; el.innerHTML = ''; lockBody(); animStop(); ytStop(); bm3dStop(); bm3dMount(); return; }
   w.hidden = false; el.innerHTML = SHEETS[s.type](s); if (!el.querySelector('.sheet-f')) el.insertAdjacentHTML('beforeend', '<div class="sheet-end"></div>'); el.scrollTop = 0; lockBody();
   if (s.type === 'pick') fillPickList();
-  if (s.type === 'dietAdd') fillDietList(); else if (s.type === 'dietQty') qtyOut(s); else if (s.type === 'dietProd') prodWarn(); else if (s.type === 'dietGoals') goalsHint(); else if (s.type === 'dietCalc') calcOut(); else if (s.type === 'dietScan') scanStart();
+  if (s.type === 'dietAdd') fillDietList(); else if (s.type === 'dietQty') qtyOut(s); else if (s.type === 'dietProd') prodWarn(); else if (s.type === 'dietGoals') goalsHint(); else if (s.type === 'dietCalc') calcOut(); else if (s.type === 'dietTpl') tplOut(s); else if (s.type === 'dietScan') scanStart();
   animMount(); ytMount(); bm3dMount();
   const f = $('[autofocus]', el); if (f && matchMedia('(pointer:fine)').matches) f.focus();
 }
@@ -4222,7 +4240,7 @@ const ACT = {
     let d; try { d = JSON.parse($('#imp').value); } catch { toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (!d || d.app !== 'dziennik-silowni' || !d.state){ toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (d.diet && !dietCanEdit()) return;
-    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty” i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety (zwykłe i treningowe) oraz profil kalkulatora zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
+    confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty”, gotowe posiłki i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety (zwykłe i treningowe) oraz profil kalkulatora zostaną zastąpione, jeśli kopia je ma.', 'Przywróć', async () => {
       S = normalize(d.state); S.plans.forEach(p => { delete p.share; }); commit();   // kody udostępnień zostają przy oryginałach
       const have = new Set(SESS.map(s => s.id));
       for (const s of sortSess((d.sessions || []).filter(s => s && s.id && !have.has(s.id)))) await saveSession(s);
@@ -4238,7 +4256,9 @@ const ACT = {
         for (const k of addW) DIET.wt[k] = inc.wt[k];
         const tg = inc.goalsT, anyT = !!(tg.k || tg.b || tg.w || tg.t); if (anyT) DIET.goalsT = tg;   // cele treningowe: zastępowane tylko, gdy kopia je ma
         const profIn = !!inc.prof; if (profIn) DIET.prof = inc.prof;   // profil kalkulatora: zastępowany tylko, gdy kopia go ma
-        persistDiet(add, [], anyGoal, addM.length > 0, addW, [], profIn, anyT);
+        const addT = Object.keys(inc.tpl).filter(id => !(id in DIET.tpl)).slice(0, TPL_MAX - Object.keys(DIET.tpl).length);   // gotowe posiłki: brakujące dochodzą, istniejące zostają
+        for (const id of addT) DIET.tpl[id] = inc.tpl[id];
+        persistDiet(add, [], anyGoal, addM.length > 0, addW, [], profIn, anyT, addT);
       }
       if (d.dietDays && typeof d.dietDays === 'object'){   // dni scalane po wpisach: brakujące dochodzą, istniejące zostają
         const inc = normalizeDays(d.dietDays);
@@ -4505,7 +4525,22 @@ function normalizeDiet(d){
   const raw = d && d.mine, list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.entries(raw).map(([id, x]) => x && typeof x === 'object' ? {...x, id} : null) : [];
   for (const p of list){ const c = cleanProd(p); if (c && !seen.has(c.id)){ seen.add(c.id); mine.push(c); } }
   mine.sort(byId);
-  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, goalsT:{k:goal(gT.k, DLIM.gk), b:goal(gT.b, DLIM.gmac), w:goal(gT.w, DLIM.gmac), t:goal(gT.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), wt:cleanWt(d && d.wt), prof:cleanProf(d && d.prof), v:1};
+  return {goals:{k:goal(g.k, DLIM.gk), b:goal(g.b, DLIM.gmac), w:goal(g.w, DLIM.gmac), t:goal(g.t, DLIM.gmac)}, goalsT:{k:goal(gT.k, DLIM.gk), b:goal(gT.b, DLIM.gmac), w:goal(gT.w, DLIM.gmac), t:goal(gT.t, DLIM.gmac)}, mine, meals:cleanMeals(d && d.meals), wt:cleanWt(d && d.wt), prof:cleanProf(d && d.prof), tpl:cleanTpl(d && d.tpl), v:1};
+}
+// gotowe posiłki (etap 3.5): mapa {id: {id, n, items:[wpisy bez id/o/m], uses, last}}, w bazie każdy osobnym polem dokumentu diety
+const TPL_MAX = 50, TPL_ITEMS = 30, TPL_NAME_MAX = 40;
+const tplItem = e => { const c = cleanEntry({...e, id:'x'}); delete c.id; delete c.o; return c; };
+function cleanTpl(o){
+  const out = {};
+  const list = Array.isArray(o) ? o : o && typeof o === 'object' ? Object.entries(o).map(([id, x]) => x && typeof x === 'object' ? {...x, id} : null) : [];
+  for (const x of list){
+    if (!x || !Array.isArray(x.items)) continue;
+    const id = String(x.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60), n = String(x.n || '').trim().slice(0, TPL_NAME_MAX);
+    const items = x.items.slice(0, TPL_ITEMS).filter(i => i && typeof i === 'object').map(tplItem);
+    if (!id || !n || !items.length || out[id] || Object.keys(out).length >= TPL_MAX) continue;
+    out[id] = {id, n, items, uses:Math.max(0, Math.floor(+x.uses || 0)), last:Math.max(0, +x.last || 0)};
+  }
+  return out;
 }
 // profil do kalkulatora zapotrzebowania: {sex:'m'|'k', by:rok urodzenia, h:wzrost cm, pal, goal:'red'|'utr'|'masa'} (brakujące pola = null)
 const PALS = [1.2, 1.375, 1.55, 1.725, 1.9], PROF_GOALS = ['red', 'utr', 'masa'];
@@ -4555,6 +4590,7 @@ let dietLoaded = false;          // dokument data/diet przyszedł już z bazy (a
 // Zapis scala pola dokumentu (merge), więc dwa urządzenia nie nadpisują się nawzajem.
 const dietPut = new Set(), dietDel = new Set();
 const wtPut = new Set(), wtDel = new Set();   // dni pomiarów masy ciała do zapisu / usunięcia
+const tplPut = new Set(), tplDel = new Set();   // gotowe posiłki do zapisu / usunięcia (id)
 let dietGoalsDirty = false, dietGoalsTDirty = false, dietMealsDirty = false, dietProfDirty = false, DIET_OLD = false;   // DIET_OLD: w bazie stary format (tablica, v:1) – jednorazowo zamieniamy cały dokument
 const DAY_OLD = new Set();       // dni zapisane w bazie starym formatem {meals} – przy najbliższym zapisie przechodzą na nowy
 const dayOf = k => DAYS[k] || blankDay();
@@ -4593,7 +4629,8 @@ function goalsFor(k){
 /* ---------- zapis ---------- */
 // put = id produktów dodanych/zmienionych, del = id usuniętych, goals = zmieniono cele
 // wp / wd = dni pomiarów masy ciała dodanych/zmienionych / usuniętych
-function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], wd = [], prof = false, goalsT = false){
+// tp / td = id gotowych posiłków dodanych/zmienionych / usuniętych
+function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], wd = [], prof = false, goalsT = false, tp = [], td = []){
   const k = lsKey('diet'); if (k) LS.set(k, DIET);
   if (!fireOn()) return;
   for (const id of put){ dietPut.add(id); dietDel.delete(id); }
@@ -4604,7 +4641,9 @@ function persistDiet(put = [], del = [], goals = false, meals = false, wp = [], 
   if (prof) dietProfDirty = true;
   for (const k of wp){ wtPut.add(k); wtDel.delete(k); }
   for (const k of wd){ wtDel.add(k); wtPut.delete(k); }
-  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietGoalsTDirty && !dietMealsDirty && !dietProfDirty && !wtPut.size && !wtDel.size) return;
+  for (const id of tp){ tplPut.add(id); tplDel.delete(id); }
+  for (const id of td){ tplDel.add(id); tplPut.delete(id); }
+  if (!dietPut.size && !dietDel.size && !dietGoalsDirty && !dietGoalsTDirty && !dietMealsDirty && !dietProfDirty && !wtPut.size && !wtDel.size && !tplPut.size && !tplDel.size) return;
   dietDirty = true; clearTimeout(dietT); dietT = setTimeout(flushDiet, 600);
 }
 function flushDiet(){
@@ -4612,13 +4651,13 @@ function flushDiet(){
   if (!dietDirty || !fireOn()) return;
   dietDirty = false;
   const put = [...dietPut], del = [...dietDel], goals = dietGoalsDirty, goalsT = dietGoalsTDirty, meals = dietMealsDirty, prof = dietProfDirty, old = DIET_OLD, G = DIET.goals, T = DIET.goalsT;
-  const wp = [...wtPut], wd = [...wtDel];
-  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear();
+  const wp = [...wtPut], wd = [...wtDel], tp = [...tplPut], td = [...tplDel];
+  dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); tplPut.clear(); tplDel.clear();
   const ref = FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'diet'), gdoc = {k:G.k ?? null, b:G.b ?? null, w:G.w ?? null, t:G.t ?? null}, tdoc = {k:T.k ?? null, b:T.b ?? null, w:T.w ?? null, t:T.t ?? null};
   let job;
   if (old){   // stary format: jednorazowo cały dokument w nowym kształcie (mapa produktów)
     const mine = {}; for (const x of DIET.mine) mine[x.id] = clone(x);
-    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, goalsT:tdoc, mine, meals:clone(DIET.meals), wt:{...DIET.wt}, ...(DIET.prof ? {prof:clone(DIET.prof)} : {})});
+    DIET_OLD = false; job = FB.setDoc(ref, {v:2, goals:gdoc, goalsT:tdoc, mine, meals:clone(DIET.meals), wt:{...DIET.wt}, tpl:clone(DIET.tpl), ...(DIET.prof ? {prof:clone(DIET.prof)} : {})});
   } else {
     const data = {v:2}, mine = {};
     if (goals) data.goals = gdoc;
@@ -4632,11 +4671,16 @@ function flushDiet(){
     for (const k of wp) if (DIET.wt[k] != null) wt[k] = DIET.wt[k];
     for (const k of wd) wt[k] = FB.deleteField();
     if (Object.keys(wt).length) data.wt = wt;   // zagnieżdżona mapa z merge: zmieniają się tylko te dni
+    const tpl = {};   // gotowe posiłki: każdy osobnym polem (lista składników to tablica – zapisuje się w całości)
+    for (const id of tp) if (DIET.tpl[id]) tpl[id] = clone(DIET.tpl[id]);
+    for (const id of td) tpl[id] = FB.deleteField();
+    if (Object.keys(tpl).length) data.tpl = tpl;
     job = FB.setDoc(ref, data, {merge:true});
   }
   job.catch(() => {   // nie poszło: zmiany wracają do kolejki
     put.forEach(id => dietPut.add(id)); del.forEach(id => dietDel.add(id)); if (goals) dietGoalsDirty = true; if (goalsT) dietGoalsTDirty = true; if (meals) dietMealsDirty = true; if (prof) dietProfDirty = true; if (old) DIET_OLD = true;
     wp.forEach(k => { if (!wtDel.has(k)) wtPut.add(k); }); wd.forEach(k => { if (!wtPut.has(k)) wtDel.add(k); });
+    tp.forEach(id => { if (!tplDel.has(id)) tplPut.add(id); }); td.forEach(id => { if (!tplPut.has(id)) tplDel.add(id); });
     toast('Nie udało się zapisać diety w bazie.');
   });
 }
@@ -4665,9 +4709,9 @@ function dietCanEdit(){
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDiet(); });
 function dietUnwatch(){ if (unsubDiet) unsubDiet(); if (unsubDays) unsubDays(); unsubDiet = unsubDays = null; }
-function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietErr = ''; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
+function dietClose(){ dietUnwatch(); clearTimeout(dietT); dietDirty = false; dietLoaded = false; dietErr = ''; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); tplPut.clear(); tplDel.clear(); DAY_OLD.clear(); DIET = normalizeDiet(null); syncMeals(); DAYS = {}; ui.dietDay = null; }
 function dietOpen(fid){
-  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietErr = ''; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear();
+  dietUnwatch(); dietDirty = false; dietLoaded = false; DAY_OLD.clear(); clearTimeout(dietT); dietErr = ''; dietPut.clear(); dietDel.clear(); dietGoalsDirty = false; DIET_OLD = false; dietMealsDirty = false; dietProfDirty = false; dietGoalsTDirty = false; wtPut.clear(); wtDel.clear(); tplPut.clear(); tplDel.clear();
   DIET = normalizeDiet(LS.get(lsKey('diet'), null)); syncMeals(); DAYS = normalizeDays(LS.get(lsKey('dietDays'), {})); ui.dietDay = null;
   // includeMetadataChanges: przy pamięci podręcznej bazy brak dokumentu przychodzi najpierw z pamięci (fromCache:true),
   // a potwierdzenie z serwera to zmiana samych metadanych – bez tej opcji nie wywołałoby funkcji i dietLoaded zostałoby false
@@ -4688,8 +4732,10 @@ function dietOpen(fid){
     if (dietProfDirty) inc.prof = DIET.prof;
     for (const k of wtPut) if (DIET.wt[k] != null) inc.wt[k] = DIET.wt[k];
     for (const k of wtDel) delete inc.wt[k];
+    for (const id of tplPut) if (DIET.tpl[id]) inc.tpl[id] = DIET.tpl[id];
+    for (const id of tplDel) delete inc.tpl[id];
     inc.mine.sort(byId);
-    const sig = d => JSON.stringify([d.goals, d.goalsT, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort(), d.prof]);
+    const sig = d => JSON.stringify([d.goals, d.goalsT, d.mine.slice().sort(byId), d.meals, Object.entries(d.wt).sort(), d.prof, Object.entries(d.tpl).sort()]);
     if (sig(inc) !== sig(DIET)){ DIET = inc; syncMeals(); LS.set(lsKey('diet'), DIET); dietRefresh(); }
   }, e => { dietErr = (e && e.code) || 'błąd'; });
   const q = FB.query(FB.collection(FB.db, 'folders', fid, 'diet'), FB.where('date', '>=', dietMinKey()));
@@ -4789,11 +4835,11 @@ function vDiet(){
   const dm = dayOf(key).meals, orphan = Object.keys(dm).filter(m => dm[m].length && !MEALS.some(x => x[0] === m)).map(m => [m, 'Inny posiłek']);
   for (const [m, nm] of [...MEALS, ...orphan]){
     const list = dm[m] || [], s = sumOf(list), known = MEALS.some(x => x[0] === m);
-    h += `<section class="dt-meal" aria-label="${esc(nm)}"><div class="dt-meal-h"><h2>${esc(nm)}</h2><span class="s num">${list.length ? fmtG(s.k) + ' kcal · B ' + fmtG(s.b) + ' g' : ''}</span></div>
+    h += `<section class="dt-meal" aria-label="${esc(nm)}"><div class="dt-meal-h"><h2>${esc(nm)}</h2><span class="s num">${list.length ? fmtG(s.k) + ' kcal · B ' + fmtG(s.b) + ' g' : ''}</span>${list.length ? `<button class="dt-more" data-act="dietMealMenu" data-meal="${m}" aria-label="Menu posiłku: ${esc(nm)}">⋯</button>` : ''}</div>
       ${list.map(e => `<button class="dt-ent" data-act="dietEntry" data-meal="${m}" data-id="${esc(e.id)}"><span><span class="n">${esc(e.n)}</span><span class="m num" style="display:block">${entryQty(e) ? esc(entryQty(e)) + ' · ' : ''}B ${fmtG(e.b)} · W ${fmtG(e.w)} · T ${fmtG(e.t)}</span></span><span class="k num">${fmtG(e.k)} kcal</span></button>`).join('')}
       ${known ? `<button class="dt-add" data-act="dietAdd" data-meal="${m}">${svg('plus', 'i s')}Dodaj</button>` : ''}</section>`;
   }
-  h += `<div class="row" style="justify-content:center"><button class="btn ghost sm" data-act="dietMeals">Posiłki</button><button class="btn ghost sm" data-act="dietGoals">Cele</button></div></div>`;
+  h += `<div class="row" style="justify-content:center">${Object.values(dm).some(l => l.length) ? '<button class="btn ghost sm" data-act="dietCopyDay">Kopiuj dzień</button>' : ''}<button class="btn ghost sm" data-act="dietMeals">Posiłki</button><button class="btn ghost sm" data-act="dietGoals">Cele</button></div></div>`;
   return h;
 }
 const entryUnit = e => { if (e.u) return e.u; const p = e.pid ? prodOf(e.pid) : null; return p ? p.u : 'g'; };
@@ -4803,10 +4849,17 @@ const entryQty = e => e.q ? `${fmtN(e.q)} × ${e.po || '1 porcja'} (${fmtN(e.g)}
 /* ---------- arkusze ---------- */
 const prodRow = (p, src) => `<button class="dt-ent" data-act="dietPick" data-id="${esc(p.id)}"><span><span class="n">${p.star ? `<span class="dt-star" aria-label="Ulubiony">${svg('star', 'i s')}</span> ` : ''}${esc(p.n)}</span>${p.brand ? `<span class="m" style="display:block">${esc(p.brand)}</span>` : ''}
     <span class="m num" style="display:block">${fmtN(p.k)} kcal · B ${fmtN(p.b)} · na 100 ${p.u}</span></span>${svg('chev', 'i s chev')}</button>`;
+const tplRow = t => { const m = sumOf(t.items), n = t.items.length; return `<button class="dt-ent" data-act="tplOpen" data-id="${esc(t.id)}"><span><span class="n">${esc(t.n)}</span><span class="m num" style="display:block">${n} ${pl(n, 'składnik', 'składniki', 'składników')} · B ${fmtG(m.b)} g</span></span><span class="k num">${fmtG(m.k)} kcal</span></button>`; };
 function fillDietList(){
   const s = topSheet(), el = $('#dt-list'); if (!s || s.type !== 'dietAdd' || !el) return;
   const words = norm(s.q || '').split(/\s+/).filter(Boolean);
-  let h = '';
+  let h = '', tplH = '';
+  if (s.tab === 'g'){   // zakładka „Gotowe”: lista gotowych posiłków (najczęściej / ostatnio używane), filtrowana po nazwie
+    const list = tplList().filter(t => words.every(w => norm(t.n).includes(w)));
+    el.innerHTML = list.length ? `<div class="exlist">${list.map(tplRow).join('')}</div>` : `<p class="muted" style="margin:0">${Object.keys(DIET.tpl).length ? 'Nic nie znaleziono.' : 'Nie masz jeszcze gotowych posiłków. Zapisz posiłek z menu „⋯” przy jego nazwie albo stuknij „Nowy gotowy posiłek”.'}</p>`;
+    return;
+  }
+  if (words.length && !s.toTpl){ const m = tplList().filter(t => words.every(w => norm(t.n).includes(w))).slice(0, 10); if (m.length) tplH = `<h3 class="h3">Gotowe</h3><div class="exlist">${m.map(tplRow).join('')}</div>`; }
   if (!words.length){
     const list = DIET.mine.slice().sort(mineSort).slice(0, 60);
     h = list.length ? `<h3 class="h3">Moje produkty</h3><div class="exlist">${list.map(p => prodRow(p)).join('')}</div>` : '<p class="muted" style="margin:0">Wyszukaj produkt, żeby go dodać. Dodane produkty pojawią się tutaj.</p>';
@@ -4819,10 +4872,10 @@ function fillDietList(){
     if (mine.length) h += `<h3 class="h3">Moje produkty</h3><div class="exlist">${mine.map(p => prodRow(p)).join('')}</div>`;
     if (gen.length) h += `<h3 class="h3">Baza ogólna</h3><div class="exlist">${gen.map(f => prodRow({...f, brand:'', star:false})).join('')}</div>`;
     if (shl.length) h += `<h3 class="h3">Baza wspólna</h3><div class="exlist">${shl.map(p => prodRow(p)).join('')}</div>`;
-    if (!h && !busy) h = '<p class="muted" style="margin:0">Nic nie znaleziono. Możesz dodać „Nowy produkt”, „Szybki wpis” albo zeskanować kod.</p>';
+    if (!h && !tplH && !busy) h = `<p class="muted" style="margin:0">Nic nie znaleziono. Możesz dodać „Nowy produkt”${s.toTpl ? '' : ', „Szybki wpis” albo zeskanować kod'}.</p>`;
     if (busy) h += '<p class="muted small" style="margin:0">Szukam we wspólnej bazie…</p>';
   }
-  el.innerHTML = h;
+  el.innerHTML = tplH + h;
 }
 const round2 = v => Math.round(v * 100) / 100;
 // s.g = gramy (ml) całego wpisu w obu trybach; w trybie sztuk s.q = liczba sztuk, a s.g = s.q × porcja
@@ -4847,9 +4900,12 @@ function qtyBase(s){
   }
   return prodOf(s.pid);
 }
-SHEETS.dietAdd = s => sheetHead('Dodaj: ' + mealName(s.meal)) + `
-  <div class="search">${svg('search')}<input class="input" id="dt-q" type="search" data-bind="dietq" placeholder="Szukaj produktu" value="${esc(s.q || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Szukaj produktu"></div>
-  <div class="row"><button class="btn primary" data-act="dietScan" data-meal="${s.meal}">${svg('camera', 'i s')}Skanuj</button><button class="btn" data-act="dietQuick" data-meal="${s.meal}">Szybki wpis</button><button class="btn" data-act="dietNewProd" data-meal="${s.meal}">Nowy produkt</button></div>
+SHEETS.dietAdd = s => sheetHead(s.toTpl ? 'Dodaj składnik' : 'Dodaj: ' + mealName(s.meal)) +
+  (s.toTpl ? '' : `<div class="seg tp-seg" role="group" aria-label="Rodzaj"><button data-act="dtTab" data-v="p" aria-pressed="${s.tab !== 'g'}">Produkty</button><button data-act="dtTab" data-v="g" aria-pressed="${s.tab === 'g'}">Gotowe</button></div>`) + `
+  <div class="search">${svg('search')}<input class="input" id="dt-q" type="search" data-bind="dietq" placeholder="${s.tab === 'g' ? 'Szukaj gotowego posiłku' : 'Szukaj produktu'}" value="${esc(s.q || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="${s.tab === 'g' ? 'Szukaj gotowego posiłku' : 'Szukaj produktu'}"></div>
+  ${s.tab === 'g' ? '<div class="row"><button class="btn primary" data-act="tplNew">Nowy gotowy posiłek</button></div>'
+    : s.toTpl ? '<div class="row"><button class="btn" data-act="dietNewProd">Nowy produkt</button></div>'
+    : `<div class="row"><button class="btn primary" data-act="dietScan" data-meal="${s.meal}">${svg('camera', 'i s')}Skanuj</button><button class="btn" data-act="dietQuick" data-meal="${s.meal}">Szybki wpis</button><button class="btn" data-act="dietNewProd" data-meal="${s.meal}">Nowy produkt</button></div>`}
   <div id="dt-list" class="stack"></div>`;
 SHEETS.dietScan = s => sheetHead('Skanuj kod kreskowy') + `
   <div class="scan-box"><video id="scan-v" playsinline muted></video><div class="scan-aim" aria-hidden="true"></div></div>
@@ -4870,7 +4926,7 @@ SHEETS.dietQty = s => {
     : `<div class="field"><label class="lbl" for="dq-g">Ilość (${p.u})</label>
         <div class="row" style="flex-wrap:nowrap"><input class="input" id="dq-g" inputmode="decimal" data-bind="dqg" value="${esc(s.g != null ? fmtN(s.g) : '')}" autocomplete="off" aria-label="Ilość w ${p.u === 'ml' ? 'mililitrach' : 'gramach'}">
         ${pc ? `<button class="btn" data-act="dqPortion" style="flex:none">${esc(p.po || '1 porcja')} · ${fmtN(p.pg)} ${p.u}</button>` : ''}</div></div>`;
-  return sheetHead(s.entry ? 'Edytuj wpis' : 'Dodaj do: ' + mealName(s.meal)) + `
+  return sheetHead(s.toTpl ? (s.entry ? 'Edytuj składnik' : 'Dodaj do zestawu') : s.entry ? 'Edytuj wpis' : 'Dodaj do: ' + mealName(s.meal)) + `
     <div><h2 class="ex-title" style="font-size:24px">${esc(p.n)}</h2>${p.brand ? `<p class="muted small" style="margin:2px 0 0">${esc(p.brand)}</p>` : ''}
       <p class="muted small num" style="margin:6px 0 0">${per}: ${fmtN(r1(p.k))} kcal · B ${fmtN(r1(p.b))} · W ${fmtN(r1(p.w))} · T ${fmtN(r1(p.t))}</p>
       ${pc ? `<p class="muted small num" style="margin:2px 0 0">Porcja: ${esc(p.po || '1 porcja')} · ${fmtN(p.pg)} ${p.u}</p>` : ''}
@@ -4878,10 +4934,10 @@ SHEETS.dietQty = s => {
       ${live && live.off ? '<p class="muted small" style="margin:6px 0 0">Dane: Open Food Facts (ODbL)</p>' : ''}</div>
     ${pc ? `<div class="field"><span class="lbl">Jednostka</span><div class="seg" role="group" aria-label="Jednostka ilości"><button data-act="dqMode" data-m="q" aria-pressed="${qm}">szt.</button><button data-act="dqMode" data-m="g" aria-pressed="${!qm}">${p.u}</button></div></div>` : ''}
     ${field}
-    <div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${esc(nm)}</button>`).join('')}</div></div>
+    ${s.toTpl ? '' : `<div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${esc(nm)}</button>`).join('')}</div></div>`}
     <div class="dt-out" id="dq-out" aria-live="polite"></div>
     ${live ? `<div class="row"><button class="btn sm" data-act="dqStar" aria-pressed="${!!(mine && mine.star)}">${svg('star', 'i s')}${mine && mine.star ? 'Ulubiony' : 'Dodaj gwiazdkę'}</button><button class="btn sm" data-act="dqEditProd">Edytuj produkt</button></div>` : ''}
-    <div class="sheet-f">${s.entry ? '<button class="btn danger" data-act="dqDelete" style="flex:none">Usuń</button>' : ''}<button class="btn primary" data-act="dqSave">${s.entry ? 'Zapisz' : 'Dodaj'}</button></div>`;
+    <div class="sheet-f">${s.entry && !s.toTpl ? '<button class="btn danger" data-act="dqDelete" style="flex:none">Usuń</button>' : ''}<button class="btn primary" data-act="dqSave">${s.entry ? 'Zapisz' : 'Dodaj'}</button></div>`;
 };
 SHEETS.dietQuick = s => {
   const f = s.f, fld = (k, lbl, ph) => `<div class="field"><label class="lbl" for="dk-${k}">${lbl}</label><input class="input" id="dk-${k}" inputmode="decimal" data-bind="df" data-f="${k}" value="${esc(f[k])}" placeholder="${ph}" autocomplete="off"></div>`;
@@ -5127,10 +5183,10 @@ Object.assign(ACT, {
   scanGo(){ const i = $('#scan-ean'); scanLookup(i ? i.value : '', true); },
   dietPick(el){
     const s = topSheet(), p = prodOf(el.dataset.id); if (!p) return;
-    openDietQty({meal:s.meal, pid:p.id, day:sDay(s)});
+    openDietQty({meal:s.meal, pid:p.id, day:sDay(s), toTpl:!!s.toTpl});
   },
   dietQuick(el){ openSheet({type:'dietQuick', meal:el.dataset.meal, day:sDay(topSheet()), entryId:null, f:{n:'', k:'', b:'', w:'', t:''}}); },
-  dietNewProd(el){ openSheet({type:'dietProd', id:null, meal:el.dataset.meal, day:sDay(topSheet()), f:{n:topSheet().q || '', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''}}); },
+  dietNewProd(el){ openSheet({type:'dietProd', id:null, meal:el.dataset.meal, toTpl:!!topSheet().toTpl, day:sDay(topSheet()), f:{n:topSheet().q || '', brand:'', u:'g', k:'', b:'', w:'', t:'', f:'', pg:'', po:''}}); },
   dietEntry(el){
     const key = dietKey(), r = findEntry(key, el.dataset.id); if (!r) return;
     if (!r.e.pid || !(r.e.g > 0)){ const e = r.e; openSheet({type:'dietQuick', meal:r.m, day:key, entryId:e.id, f:{n:e.n === 'Szybki wpis' ? '' : e.n, k:fmtN(e.k), b:fmtN(e.b), w:fmtN(e.w), t:fmtN(e.t)}}); return; }
@@ -5162,6 +5218,14 @@ Object.assign(ACT, {
     if (qm && !(s.q > 0)){ toast('Podaj liczbę sztuk.'); return; }
     if (!(g >= 1 && g <= DLIM.qty)){ toast(qm ? `Razem ma wyjść od 1 do 5000 ${s.base.u}.` : 'Podaj ilość od 1 do 5000.'); return; }
     const m = qtyMacro(s), pc = qm ? {q:round2(s.q), po:s.base.po || '1 porcja', pg:s.base.pg} : {};   // wpis w sztukach pamięta liczbę sztuk i opis porcji
+    if (s.toTpl){   // składnik gotowego posiłku: do szkicu w arkuszu edycji, nie do dnia
+      const ei = sheets.map(x => x.type).lastIndexOf('dietTplEdit'), p = s.entry ? null : prodOf(s.pid); if (ei < 0 || (!s.entry && !p)) return;
+      let it;
+      if (s.entry){ it = {...s.entry, g:r1(g), ...m}; for (const f of ['q', 'po', 'pg']) delete it[f]; Object.assign(it, pc); }
+      else it = {pid:p.id, n:p.n, g:r1(g), ...m, ...pc, ...(p.u === 'ml' ? {u:'ml'} : {})};
+      const E = sheets[ei]; if (s.entry) E.items[s.tplIdx] = tplItem(it); else E.items.push(tplItem(it));
+      sheets.length = ei + 1; renderSheet(); return;
+    }
     if (s.entry){
       const r = findEntry(key, s.entryId); if (!r){ toast('Tego wpisu już nie ma.'); sheets.length = 0; renderSheet(); render(); return; }
       Object.assign(r.e, {g:r1(g), ...m}); for (const f of ['q', 'po', 'pg']) delete r.e[f]; Object.assign(r.e, pc);
@@ -5220,7 +5284,7 @@ Object.assign(ACT, {
     const i = DIET.mine.findIndex(x => x.id === rec.id);
     if (i >= 0) DIET.mine[i] = rec; else DIET.mine.push(rec);
     persistDiet([rec.id]);
-    if (s.meal && !s.id){ sheets.pop(); openDietQty({meal:s.meal, pid:rec.id, day:sDay(s)}); toast('Zapisano produkt.'); }
+    if ((s.meal || s.toTpl) && !s.id){ sheets.pop(); openDietQty({meal:s.meal, pid:rec.id, day:sDay(s), toTpl:!!s.toTpl}); toast('Zapisano produkt.'); }
     else { sheets.pop(); renderSheet(); render(); toast('Zapisano produkt.'); }
   },
   dpDelete(){
@@ -5275,7 +5339,7 @@ Object.assign(ACT, {
 });
 Object.assign(BIND, {
   dmName(t){ const m = DIET.meals.find(x => x.id === t.dataset.id), n = t.value.trim().slice(0, MEAL_NAME_MAX); if (!m || !n || m.n === n) return; m.n = n; syncMeals(); persistDiet([], [], false, true); render(); },
-  dietq(t){ topSheet().q = t.value; sharedSearch(); fillDietList(); },
+  dietq(t){ const s = topSheet(); s.q = t.value; if (s.tab !== 'g') sharedSearch(); fillDietList(); },
   scanean(t){ const d = t.value.replace(/\D/g, ''); if (d !== t.value) t.value = d; topSheet().ean = d; },
   dqq(t){
     const s = topSheet(), pg = s.base.pg, max = Math.floor(DLIM.qty / pg * 100) / 100; let v = num(t.value);
@@ -5424,6 +5488,166 @@ Object.assign(ACT, {
   },
 });
 Object.assign(BIND, { wtf(t){ const s = topSheet(); if (!s) return; s.f[t.dataset.f] = t.value; if (t.dataset.f === 'd') wtHint(); } });
+
+/* ---------- kopiowanie i moje gotowe posiłki (etap 3.5) ---------- */
+const dayEntries = k => Object.values(dayOf(k).meals).flat();
+const cntTxt = n => `${n} ${pl(n, 'wpis', 'wpisy', 'wpisów')}`;
+const shortDate = k => { const d = keyToDate(k); return `${d.getDate()}.${d.getMonth() + 1}`; };
+const tplList = () => Object.values(DIET.tpl).sort((a, b) => (b.uses - a.uses) || (b.last - a.last) || a.n.localeCompare(b.n, 'pl'));
+const outHTML = m => `<div><b class="num">${fmtN(r1(m.k))}</b><span>kcal</span></div><div><b class="num">${fmtN(r1(m.b))}</b><span>Białko</span></div><div><b class="num">${fmtN(r1(m.w))}</b><span>Węgle</span></div><div><b class="num">${fmtN(r1(m.t))}</b><span>Tłuszcz</span></div>`;
+const errLine = s => s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : '';
+// wpisy do skopiowania: cały dzień (posiłki z listy po kolei, na końcu „Inny posiłek”) albo jeden posiłek; kolejność w posiłku wg `o`
+function copySource(s){
+  const dm = dayOf(s.src).meals, ids = s.scope === 'meal' ? [s.meal] : [...MEALS.map(x => x[0]), ...Object.keys(dm).filter(m => !MEALS.some(x => x[0] === m))];
+  return ids.flatMap(m => (dm[m] || []).slice().sort((a, b) => a.o - b.o).map(e => ({e, m})));
+}
+SHEETS.dietMealMenu = s => `${sheetHead(mealName(s.meal))}<p class="muted small" style="margin:0">${cntTxt((dayOf(s.day).meals[s.meal] || []).length)}</p>
+  <div class="stack"><button class="btn" data-act="mealCopy" style="width:100%">Kopiuj na…</button><button class="btn" data-act="mealTpl" style="width:100%">Zapisz jako gotowy posiłek</button></div>`;
+SHEETS.dietCopy = s => {
+  const src = copySource(s), tot = sumOf(src.map(x => x.e));
+  return sheetHead(s.scope === 'day' ? 'Kopiuj dzień' : 'Kopiuj: ' + mealName(s.meal)) + `
+    <p class="muted small num" style="margin:0">${cntTxt(src.length)} · ${fmtG(tot.k)} kcal · z dnia ${esc(fmtDate(keyToDate(s.src).toISOString(), {day:'numeric', month:'long'}))}</p>
+    <div class="field"><label class="lbl" for="dc-date">Skopiuj na dzień</label>
+      <input class="input" id="dc-date" type="date" data-bind="dcDate" value="${esc(s.date)}" max="${dietToday()}"${FIRE ? ` min="${dietMinKey()}"` : ''} aria-label="Data docelowa">
+      <div class="chips" style="margin-top:8px"><button class="chip" data-act="dcDay" data-d="0">Na dziś</button><button class="chip" data-act="dcDay" data-d="-1">Na wczoraj</button></div></div>
+    ${s.scope === 'meal' ? `<div class="field"><span class="lbl">Do posiłku</span><div class="chips" role="group" aria-label="Posiłek docelowy">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dcMeal" data-meal="${m}" aria-pressed="${m === s.tmeal}">${esc(nm)}</button>`).join('')}</div></div>`
+      : '<p class="note">Wpisy dopiszą się do tego, co już jest w dniu docelowym. Wpisy z usuniętych posiłków trafią do pierwszego posiłku z listy.</p>'}
+    ${errLine(s)}
+    <div class="sheet-f"><button class="btn primary" data-act="dcGo">Kopiuj</button></div>`;
+};
+// mnożnik gotowego posiłku: g i q × mnożnik (sztuki: g = q × porcja), makro × mnożnik, zaokrąglenia jak w części 1
+const TPL_MULTS = [0.5, 1, 1.5, 2];
+function tplScale(t, f){
+  return t.items.map(it => {
+    const o = {...it, k:r1(it.k * f), b:r1(it.b * f), w:r1(it.w * f), t:r1(it.t * f)};
+    if (it.q && it.pg){ o.q = round2(it.q * f); o.g = r1(o.q * it.pg); } else if (it.g) o.g = r1(it.g * f);
+    return o;
+  });
+}
+const tplBad = sc => sc.some(o => (o.g != null && (o.g > DLIM.qty || o.g < 0.1)) || (o.q != null && o.q < 0.01));
+const tplLine = o => `<div class="tp-ing"><span><span class="n">${esc(o.n)}</span>${entryQty(o) ? `<span class="m num">${esc(entryQty(o))}</span>` : ''}</span><span class="k num">${fmtG(o.k)} kcal</span></div>`;
+SHEETS.dietTpl = s => {
+  const t = DIET.tpl[s.tid]; if (!t) return sheetHead('Gotowy posiłek') + '<p class="muted" style="margin:0">Tego gotowego posiłku już nie ma.</p>';
+  return sheetHead(t.n) + `<p class="muted small num" style="margin:0">${t.items.length} ${pl(t.items.length, 'składnik', 'składniki', 'składników')}</p>
+    <div id="tp-list"></div>
+    <div class="field"><span class="lbl">Mnożnik porcji</span><div class="tp-mult"><div class="chips" role="group" aria-label="Mnożnik">${TPL_MULTS.map(v => `<button class="chip" data-act="tplMult" data-v="${v}" aria-pressed="${s.mult === v}">×${fmtN(v)}</button>`).join('')}</div>
+      <input class="input" id="tp-m" inputmode="decimal" data-bind="tplMult" value="${esc(s.mult != null ? fmtN(s.mult) : '')}" aria-label="Własny mnożnik" autocomplete="off"></div></div>
+    <div class="field"><span class="lbl">Posiłek</span><div class="chips" role="group" aria-label="Posiłek">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dqMeal" data-meal="${m}" aria-pressed="${m === s.meal}">${esc(nm)}</button>`).join('')}</div></div>
+    <div class="dt-out" id="tp-out" aria-live="polite"></div>
+    <div class="row"><button class="btn sm" data-act="tplEdit">Edytuj</button><button class="btn danger sm" data-act="tplDel">Usuń</button></div>
+    <div class="sheet-f"><button class="btn primary" id="tp-go" data-act="tplUse">Dodaj</button></div>`;
+};
+function tplOut(s){
+  const t = DIET.tpl[s.tid], out = $('#tp-out'), list = $('#tp-list'), go = $('#tp-go'); if (!t || !out) return;
+  const ok = s.mult >= 0.1 && s.mult <= 10, sc = ok ? tplScale(t, s.mult) : null, bad = !ok || tplBad(sc);
+  if (list) list.innerHTML = (sc || t.items).map(tplLine).join('');
+  out.innerHTML = bad ? `<p class="muted small" style="grid-column:1/-1;margin:0">${!ok ? 'Mnożnik: od 0,1 do 10.' : `Któryś składnik wyszedłby poza zakres ilości (do ${DLIM.qty}).`}</p>` : outHTML(sumOf(sc));
+  if (go) go.disabled = bad;
+}
+SHEETS.dietTplEdit = s => `${sheetHead(s.tid ? 'Edytuj gotowy posiłek' : 'Nowy gotowy posiłek')}
+  <div class="field"><label class="lbl" for="te-n">Nazwa</label><input class="input" id="te-n" maxlength="${TPL_NAME_MAX}" data-bind="tplName" value="${esc(s.n)}" placeholder="np. Owsianka z bananem" autocomplete="off"></div>
+  <div><span class="lbl">Składniki · ${s.items.length}/${TPL_ITEMS}</span>
+    ${s.items.length ? s.items.map((it, i) => `<div class="tp-ing"><button class="tp-ed" data-act="tplItemEdit" data-i="${i}" ${it.pid && it.g ? '' : 'disabled'}><span class="n">${esc(it.n)}</span><span class="m num">${esc(entryQty(it)) || 'bez ilości'} · ${fmtG(it.k)} kcal</span></button><span></span><button class="iconbtn" data-act="tplItemDel" data-i="${i}" aria-label="Usuń składnik: ${esc(it.n)}">${svg('x')}</button></div>`).join('') : '<p class="muted small" style="margin:6px 0 0">Nie ma jeszcze składników.</p>'}</div>
+  <button class="btn" data-act="tplItemAdd" ${s.items.length >= TPL_ITEMS ? 'disabled' : ''} style="width:100%">${svg('plus', 'i s')}Dodaj składnik</button>
+  <div class="dt-out" aria-live="polite">${outHTML(sumOf(s.items))}</div>
+  ${errLine(s)}
+  <div class="sheet-f"><button class="btn primary" data-act="tplSave">Zapisz</button></div>`;
+Object.assign(ACT, {
+  toastUndo(){ const fn = undoFn; undoFn = null; const t = $('#toast'); t.classList.remove('show', 'act'); if (fn) fn(); },
+  dietMealMenu(el){ openSheet({type:'dietMealMenu', meal:el.dataset.meal, day:dietKey()}); },
+  mealCopy(){
+    const s = topSheet(), today = dietToday(); sheets.pop();
+    openSheet({type:'dietCopy', scope:'meal', src:s.day, meal:s.meal, tmeal:MEALS.some(x => x[0] === s.meal) ? s.meal : MEALS[0][0], date:s.day === today ? '' : today, err:''});
+  },
+  dietCopyDay(){ const key = dietKey(); if (!dayEntries(key).length) return; openSheet({type:'dietCopy', scope:'day', src:key, meal:null, tmeal:null, date:key === dietToday() ? '' : dietToday(), err:''}); },
+  dcDay(el){ const s = topSheet(); s.date = shiftKey(dietToday(), +el.dataset.d); const i = $('#dc-date'); if (i) i.value = s.date; },
+  dcMeal(el){ const s = topSheet(); s.tmeal = el.dataset.meal; $$('[data-act="dcMeal"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.meal === s.tmeal))); },
+  dcGo(){
+    const s = topSheet(), today = dietToday(), d = s.date, fail = m => { s.err = m; renderSheet(); };
+    if (!dayKeyOk(d)) return fail('Wybierz datę docelową.');
+    if (d > today) return fail('Nie można kopiować na przyszłe dni.');
+    if (d < dietMinKey()) return fail(`Można kopiować tylko na ostatnie ${DIET_WINDOW} dni.`);
+    if (s.scope === 'day' && d === s.src) return fail('Wybierz inny dzień niż źródłowy – kopia na ten sam dzień podwoiłaby wpisy.');
+    if (s.scope === 'meal' && d === s.src && s.tmeal === s.meal) return fail('Wybierz inny posiłek albo inny dzień.');
+    const src = copySource(s); if (!src.length) return fail('Nie ma czego kopiować.');
+    const first = MEALS[0][0], base = Date.now(), ids = [], day = dayW(d);
+    src.forEach(({e, m}, i) => {
+      const tm = s.scope === 'meal' ? s.tmeal : MEALS.some(x => x[0] === m) ? m : first, c = {...clone(e), id:uid(), o:base + i};
+      (day.meals[tm] ||= []).push(c); ids.push(c.id);
+    });
+    persistDay(d, ids);   // tylko nowe wpisy; `tr` dnia nie jest kopiowane
+    sheets.length = 0; renderSheet(); ui.dietDay = d === today ? null : d; render();
+    toastUndo('Skopiowano ' + cntTxt(ids.length), () => {
+      const dd = dayW(d); for (const m of Object.keys(dd.meals)) dd.meals[m] = dd.meals[m].filter(x => !ids.includes(x.id));
+      persistDay(d, [], ids); render();
+    });
+  },
+  mealTpl(){
+    const s = topSheet(); if (!dietCanEdit()) return;
+    const items = (dayOf(s.day).meals[s.meal] || []).slice().sort((a, b) => a.o - b.o).map(tplItem);
+    sheets.length = 0; openSheet({type:'dietTplEdit', tid:null, n:(mealName(s.meal) + ' ' + shortDate(s.day)).slice(0, TPL_NAME_MAX), items, err:''});
+  },
+  dtTab(el){ const s = topSheet(); if (s.tab === el.dataset.v) return; s.tab = el.dataset.v; renderSheet(); },
+  tplNew(){
+    if (!dietCanEdit()) return;
+    if (Object.keys(DIET.tpl).length >= TPL_MAX){ toast(`Możesz mieć do ${TPL_MAX} gotowych posiłków.`); return; }
+    openSheet({type:'dietTplEdit', tid:null, n:'', items:[], err:''});
+  },
+  tplOpen(el){
+    const s = topSheet(); if (!DIET.tpl[el.dataset.id]) return;
+    openSheet({type:'dietTpl', tid:el.dataset.id, mult:1, meal:MEALS.some(x => x[0] === s.meal) ? s.meal : MEALS[0][0], day:sDay(s)});
+  },
+  tplMult(el){
+    const s = topSheet(); s.mult = +el.dataset.v; const i = $('#tp-m'); if (i) i.value = fmtN(s.mult);
+    $$('[data-act="tplMult"]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === s.mult))); tplOut(s);
+  },
+  tplUse(){
+    const s = topSheet(), t = DIET.tpl[s.tid]; if (!t || !dietCanEdit()) return;
+    if (!(s.mult >= 0.1 && s.mult <= 10)) return;
+    const sc = tplScale(t, s.mult); if (tplBad(sc)) return;
+    const key = sDay(s), base = Date.now(), day = dayW(key), put = [], ids = [];
+    sc.forEach((it, i) => {
+      const id = uid(); (day.meals[s.meal] ||= []).push({...it, id, o:base + i}); ids.push(id);
+      const m = it.pid ? DIET.mine.find(p => p.id === it.pid) : null; if (m && !put.includes(m.id)){ m.uses++; m.last = base; put.push(m.id); }
+    });
+    t.uses++; t.last = base;
+    persistDay(key, ids); persistDiet(put, [], false, false, [], [], false, false, [t.id]);
+    sheets.length = 0; renderSheet(); render(); toast('Dodano: ' + t.n);
+  },
+  tplEdit(){ const s = topSheet(), t = DIET.tpl[s.tid]; if (!t || !dietCanEdit()) return; openSheet({type:'dietTplEdit', tid:t.id, n:t.n, items:clone(t.items), err:''}); },
+  tplDel(){
+    const s = topSheet(), t = DIET.tpl[s.tid]; if (!t || !dietCanEdit()) return;
+    confirmBox('Usunąć gotowy posiłek?', `„${t.n}” zniknie z listy gotowych posiłków. Wpisy w dziennikach zostają.`, 'Usuń', () => {
+      delete DIET.tpl[t.id]; persistDiet([], [], false, false, [], [], false, false, [], [t.id]); sheets.pop(); render(); toast('Usunięto gotowy posiłek.');
+    });
+  },
+  tplItemAdd(){ openSheet({type:'dietAdd', meal:null, q:'', day:dietKey(), toTpl:true, tab:'p'}); },
+  tplItemEdit(el){
+    const s = topSheet(), i = +el.dataset.i, it = s.items[i]; if (!it || !it.pid || !(it.g > 0)) return;
+    openDietQty({meal:null, pid:it.pid, entry:clone(it), entryId:'tpl', g:it.g, toTpl:true, tplIdx:i});
+  },
+  tplItemDel(el){ const s = topSheet(); s.items.splice(+el.dataset.i, 1); renderSheet(); },
+  tplSave(){
+    const s = topSheet(); if (!dietCanEdit()) return;
+    const n = s.n.trim().slice(0, TPL_NAME_MAX), fail = m => { s.err = m; renderSheet(); };
+    if (!n) return fail('Podaj nazwę gotowego posiłku.');
+    if (!s.items.length) return fail('Dodaj co najmniej jeden składnik.');
+    if (s.items.length > TPL_ITEMS) return fail(`Gotowy posiłek może mieć do ${TPL_ITEMS} składników – usuń nadmiar.`);
+    if (!s.tid && Object.keys(DIET.tpl).length >= TPL_MAX) return fail(`Możesz mieć do ${TPL_MAX} gotowych posiłków.`);
+    const old = s.tid ? DIET.tpl[s.tid] : null, id = s.tid || 't-' + uid();
+    DIET.tpl[id] = {id, n, items:s.items.map(tplItem), uses:old ? old.uses : 0, last:old ? old.last : 0};
+    persistDiet([], [], false, false, [], [], false, false, [id]);
+    sheets.pop(); renderSheet(); render(); toast('Zapisano gotowy posiłek.');
+  },
+});
+Object.assign(BIND, {
+  dcDate(t){ topSheet().date = t.value; },
+  tplName(t){ topSheet().n = t.value; },
+  tplMult(t){
+    const s = topSheet(), v = num(t.value); s.mult = v != null && v > 0 ? v : null;
+    $$('[data-act="tplMult"]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === s.mult))); tplOut(s);
+  },
+});
 
 function route(){
   const h = location.hash.replace('#', '');
