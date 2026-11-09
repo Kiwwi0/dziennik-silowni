@@ -289,7 +289,7 @@ Aplikacja działa w całości w przeglądarce (bez serwera), więc źródło mus
   `c >= 3`, `c > cw|cn` (domyślnie 1), `cw|cn == c`, pola równe polom grupy). Nowe: `foods/{ean}/v/{vid}` (`get` tylko własny, `create` bez zmian i usuwania, `{g}`),
   `foods/{ean}/fix/{key}` (`get` każdy, `list` z limitem ≤ 10, `create` z `validFix` + `voteNew`, `update` tylko `c`+1 i `at`). Funkcje: `voteNew`, `numOk`, `validFix`, `promoW`, `promoN`.
   **Odstępstwo od planu:** zamiast wycinania `key[0:2]` rodzaj bierze `key.split('_')[0]`, a własny głos to `$(rodzaj + '_' + request.auth.uid)` w ścieżce
-  (nie sprawdziłem, czy reguły obsługują wycinanie napisów i doklejanie do ścieżek, a w sesji nie ma emulatora). Wynik wdrożenia reguł: `gh run list -R Kiwwi0/dziennik-silowni -w rules.yml -L 1`.
+  (nie wiadomo, czy reguły obsługują wycinanie napisów i doklejanie do ścieżek, a w sesji nie ma emulatora). **Wdrożenie reguł 9.11.2026: kompilacja i wgranie przeszły (`rules.yml` – success).**
 - **Kod (`app.html`, sekcja „weryfikacja danych zeskanowanych produktów (część 2b)”, przed `DRY_RE`):** `FIX_MIN`, `FIXC`, `fixVal/fixCanon/fixKey/fixData/fixDiff`,
   `fixLoad` (1× `getDoc` produktu, lista `fix` z limitem 10, 2× własny głos; odpowiedź z pamięci podręcznej = „nie wiadomo” → brak karty), `fixVote` (`runTransaction`:
   głos + `fix` create/update + ewentualny awans `foods/`), `fixToast`, `fixReport`, `fixAuto` (po zapisie w `dietProd`), `fixCardHTML`/`fixPaint`.
@@ -303,7 +303,7 @@ Aplikacja działa w całości w przeglądarce (bez serwera), więc źródło mus
   Scenariusz z planu przeszedł: u1 poprawia kcal → grupa c:1, `foods/` bez zmian → drugi głos u1 odrzucony → u2 widzi „1 z 3” → 2 → u3 potwierdza → `foods/` ma nowe wartości,
   `fw`, `cw:3` → u4 ze starą kopią widzi różnicę i „Użyj wspólnych”; osobno rodzaj `n` (awans nazwy, `q` przeliczone, wartości bez zmian), „Ukryj”, brak karty offline
   i w trybie lokalnym, odznaczone pole = brak zgłoszenia, `update` `foods/` bez awansu odrzucony w atrapie.
-- **Niesprawdzone w sesji:** prawdziwe reguły Firestore (atrapa to moje lustro reguł, nie emulator – składnię sprawdza dopiero wdrożenie workflow), prawdziwe głosowanie z trzech
+- **Niesprawdzone w sesji:** prawdziwe reguły Firestore (atrapa to moje lustro reguł, nie emulator – składnia przeszła kompilację przy wdrożeniu, ale zachowanie reguł na prawdziwych danych sprawdzi dopiero głosowanie z urządzeń), prawdziwe głosowanie z trzech
   urządzeń (iPhone Olka, Windows, telefon Marty) i `crypto.subtle` na iPhonie (wymaga https – strona jest na https). Nie zrobiono jeszcze przeglądu `git diff` przez Opus (szczególnie `firestore.rules`).
 
 ## CZĘŚĆ 3 – dodatki do diety (plan ustalony z Olkiem 9.11.2026, budowa w osobnych czatach)
