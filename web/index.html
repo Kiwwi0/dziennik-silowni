@@ -581,6 +581,13 @@ main{padding-block:2px 28px}
 .tbl td{padding:8px;border-bottom:1px solid var(--line)}
 .tbl td:not(:first-child),.tbl th:not(:first-child){text-align:right}
 .set-list{display:flex;flex-wrap:wrap;gap:6px}
+.sed-meta{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px}
+.sed-ex{gap:6px;padding-top:12px;border-top:1px solid var(--line)}
+.sed-row{display:grid;grid-template-columns:24px minmax(0,1fr) minmax(0,1fr) 44px;gap:6px;align-items:center}
+.sed-row .input{text-align:center;padding-inline:6px}
+.sed-row.head{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:center}
+.sed-row .n{font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.sed-f{position:sticky;bottom:0;background:var(--surface);padding-block:10px calc(10px + env(safe-area-inset-bottom,0px));justify-content:flex-end;z-index:2}
 .set-list span{font-size:13px;font-variant-numeric:tabular-nums;padding:3px 8px;border-radius:6px;background:var(--surface-2);border:1px solid var(--line)}
 
 #toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;font-weight:600;font-size:14px;max-width:calc(100% - 32px);opacity:0;pointer-events:none;transition:opacity .2s}
@@ -1926,7 +1933,7 @@ const ICON = {
   star:'<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/>',
   camera:'<path d="M4 8h3l1.6-2.5h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/>',
   back:'<path d="M15 6l-6 6 6 6"/>', down:'<path d="M6 9l6 6 6-6"/>', up:'<path d="M6 15l6-6 6 6"/>',
-  plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>', trash:'<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>', edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>', trash:'<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
   play:'<path d="M8 5.5v13l11-6.5z"/>', stop:'<rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/>', more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
   min:'<path d="M6 9l6 6 6-6"/>', pause:'<path d="M8.5 5.5v13M15.5 5.5v13"/>', user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-3.8 4-5.5 7.5-5.5s6.3 1.7 7.5 5.5"/>', yt:'<rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10.5 9.5v5l4-2.5z"/>',
@@ -2918,6 +2925,40 @@ function bm3dFallback(fig){
   fig.querySelector('.bm3d').hidden = true; fig.querySelector('.bm-flat').hidden = false;
   fig.querySelectorAll('[data-act="bmMode"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === '2d'));
 }
+/* ---------- edycja zapisanego treningu (kopia robocza w arkuszu, zapis dopiero po „Zapisz zmiany”) ---------- */
+const localDT = iso => { const d = new Date(iso); return dayKey(d) + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+function sessEditHTML(s){
+  const d = s.edit;
+  let h = sheetHead('Edycja treningu') + `<div class="sed-meta"><label class="field"><span class="lbl">Data i godzina</span><input class="input" type="datetime-local" data-bind="sedMeta" data-f="date" value="${localDT(d.date)}" max="${localDT(new Date().toISOString())}"></label>
+    <label class="field"><span class="lbl">Czas (min)</span><input class="input" inputmode="numeric" data-bind="sedMeta" data-f="dur" value="${Math.round((d.dur || 0) / 60)}"></label></div>`;
+  if (!d.ex.length) h += `<p class="note">Usunięto wszystkie ćwiczenia. Anuluj albo usuń cały trening.</p>`;
+  d.ex.forEach((e, i) => {
+    const t = e.mode === 'time', f = t ? 'sec' : 'reps', g = getEx(e.exId), name = g.missing ? e.name : g.name;
+    h += `<div class="stack sed-ex"><div class="row" style="flex-wrap:nowrap">${thumb(e.exId)}<b style="flex:1;min-width:0">${esc(name)}</b><button class="iconbtn sm plain" data-act="sedDelEx" data-i="${i}" aria-label="Usuń ćwiczenie ${esc(name)}">${svg('trash','i s')}</button></div>
+      <div class="sed-row head"><span>#</span><span>kg</span><span>${t ? 'sekundy' : 'powt.'}</span><span></span></div>
+      ${e.sets.map((q, j) => `<div class="sed-row"><span class="n">${j + 1}</span>
+        <input class="input" inputmode="decimal" data-bind="sedSet" data-i="${i}" data-j="${j}" data-f="kg" value="${q.kg != null ? esc(fmtN(q.kg)) : ''}" placeholder="–" aria-label="Seria ${j + 1}: ciężar w kg">
+        <input class="input" inputmode="numeric" data-bind="sedSet" data-i="${i}" data-j="${j}" data-f="${f}" value="${q[f] ?? ''}" placeholder="${t ? 's' : 'powt.'}" aria-label="Seria ${j + 1}: ${t ? 'czas w sekundach' : 'powtórzenia'}">
+        <button class="iconbtn sm plain" data-act="sedDelSet" data-i="${i}" data-j="${j}" aria-label="Usuń serię ${j + 1}">${svg('x','i s')}</button></div>`).join('')}
+      ${e.sets.length < MAX_SETS ? `<button class="btn sm" data-act="sedAddSet" data-i="${i}">+ Seria</button>` : ''}
+      <input class="input" data-bind="sedNote" data-i="${i}" value="${esc(e.note || '')}" placeholder="Notatka (opcjonalnie)" aria-label="Notatka do ćwiczenia"></div>`;
+  });
+  return h + `<div class="row sed-f"><button class="btn" data-act="sedCancel">Anuluj</button><button class="btn primary" data-act="sedSave">Zapisz zmiany</button></div>`;
+}
+// przerysowanie arkusza bez skoku na górę (dodawanie/usuwanie serii niżej na liście)
+function reSheet(){ const el = $('#sheet'), y = el.scrollTop; renderSheet(); el.scrollTop = y; }
+async function sessEditSave(){
+  const s = topSheet(), d = s && s.edit; if (!d) return;
+  const ex = d.ex.map(e => ({...e, sets:e.sets.filter(q => (e.mode === 'time' ? q.sec : q.reps) || q.kg)})).filter(e => e.sets.length);
+  if (!ex.length){ toast('Trening musi mieć co najmniej jedną serię. Jeśli chcesz, usuń cały trening.'); return; }
+  if (new Date(d.date) > new Date()){ toast('Data treningu nie może być w przyszłości.'); return; }
+  for (const e of ex) if (!e.note) delete e.note;
+  const out = {...d, ex, editedAt:Date.now()};
+  await saveSession(out);
+  SESS.sort((a, b) => new Date(b.date) - new Date(a.date));   // po zmianie daty trening trafia na właściwe miejsce
+  const k = lsKey('sessions'); if (k) LS.set(k, SESS);
+  s.edit = null; renderSheet(); render(); toast('Zmiany zapisane.');
+}
 function sessVol(s){ return (s.ex || []).reduce((a, x) => a + (x.sets || []).reduce((b, t) => b + (x.mode === 'time' ? 0 : (t.kg || 0) * (t.reps || 0)), 0), 0); }
 function sessSets(s){ return (s.ex || []).reduce((a, x) => a + (x.sets || []).length, 0); }
 function sessRow(s){
@@ -3602,6 +3643,7 @@ const SHEETS = {
   },
   session(s){
     const x = SESS.find(q => q.id === s.id); if (!x) return sheetHead('Trening') + '<p class="muted">Ten trening został usunięty.</p>';
+    if (s.edit) return sessEditHTML(s);
     let h = sheetHead(x.dayName || 'Trening') + `<p class="muted" style="margin:0">${fmtDate(x.date, {weekday:'long', day:'numeric', month:'long', year:'numeric'})}${x.planName && x.planName !== x.dayName ? ' · ' + esc(x.planName) : ''}</p>
       <div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(x.dur || 0)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(x)}</div></div>
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(x)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${(x.ex || []).length}</div></div></div>`;
@@ -3609,7 +3651,7 @@ const SHEETS = {
       h += `<div class="stack" style="gap:6px"><div class="row" style="flex-wrap:nowrap">${thumb(e.exId)}<b style="flex:1;min-width:0">${esc(getEx(e.exId).missing ? e.name : getEx(e.exId).name)}</b></div>
         <div class="set-list">${(e.sets || []).map(t => `<span>${e.mode === 'time' ? fmtN(t.sec) + ' s' + (t.kg ? ' · ' + fmtN(t.kg) + ' kg' : '') : (t.kg ? fmtN(t.kg) + ' kg × ' : '') + (t.reps ?? 0)}</span>`).join('')}</div>${e.note ? `<p class="note" style="margin:0">„${esc(e.note)}”</p>` : ''}</div>`;
     }
-    return h + `<div class="row"><button class="btn sm danger" data-act="sessDel" data-id="${esc(x.id)}">${svg('trash','i s')}Usuń trening</button></div>`;
+    return h + `<div class="row"><button class="btn sm" data-act="sedOpen">${svg('edit','i s')}Edytuj</button><button class="btn sm danger" data-act="sessDel" data-id="${esc(x.id)}">${svg('trash','i s')}Usuń trening</button></div>`;
   },
   settings(s){
     const st = S.settings;
@@ -4219,6 +4261,13 @@ const ACT = {
   calDay(el){ openSheet({type:'day', key:el.dataset.day}); },
   progRange(el){ ui.progRange = el.dataset.v; render(); },
   calNav(el){ ui.calOff = Math.min(0, (ui.calOff || 0) + +el.dataset.d); render(); },
+  sedOpen(){ const s = topSheet(), x = s && SESS.find(q => q.id === s.id); if (!x) return; s.edit = clone(x); s.edit.ex = (s.edit.ex || []).map(e => ({...e, sets:e.sets || []})); renderSheet(); },
+  sedCancel(){ const s = topSheet(); if (s){ s.edit = null; renderSheet(); } },
+  sedSave(){ sessEditSave(); },
+  sedAddSet(el){ const e = topSheet()?.edit?.ex[+el.dataset.i]; if (!e || e.sets.length >= MAX_SETS) return; const l = e.sets[e.sets.length - 1];
+    e.sets.push(l ? {...l} : e.mode === 'time' ? {sec:null, kg:null} : {reps:null, kg:null}); reSheet(); },
+  sedDelSet(el){ const e = topSheet()?.edit?.ex[+el.dataset.i]; if (!e) return; e.sets.splice(+el.dataset.j, 1); reSheet(); },
+  sedDelEx(el){ const d = topSheet()?.edit; if (!d) return; d.ex.splice(+el.dataset.i, 1); reSheet(); },
   sessOpen(el){ openSheet({type:'session', id:el.dataset.id}); },
   sessDel(el){ const id = el.dataset.id; confirmBox('Usunąć trening z historii?', 'Tej operacji nie można cofnąć.', 'Usuń', async () => { sheets.length = 0; renderSheet(); await deleteSession(id); render(); }); },
   /* ustawienia */
@@ -4410,6 +4459,11 @@ const BIND = {
   pset(t){ const {it} = itemRef(t); if (!it) return; it.sets[+t.dataset.i][t.dataset.f] = limitInput(t); persist();
     const m = $(`.item-h[data-item="${it.id}"] .meta`); if (m) m.textContent = setsSummary(it); },
   note(t){ const {it} = itemRef(t); if (it){ it.note = t.value; persist(); } },
+  sedSet(t){ const q = topSheet()?.edit?.ex[+t.dataset.i]?.sets[+t.dataset.j]; if (q) q[t.dataset.f] = limitInput(t); },
+  sedNote(t){ const e = topSheet()?.edit?.ex[+t.dataset.i]; if (e) e.note = t.value.trim(); },
+  sedMeta(t){ const d = topSheet()?.edit; if (!d) return;
+    if (t.dataset.f === 'date'){ const v = new Date(t.value); if (!isNaN(v)) d.date = v.toISOString(); }
+    else { const m = num(t.value); if (m != null) d.dur = Math.max(0, Math.min(600, Math.round(m))) * 60; } },
   wnote(t){ const x = ACTIVE?.ex[+t.dataset.i]; if (!x) return; x.wnote = t.value; saveActive(); },
   wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; s[t.dataset.f] = limitInput(t); saveActive();
     // ciężar / powtórzenia / sekundy od razu w kolejnych, jeszcze niezrobionych seriach (piramida: zmień serię 3 → zmieniają się 3, 4, 5…)
@@ -4472,7 +4526,7 @@ document.addEventListener('input', onBind);
 document.addEventListener('change', onBind);
 // pola liczbowe (serie w treningu i w planie): po stuknięciu puste, stara wartość jako szara podpowiedź.
 // iPhone stawia kursor za liczbą, więc cyfry się doklejały. Wyjście bez wpisania = wraca stara wartość.
-const CLEAR_SEL = 'input[data-bind="wset"], input[data-bind="pset"]';
+const CLEAR_SEL = 'input[data-bind="wset"], input[data-bind="pset"], input[data-bind="sedSet"]';
 document.addEventListener('focusin', e => {
   const t = e.target; if (!t.matches || !t.matches(CLEAR_SEL) || t.dataset.old != null || t.value === '') return;
   t.dataset.old = t.value; t.dataset.ph = t.placeholder; t.placeholder = t.value; t.value = '';
