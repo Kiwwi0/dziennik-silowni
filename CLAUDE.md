@@ -19,9 +19,12 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 - `firebase-config.json`, `firestore.rules` – baza Firebase (plany i treningi każdej osoby w osobnym folderze).
   Każdy folder ma 4-cyfrowy PIN: logowanie anonimowe Firebase, skrót PIN-u w `folders/{id}/secret/pin` (nieczytelny),
   dostęp urządzenia = `folders/{id}/members/{uid}` (reguły porównują skrót). W app.html: `pinHash`, `requestFolder`, `askPin`,
-  `SHEETS.pin`, ACT `pinGo`. Reguły wdrażają się same: workflow „Reguły bazy Firebase” (`rules.yml`, `firebase.json`)
-  po pushu zmian w `firestore.rules` (sekret `FIREBASE_SERVICE_ACCOUNT`, konto firebase-adminsdk-fbsvc z rolą Firebase Rules Admin).
-  Po pushu sprawdź wynik: `gh run list -R Kiwwi0/dziennik-silowni -w rules.yml -L 1`.
+  `SHEETS.pin`, ACT `pinGo`. Reguły wdrażają się dopiero po zatwierdzeniu: workflow „Reguły bazy Firebase” (`rules.yml`, `firebase.json`)
+  rusza po pushu zmian w `firestore.rules`, ale zadanie czeka na zatwierdzenie przez Kamila w środowisku GitHuba „produkcja”
+  (Review deployments). Sekret `FIREBASE_SERVICE_ACCOUNT` jest sekretem tego środowiska, a jego klucz należy do osobnego konta
+  usługi z samą rolą Firebase Rules Admin (nie do firebase-adminsdk-fbsvc). Nie wgrywaj reguł inaczej niż przez ten workflow.
+  Po pushu powiedz Kamilowi, żeby zatwierdził wdrożenie, i sprawdź wynik: `gh run list -R Kiwwi0/dziennik-silowni -w rules.yml -L 1`
+  (do zatwierdzenia status to „waiting”).
   Udostępnianie planów: `shares/{KOD}` (6 znaków), w app.html `sharePayload`, `syncShares`, `shareSanitize`, `SHEETS.share/shareImp`,
   ACT `planShare`, `shareFind`, `shareAdd`, `shareStop`; link `?plan=KOD`.
 
