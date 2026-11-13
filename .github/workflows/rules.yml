@@ -1,6 +1,7 @@
 name: Reguły bazy Firebase
 
-# Wgrywa firestore.rules do projektu dziennik-silowni przy każdej zmianie reguł (albo ręcznie w Actions),
+# Najpierw zadanie „test” sprawdza reguły na emulatorze (testy-regul/), potem zadanie „deploy” wgrywa firestore.rules
+# do projektu dziennik-silowni przy każdej zmianie reguł (albo ręcznie w Actions),
 # ale dopiero po zatwierdzeniu w środowisku „produkcja” (Review deployments).
 # Wymaga sekretu środowiska FIREBASE_SERVICE_ACCOUNT (cały plik JSON klucza osobnego konta serwisowego z rolą Firebase Rules Admin).
 on:
@@ -8,6 +9,8 @@ on:
     branches: [main]
     paths:
       - 'firestore.rules'
+      - 'testy-regul/**'
+      - '.github/workflows/rules.yml'
   workflow_dispatch:
 
 permissions:
@@ -18,7 +21,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Testy reguł na emulatorze Firestore. Bez środowiska i bez sekretów.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: testy-regul/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Zainstaluj zależności testów
+        working-directory: testy-regul
+        run: npm ci
+      - name: Testy reguł (emulator Firestore)
+        working-directory: testy-regul
+        run: npx --yes firebase-tools@13.35.1 emulators:exec --only firestore --project demo-dziennik "npm test"
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     # Środowisko z wymaganym zatwierdzeniem; sekret FIREBASE_SERVICE_ACCOUNT pochodzi z tego środowiska.
     environment: produkcja
@@ -29,7 +54,7 @@ jobs:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           if [ -z "$SA" ]; then
-            echo "::error::Brak sekretu FIREBASE_SERVICE_ACCOUNT – dodaj go w Settings → Secrets and variables → Actions."
+            echo "::error::Brak sekretu FIREBASE_SERVICE_ACCOUNT – dodaj go w Settings → Environments → produkcja → Environment secrets."
             exit 1
           fi
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"

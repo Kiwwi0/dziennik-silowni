@@ -87,7 +87,7 @@ Dieta **nie** wchodzi do `S` (dokument `state` jest zapisywany w całości przy 
   Dzień zapisuj osobno (`setDoc` dokumentu dnia) przy zmianie wpisów tego dnia.
 - `firestore.rules`: w `match /data/{docId}` dopuść `docId in ['state', 'diet']`; dodaj
   `match /diet/{day} { allow read, write: if isMember(fid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }`.
-  Reguły wgrywa sam workflow `.github/workflows/rules.yml` po pushu zmian w `firestore.rules`.
+  Reguły sprawdza zadanie „test” (`.github/workflows/rules.yml`), a wgrywa zadanie deploy dopiero po zatwierdzeniu przez Kamila w środowisku „produkcja”.
 - `DIET` zapisuje się w całości, dlatego zmiany produktów i celów czekają, aż dokument przyjdzie z bazy (`dietLoaded`, `dietCanEdit`).
 - **Posiłki w ciągu dnia nie są stałe** (poprawka po części 1): lista każdej osoby to `DIET.meals = [{id, n}]` (domyślnie Śniadanie `sn`, Obiad `ob`,
   Kolacja `ko`, Przekąski `pr`; do 10 posiłków, nazwa do 30 znaków, minimum 1). `MEALS = [[id, nazwa]]` jest odbiciem tej listy (`syncMeals()`).

@@ -23,6 +23,10 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
   rusza po pushu zmian w `firestore.rules`, ale zadanie czeka na zatwierdzenie przez Kamila w środowisku GitHuba „produkcja”
   (Review deployments). Sekret `FIREBASE_SERVICE_ACCOUNT` jest sekretem tego środowiska, a jego klucz należy do osobnego konta
   usługi z samą rolą Firebase Rules Admin (nie do firebase-adminsdk-fbsvc). Nie wgrywaj reguł inaczej niż przez ten workflow.
+  Przed wdrożeniem działa zadanie „test” (testy reguł na emulatorze w `testy-regul/`), a deploy ma `needs: test`.
+  Lokalnie: `cd testy-regul && npm ci && npx --yes firebase-tools@13.35.1 emulators:exec --only firestore --project demo-dziennik "npm test"`
+  (wymaga Javy 21 i pobrania emulatora z storage.googleapis.com – w sesji Claude zwykle zablokowane, wtedy sprawdza Actions).
+  Każda zmiana `firestore.rules` wymaga dopisania lub poprawienia testu w tym samym commicie.
   Po pushu powiedz Kamilowi, żeby zatwierdził wdrożenie, i sprawdź wynik: `gh run list -R Kiwwi0/dziennik-silowni -w rules.yml -L 1`
   (do zatwierdzenia status to „waiting”).
   Udostępnianie planów: `shares/{KOD}` (6 znaków), w app.html `sharePayload`, `syncShares`, `shareSanitize`, `SHEETS.share/shareImp`,

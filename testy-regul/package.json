@@ -1,0 +1,13 @@
+{
+  "name": "testy-regul",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Testy reguł Firestore (emulator) – uruchamiane przed wdrożeniem firestore.rules",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-timeout=60000 regul.test.js"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0"
+  }
+}
