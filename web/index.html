@@ -1996,6 +1996,78 @@ function normalize(s){
   const plans = flattenPlans(s.plans).map(p => ({...p, items:(p.items || []).map(it => ({...it, sets:clampSets(it.sets)}))}));
   return {v:2, plans, custom:Array.isArray(s.custom) ? s.custom : [], settings:{...DEF_SETTINGS, ...(s.settings || {})}};
 }
+/* ---------- czyszczenie kopii danych przy przywracaniu (wzór: shareSanitize) ----------
+   Kopia z pliku to dane z zewnątrz: identyfikatory tylko A-Z a-z 0-9 _ -, liczby w granicach LIM i MAX_SETS,
+   brakujące serie uzupełnione, trening bez poprawnej daty pomijany. Zwraca też liczbę pominiętych pozycji. */
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+function importSanitize(rawState, rawSessions){
+  let skipped = 0;
+  const str = (v, n) => (typeof v === 'string' || typeof v === 'number') ? String(v).slice(0, n) : '';
+  const num = (v, a, b, def) => v !== null && v !== '' && v !== undefined && typeof v !== 'boolean' && typeof v !== 'object' && Number.isFinite(+v) ? Math.min(b, Math.max(a, +v)) : def;
+  const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+  const idOr = (v, used) => { let id = typeof v === 'string' && SAFE_ID.test(v) ? v : uid(); while (used.has(id)) id = uid(); used.add(id); return id; };
+  // pola spoza listy: zostają tylko proste wartości (tekst, liczba, tak/nie), bez obiektów
+  const extras = (o, known) => { const r = {}; for (const k of Object.keys(o)){ if (known.includes(k) || !/^[A-Za-z][A-Za-z0-9_]{0,29}$/.test(k)) continue; const v = o[k]; if (v === null || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) r[k] = v; else if (typeof v === 'string') r[k] = v.slice(0, 500); } return r; };
+  const strs = v => Array.isArray(v) ? v.slice(0, 30).filter(x => typeof x === 'string').map(x => x.slice(0, 300)) : [];
+  const cleanSets = (sets, time, mustHave) => {
+    const out = (Array.isArray(sets) ? sets : []).slice(0, MAX_SETS).filter(isObj).map(t => {
+      const o = extras(t, ['reps', 'sec', 'kg', 'rir', 'done', ...Object.keys(LIM)]);
+      if (time) o.sec = num(t.sec, 0, LIM.sec, mustHave ? 30 : 0); else o.reps = num(t.reps, 0, LIM.reps, mustHave ? 10 : 0);
+      o.kg = num(t.kg, 0, LIM.kg, null);
+      for (const k of ['tKg', 'tReps', 'tSec']) if (t[k] != null){ const v = num(t[k], 0, LIM[k], null); if (v != null) o[k] = v; }
+      if (t.rir != null){ const r = num(t.rir, 0, 10, null); if (r != null) o.rir = r; }
+      return o;
+    });
+    if (!out.length && mustHave) out.push(time ? {sec:30, kg:null} : {reps:10, kg:null});
+    return out;
+  };
+  // --- stan: plany, własne ćwiczenia, ustawienia
+  const src = isObj(rawState) ? rawState : {};
+  const custom = [], customIds = new Set();
+  for (const c of Array.isArray(src.custom) ? src.custom : []){
+    if (!isObj(c) || typeof c.id !== 'string' || !SAFE_ID.test(c.id) || customIds.has(c.id)){ skipped++; continue; }
+    customIds.add(c.id);
+    custom.push({...extras(c, ['id']), id:c.id, name:str(c.name, 80) || 'Ćwiczenie', group:str(c.group, 40), equipment:str(c.equipment, 40), mode:c.mode === 'time' ? 'time' : 'reps',
+      steps:strs(c.steps), tips:strs(c.tips), primary:strs(c.primary), secondary:strs(c.secondary), custom:true, level:str(c.level, 20)});
+  }
+  const st = isObj(src.settings) ? src.settings : {};
+  const settings = {...DEF_SETTINGS, ...extras(st, Object.keys(DEF_SETTINGS)),
+    restSet:num(st.restSet, 0, LIM.sec, DEF_SETTINGS.restSet), restEx:num(st.restEx, 0, LIM.sec, DEF_SETTINGS.restEx),
+    autoRest:typeof st.autoRest === 'boolean' ? st.autoRest : DEF_SETTINGS.autoRest, sound:typeof st.sound === 'boolean' ? st.sound : DEF_SETTINGS.sound,
+    bar:num(st.bar, 1, 50, DEF_SETTINGS.bar), perWeek:Math.round(num(st.perWeek, 1, 6, DEF_SETTINGS.perWeek))};
+  const planIds = new Set(), plans = [];
+  for (const p of flattenPlans(src.plans)){
+    if (!isObj(p)) { skipped++; continue; }
+    const itemIds = new Set(), items = [];
+    for (const it of Array.isArray(p.items) ? p.items : []){
+      if (!isObj(it) || typeof it.exId !== 'string' || !SAFE_ID.test(it.exId)){ skipped++; continue; }
+      const time = it.mode === 'time';
+      items.push({...extras(it, ['id', 'exId', 'mode', 'rest', 'restAfter', 'note', 'ssNext', 'sets']), id:idOr(it.id, itemIds), exId:it.exId, mode:time ? 'time' : 'reps',
+        rest:num(it.rest, 0, LIM.sec, settings.restSet), restAfter:num(it.restAfter, 0, LIM.sec, settings.restEx), note:str(it.note, 200), ...(it.ssNext != null ? {ssNext:!!it.ssNext} : {}),
+        sets:cleanSets(it.sets, time, true)});
+    }
+    plans.push({...extras(p, ['id', 'name', 'items', 'share']), id:idOr(p.id, planIds), name:str(p.name, 120), items});
+  }
+  // --- treningi
+  const sessIds = new Set(), sessions = [];
+  for (const s of Array.isArray(rawSessions) ? rawSessions : []){
+    if (!isObj(s)) { skipped++; continue; }
+    const t = typeof s.date === 'number' ? s.date : typeof s.date === 'string' ? Date.parse(s.date) : NaN;
+    if (!Number.isFinite(t) || t < 0 || t > Date.now() + 864e5 * 366){ skipped++; continue; }
+    const ex = [];
+    for (const e of Array.isArray(s.ex) ? s.ex : []){
+      if (!isObj(e) || typeof e.exId !== 'string' || !SAFE_ID.test(e.exId)){ skipped++; continue; }
+      const time = e.mode === 'time', sets = cleanSets(e.sets, time, false);
+      if (!sets.length){ skipped++; continue; }
+      ex.push({...extras(e, ['exId', 'name', 'mode', 'note', 'sets']), exId:e.exId, name:str(e.name, 120), mode:time ? 'time' : 'reps', ...(typeof e.note === 'string' && e.note ? {note:e.note.slice(0, 300)} : {}), sets});
+    }
+    if (!ex.length){ skipped++; continue; }
+    const safeOrNull = v => typeof v === 'string' && SAFE_ID.test(v) ? v : null;
+    sessions.push({...extras(s, ['id', 'date', 'dur', 'planId', 'planName', 'dayId', 'dayName', 'ex']), id:idOr(s.id, sessIds), date:typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(s.date) ? s.date : new Date(t).toISOString(),
+      dur:Math.round(num(s.dur, 0, 864e3, 0)), planId:safeOrNull(s.planId), planName:str(s.planName, 120), dayId:safeOrNull(s.dayId), dayName:str(s.dayName, 120) || 'Trening', ex});
+  }
+  return {state:{v:2, plans, custom, settings}, sessions, skipped};
+}
 const FIREBASE_CONFIG = {"apiKey":"AIzaSyDLpXiqdzypBWxqCOnqmccQCJgCgHaS9Q4","authDomain":"dziennik-silowni.firebaseapp.com","projectId":"dziennik-silowni","storageBucket":"dziennik-silowni.firebasestorage.app","messagingSenderId":"1004577535817","appId":"1:1004577535817:web:0b20ed7095f65423974c98"};
 const FIRE = !!FIREBASE_CONFIG;
 let FOLDER = FIRE ? LS.get('dz.folder', null) : null;
@@ -2017,7 +2089,7 @@ function ssRange(list, i){ let a = i, b = i; while (a > 0 && list[a - 1].ssNext)
 function ssPos(list, i){ const [a, b] = ssRange(list, i); return b > a ? {a, b, n:b - a + 1, k:i - a} : null; }
 function ssUnlink(list, i){ if (i > 0 && list[i - 1]) list[i - 1].ssNext = false; if (list[i]) list[i].ssNext = false; }
 function itemRef(el){ const p = planById(el.dataset.plan); const it = p && p.items.find(i => i.id === el.dataset.item); return {p, it}; }
-const refAttr = (p, it) => `data-plan="${p.id}"` + (it ? ` data-item="${it.id}"` : '');
+const refAttr = (p, it) => `data-plan="${esc(p.id)}"` + (it ? ` data-item="${esc(it.id)}"` : '');
 const nextPlanName = () => { const used = new Set(S.plans.map(p => p.name)); for (let k = 0; k < 26; k++){ const n = 'Plan ' + String.fromCharCode(65 + k); if (!used.has(n)) return n; } return 'Plan ' + (S.plans.length + 1); };
 function move(arr, i, dir){ const j = i + dir; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; }
 const hasData = s => s.plans.length || s.custom.length;
@@ -2423,7 +2495,7 @@ function vHome(){
     for (const p of S.plans){
       const last = lastDone(p.id);
       h += `<div class="dayrow"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.length} ${pl(p.items.length,'ćwiczenie','ćwiczenia','ćwiczeń')}${last ? ' · ostatnio ' + relDay(last.date) : ''}</div></div>
-        <button class="btn primary sm" data-act="startPlan" data-plan="${p.id}" ${p.items.length ? '' : 'disabled'}>${svg('play','i s')}Start</button></div>`;
+        <button class="btn primary sm" data-act="startPlan" data-plan="${esc(p.id)}" ${p.items.length ? '' : 'disabled'}>${svg('play','i s')}Start</button></div>`;
     }
     h += `</section>`;
   }
@@ -2465,7 +2537,7 @@ function vPlans(){
   } else {
     h += `<section class="plan">`;
     for (const p of S.plans){
-      h += `<div class="sw"><button class="sw-del" data-act="planDel" data-plan="${p.id}" tabindex="-1" aria-hidden="true">${svg('trash','i s')}Usuń</button><button class="dayrow plan-link sw-in" data-act="editPlan" data-plan="${p.id}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div>${planBadge(p)}</div>${svg('chev','i s chev')}</button></div>`;
+      h += `<div class="sw"><button class="sw-del" data-act="planDel" data-plan="${esc(p.id)}" tabindex="-1" aria-hidden="true">${svg('trash','i s')}Usuń</button><button class="dayrow plan-link sw-in" data-act="editPlan" data-plan="${esc(p.id)}"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.map(i => esc(getEx(i.exId).name)).join(' · ') || 'brak ćwiczeń'}</div>${planBadge(p)}</div>${svg('chev','i s chev')}</button></div>`;
     }
     h += `</section><p class="muted small" style="margin:-4px 0 0">Przesuń plan w lewo, żeby go usunąć.</p><div class="row"><button class="btn primary" data-act="newPlanOpen">${svg('plus','i s')}Nowy plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div>`;
     h += coverageCard(null);
@@ -2475,18 +2547,18 @@ function vPlans(){
 const shareImpBtn = () => FIRE ? `<button class="btn" data-act="shareImpOpen">Plan z kodu</button>` : '';
 function vPlanEditor(p){
   const pi = S.plans.indexOf(p);
-  const shareBtn = FIRE ? `<span class="spacer"></span><button class="btn sm" data-act="planShare" data-plan="${p.id}">${svg('share','i s')}${p.share ? 'Kod ' + shareFmt(p.share) : 'Udostępnij'}</button>` : '';
+  const shareBtn = FIRE ? `<span class="spacer"></span><button class="btn sm" data-act="planShare" data-plan="${esc(p.id)}">${svg('share','i s')}${p.share ? 'Kod ' + shareFmt(p.share) : 'Udostępnij'}</button>` : '';
   let h = `<div class="row"><button class="btn sm ghost" data-act="closePlan">${svg('back','i s')}Wszystkie plany</button>${shareBtn}</div>
-    <div class="field"><label class="lbl" for="pn-${p.id}">Nazwa planu</label><input class="input" id="pn-${p.id}" maxlength="60" data-bind="planName" data-plan="${p.id}" value="${esc(p.name)}" placeholder="np. Plan A"></div>
+    <div class="field"><label class="lbl" for="pn-${esc(p.id)}">Nazwa planu</label><input class="input" id="pn-${esc(p.id)}" maxlength="60" data-bind="planName" data-plan="${esc(p.id)}" value="${esc(p.name)}" placeholder="np. Plan A"></div>
     <section class="day">`;
   if (!p.items.length) h += `<p class="muted small" style="margin:12px 0">Brak ćwiczeń w tym planie.</p>`;
   p.items.forEach((it, ii) => { h += vItem(p, it, ii); });
-  h += `${nextCard(p)}<button class="btn block" data-act="pickForPlan" data-plan="${p.id}">${svg('plus','i s')}Dodaj ćwiczenia</button></section>
+  h += `${nextCard(p)}<button class="btn block" data-act="pickForPlan" data-plan="${esc(p.id)}">${svg('plus','i s')}Dodaj ćwiczenia</button></section>
     ${vOrderHint(p)}
     ${planReviewCard(p)}
     ${coverageCard(p)}
-    <div class="row" style="margin-top:8px"><button class="btn sm" data-act="planMove" data-dir="-1" data-plan="${p.id}" ${pi === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej na liście</button><button class="btn sm" data-act="planMove" data-dir="1" data-plan="${p.id}" ${pi === S.plans.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button>
-      <span class="spacer"></span><button class="btn danger sm" data-act="planDel" data-plan="${p.id}">${svg('trash','i s')}Usuń plan</button></div>`;
+    <div class="row" style="margin-top:8px"><button class="btn sm" data-act="planMove" data-dir="-1" data-plan="${esc(p.id)}" ${pi === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej na liście</button><button class="btn sm" data-act="planMove" data-dir="1" data-plan="${esc(p.id)}" ${pi === S.plans.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button>
+      <span class="spacer"></span><button class="btn danger sm" data-act="planDel" data-plan="${esc(p.id)}">${svg('trash','i s')}Usuń plan</button></div>`;
   return `<div class="wrap stack">${h}</div>`;
 }
 function vItem(p, it, ii){
@@ -2504,8 +2576,8 @@ function vItem(p, it, ii){
     it.sets.forEach((s, si) => {
       const f = t ? 'sec' : 'reps';
       h += `<div class="prow"><span class="sn">${si + 1}.</span>
-        <input class="input" id="ps-${it.id}-${si}-${f}" inputmode="numeric" data-bind="pset" data-i="${si}" data-f="${f}" ${R} value="${esc(s[f] ?? '')}" aria-label="Seria ${si + 1}: ${t ? 'czas w sekundach' : 'powtórzenia'}">
-        <input class="input" id="ps-${it.id}-${si}-kg" inputmode="decimal" data-bind="pset" data-i="${si}" data-f="kg" ${R} value="${esc(fmtN(s.kg))}" placeholder="–" aria-label="Seria ${si + 1}: ciężar w kg">
+        <input class="input" id="ps-${esc(it.id)}-${si}-${f}" inputmode="numeric" data-bind="pset" data-i="${si}" data-f="${f}" ${R} value="${esc(s[f] ?? '')}" aria-label="Seria ${si + 1}: ${t ? 'czas w sekundach' : 'powtórzenia'}">
+        <input class="input" id="ps-${esc(it.id)}-${si}-kg" inputmode="decimal" data-bind="pset" data-i="${si}" data-f="kg" ${R} value="${esc(fmtN(s.kg))}" placeholder="–" aria-label="Seria ${si + 1}: ciężar w kg">
         <button class="iconbtn sm plain" data-act="psetDel" data-i="${si}" ${R} aria-label="Usuń serię ${si + 1}">${svg('x','i s')}</button></div>`;
     });
     h += `</div><div class="row"><button class="btn sm" data-act="psetAdd" ${R}>${svg('plus','i s')}Dodaj serię</button><span class="muted small">Puste pole ciężaru = masa ciała</span></div>
@@ -2513,7 +2585,7 @@ function vItem(p, it, ii){
         <div><span>Przerwa między seriami</span><span class="stepper"><button class="iconbtn sm" data-act="restStep" data-f="rest" data-d="-15" ${R} aria-label="Krócej">−</button><b>${fmtRest(it.rest)}</b><button class="iconbtn sm" data-act="restStep" data-f="rest" data-d="15" ${R} aria-label="Dłużej">+</button></span></div>
         <div><span>Przerwa po ćwiczeniu</span><span class="stepper"><button class="iconbtn sm" data-act="restStep" data-f="restAfter" data-d="-15" ${R} aria-label="Krócej">−</button><b>${fmtRest(it.restAfter)}</b><button class="iconbtn sm" data-act="restStep" data-f="restAfter" data-d="15" ${R} aria-label="Dłużej">+</button></span></div>
       </div>
-      <div class="field"><label class="lbl" for="nt-${it.id}">Notatka</label><input class="input" id="nt-${it.id}" maxlength="200" data-bind="note" ${R} value="${esc(it.note || '')}" placeholder="np. ustawienie siedziska 4, guma czerwona"></div>
+      <div class="field"><label class="lbl" for="nt-${esc(it.id)}">Notatka</label><input class="input" id="nt-${esc(it.id)}" maxlength="200" data-bind="note" ${R} value="${esc(it.note || '')}" placeholder="np. ustawienie siedziska 4, guma czerwona"></div>
       ${ii < p.items.length - 1 ? `<div class="row"><button class="btn sm" data-act="itemSS" ${R}>${it.ssNext ? 'Rozłącz z następnym' : 'Superseria z następnym'}</button><span class="muted small">${it.ssNext ? 'Robisz je na zmianę, przerwa po obu.' : 'Łączy z ćwiczeniem poniżej: robisz je na zmianę.'}</span></div>` : ''}
       <div class="row"><button class="btn sm" data-act="itemMove" data-dir="-1" ${R} ${ii === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="itemMove" data-dir="1" ${R} ${ii === p.items.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><span class="spacer"></span><button class="btn sm danger" data-act="itemDel" ${R}>${svg('trash','i s')}Usuń</button></div>
     </div>`;
@@ -2623,7 +2695,7 @@ function vOrderHint(p){
     return `<div class="oc ok"><div class="oc-h">${svg('check','i s')}<b>Kolejność jest optymalna</b></div>
     <p class="small">Od najcięższych ćwiczeń wielostawowych do izolowanych${tail}.</p><div class="row">${whyBtn}</div>${why}</div>`;
   }
-  if (p.orderOk === orderSig(p)) return `<div class="oc mine"><span class="small muted">Zostawiasz własną kolejność ćwiczeń.</span><button class="btn sm ghost" data-act="orderShow" data-plan="${p.id}">Pokaż sugestię</button></div>`;
+  if (p.orderOk === orderSig(p)) return `<div class="oc mine"><span class="small muted">Zostawiasz własną kolejność ćwiczeń.</span><button class="btn sm ghost" data-act="orderShow" data-plan="${esc(p.id)}">Pokaż sugestię</button></div>`;
   let list = '';
   sorted.forEach((x, k) => {
     const d = x.i - k;
@@ -2633,7 +2705,7 @@ function vOrderHint(p){
   return `<div class="oc"><div class="oc-h">${svg('<path d="M7 4v16M3.5 16.5 7 20l3.5-3.5M13 6h8M13 11h6M13 16h4"/>','i s')}<b>Sugerowana kolejność</b></div>
     <p class="small">Tak ułożony trening pozwoli dźwigać więcej przy mniejszym ryzyku kontuzji.</p>
     <ol class="oc-list">${list}</ol>
-    <div class="row"><button class="btn primary sm" data-act="orderApply" data-plan="${p.id}">Ułóż w tej kolejności</button><button class="btn sm ghost" data-act="orderKeep" data-plan="${p.id}">Zostaw moją</button>${whyBtn}</div>${why}</div>`;
+    <div class="row"><button class="btn primary sm" data-act="orderApply" data-plan="${esc(p.id)}">Ułóż w tej kolejności</button><button class="btn sm ghost" data-act="orderKeep" data-plan="${esc(p.id)}">Zostaw moją</button>${whyBtn}</div>${why}</div>`;
 }
 
 /* ---------- ĆWICZENIA ---------- */
@@ -2938,7 +3010,7 @@ function sessEditHTML(s){
       <div class="sed-row head"><span>#</span><span>kg</span><span>${t ? 'sekundy' : 'powt.'}</span><span></span></div>
       ${e.sets.map((q, j) => `<div class="sed-row"><span class="n">${j + 1}</span>
         <input class="input" inputmode="decimal" data-bind="sedSet" data-i="${i}" data-j="${j}" data-f="kg" value="${q.kg != null ? esc(fmtN(q.kg)) : ''}" placeholder="–" aria-label="Seria ${j + 1}: ciężar w kg">
-        <input class="input" inputmode="numeric" data-bind="sedSet" data-i="${i}" data-j="${j}" data-f="${f}" value="${q[f] ?? ''}" placeholder="${t ? 's' : 'powt.'}" aria-label="Seria ${j + 1}: ${t ? 'czas w sekundach' : 'powtórzenia'}">
+        <input class="input" inputmode="numeric" data-bind="sedSet" data-i="${i}" data-j="${j}" data-f="${f}" value="${esc(q[f] ?? '')}" placeholder="${t ? 's' : 'powt.'}" aria-label="Seria ${j + 1}: ${t ? 'czas w sekundach' : 'powtórzenia'}">
         <button class="iconbtn sm plain" data-act="sedDelSet" data-i="${i}" data-j="${j}" aria-label="Usuń serię ${j + 1}">${svg('x','i s')}</button></div>`).join('')}
       ${e.sets.length < MAX_SETS ? `<button class="btn sm" data-act="sedAddSet" data-i="${i}">+ Seria</button>` : ''}
       <input class="input" data-bind="sedNote" data-i="${i}" value="${esc(e.note || '')}" placeholder="Notatka (opcjonalnie)" aria-label="Notatka do ćwiczenia"></div>`;
@@ -3121,7 +3193,7 @@ function coverageCard(p){
   const gaps = programGaps().filter(q => !skip.has(q.name)).slice(0, 6);
   const freqTxt = (() => { const n = S.plans.filter(q => q.items.length).length, f = programFactor(); return `${n} ${pl(n, 'plan', 'plany', 'planów')} przy ${perWeek()} ${pl(perWeek(), 'treningu', 'treningach', 'treningach')} w tygodniu: każdy plan ${f === 1 ? 'raz' : 'średnio ' + fmtN(Math.round(f * 10) / 10) + ' raza'} w tygodniu.`; })();
   const inPlans = new Set(S.plans.flatMap(o => o.items.map(i => i.exId)));
-  const sug = gaps.map(q => { const e = wkSuggest(q, 8).find(x => !inPlans.has(x.id)) || wkSuggest(q, 1)[0]; return e ? `<div class="cov-row"><span><b>${esc(q.name)}</b> <small>${fmtN(q.sets)} / ${q.target} serii</small></span>${p ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}${esc(e.name)}</button>` : `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`}</div>` : ''; }).join('');
+  const sug = gaps.map(q => { const e = wkSuggest(q, 8).find(x => !inPlans.has(x.id)) || wkSuggest(q, 1)[0]; return e ? `<div class="cov-row"><span><b>${esc(q.name)}</b> <small>${fmtN(q.sets)} / ${q.target} serii</small></span>${p ? `<button class="btn sm" data-act="covAdd" data-plan="${esc(p.id)}" data-id="${esc(e.id)}">${svg('plus','i s')}${esc(e.name)}</button>` : `<button class="wk-ex" data-act="exInfo" data-id="${esc(e.id)}">${esc(e.name)}</button>`}</div>` : ''; }).join('');
   return `<section class="card cov"><h3 class="h3" style="margin:0">${p ? 'Cały program: tydzień' : 'Twój program: wszystkie plany razem'}</h3>
     ${p ? `<p class="muted small" style="margin:0">${freqTxt}</p>` : `<div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
     <p class="muted small" style="margin:0">${freqTxt}</p></div>`}
@@ -3155,7 +3227,7 @@ function planNext(p, n = 3){
 }
 function nextCard(p){
   const list = planNext(p); if (!list.length) return '';
-  return `<div class="next"><span class="lbl">${p.items.length ? 'Propozycje następnych ćwiczeń' : 'Na początek'}</span>${list.map(({e, why}) => `<button class="next-b" data-act="covAdd" data-plan="${p.id}" data-id="${esc(e.id)}">${svg('plus','i s')}<span><b>${esc(e.name)}</b><small>${esc(why)}</small></span></button>`).join('')}</div>`;
+  return `<div class="next"><span class="lbl">${p.items.length ? 'Propozycje następnych ćwiczeń' : 'Na początek'}</span>${list.map(({e, why}) => `<button class="next-b" data-act="covAdd" data-plan="${esc(p.id)}" data-id="${esc(e.id)}">${svg('plus','i s')}<span><b>${esc(e.name)}</b><small>${esc(why)}</small></span></button>`).join('')}</div>`;
 }
 
 /* ---------- ocena planu: jakie partie pracują i czy czegoś brakuje ----------
@@ -3297,7 +3369,7 @@ function planReviewCard(p){
   return `<section class="card pr"><div class="pr-h"><h3 class="h3" style="margin:0">Ocena planu</h3>${verdict}</div>
     <div class="cov-top"><figure class="bodymap wk wk-mini" style="margin:0" aria-hidden="true">${bodyMapFigs({p:[], s:[]}, heat)}</figure>
       <div class="pr-meta"><b>${esc(r.label)}</b><span>${p.items.length} ${pl(p.items.length, 'ćwiczenie', 'ćwiczenia', 'ćwiczeń')} · ${r.total} ${serii(r.total)} · ok. ${fmtMin(r.time)}</span><span>Robisz go ${fqTxt(r.fq)} (${r.nPlans} ${pl(r.nPlans, 'plan', 'plany', 'planów')}, ${perWeek()} ${pl(perWeek(), 'trening', 'treningi', 'treningów')} w tygodniu)</span><small>Ciemnozielone: partie, które dobrze pracują. Jasne: mało albo tylko pomocniczo (liczby to serie).</small></div></div>
-    ${r.issues.length ? `<div class="pr-iss">${r.issues.map(i => i.drops ? `<div class="pr-i pr-drop">${dropHTML(r.drops)}</div>` : `<div class="pr-i ${i.k}"><p>${i.text}</p>${i.add ? `<button class="btn sm" data-act="covAdd" data-plan="${p.id}" data-id="${esc(i.add)}">${svg('plus','i s')}${esc(getEx(i.add).name)}</button>` : ''}</div>`).join('')}</div>` : r.type === 'inne' ? '' : `<p class="pr-good">${esc(goodTxt)}</p>`}
+    ${r.issues.length ? `<div class="pr-iss">${r.issues.map(i => i.drops ? `<div class="pr-i pr-drop">${dropHTML(r.drops)}</div>` : `<div class="pr-i ${i.k}"><p>${i.text}</p>${i.add ? `<button class="btn sm" data-act="covAdd" data-plan="${esc(p.id)}" data-id="${esc(i.add)}">${svg('plus','i s')}${esc(getEx(i.add).name)}</button>` : ''}</div>`).join('')}</div>` : r.type === 'inne' ? '' : `<p class="pr-good">${esc(goodTxt)}</p>`}
     ${r.covered.length ? `<p class="small muted" style="margin:0">W innym planie: ${r.covered.map(c => `${esc(c.lbl.toLowerCase())} (${esc(c.plan)})`).join(', ')}.</p>` : ''}
     ${r.drops && r.drops.soft ? `<div class="pr-drop soft">${dropHTML(r.drops)}</div>` : ''}
     ${r.notes.map(n => `<p class="small" style="margin:0">${esc(n)}</p>`).join('')}
@@ -3563,9 +3635,9 @@ const SHEETS = {
     if (!p || !p.share) return sheetHead('Udostępnij plan') + `<p class="muted" style="margin:0">Ten plan nie jest już udostępniany.</p>`;
     return sheetHead('Udostępnij plan') + `<p class="muted" style="margin:0">Podaj ten kod osobie, która ma dostać plan „${esc(p.name || 'bez nazwy')}”. Wpisze go w zakładce Plany → „Plan z kodu” albo otworzy wysłany link.</p>
       <div class="share-code" aria-label="Kod planu">${shareFmt(p.share)}</div>
-      <div class="row"><button class="btn primary" data-act="shareSend" data-plan="${p.id}">${svg('share','i s')}Wyślij</button><button class="btn" data-act="shareCopy" data-plan="${p.id}">Kopiuj kod</button></div>
+      <div class="row"><button class="btn primary" data-act="shareSend" data-plan="${esc(p.id)}">${svg('share','i s')}Wyślij</button><button class="btn" data-act="shareCopy" data-plan="${esc(p.id)}">Kopiuj kod</button></div>
       <p class="note">Druga osoba dostaje kopię: ćwiczenia, serie, ciężary, przerwy i notatki z planu. Twoja historia treningów zostaje u Ciebie. Gdy zmienisz plan, kod będzie dawał nową wersję, a kto dodał plan wcześniej, ma swoją kopię.</p>
-      <div class="row"><button class="btn danger sm" data-act="shareStop" data-plan="${p.id}">Przestań udostępniać</button></div>`;
+      <div class="row"><button class="btn danger sm" data-act="shareStop" data-plan="${esc(p.id)}">Przestań udostępniać</button></div>`;
   },
   shareImp(s){
     let h = sheetHead('Plan z kodu') + `<div class="field"><label class="lbl" for="shcode">Kod planu od innej osoby</label><div class="row" style="flex-wrap:nowrap"><input class="input" id="shcode" maxlength="9" placeholder="np. K7P-2QX" value="${esc(s.code ? shareFmt(s.code) : '')}" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn primary" data-act="shareFind" ${s.busy ? 'disabled' : ''}>Szukaj</button></div></div>`;
@@ -3614,7 +3686,7 @@ const SHEETS = {
     let h = sheetHead('Dodaj do planu') + `<p class="muted" style="margin:0">${esc(e.name)} trafi na koniec wybranego planu z 3 seriami. Szczegóły zmienisz w edycji planu.</p>`;
     if (!S.plans.length) return h + `<button class="btn primary" data-act="newPlanWith" data-id="${esc(e.id)}">${svg('plus','i s')}Utwórz plan z tym ćwiczeniem</button>`;
     h += `<section class="plan">`;
-    for (const p of S.plans) h += `<div class="dayrow"><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><button class="btn sm" data-act="addToPlanGo" data-plan="${p.id}" data-id="${esc(e.id)}">Dodaj</button></div>`;
+    for (const p of S.plans) h += `<div class="dayrow"><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><button class="btn sm" data-act="addToPlanGo" data-plan="${esc(p.id)}" data-id="${esc(e.id)}">Dodaj</button></div>`;
     return h + `</section><button class="btn" data-act="newPlanWith" data-id="${esc(e.id)}">${svg('plus','i s')}Nowy plan z tym ćwiczeniem</button>`;
   },
   pick(s){
@@ -3649,7 +3721,7 @@ const SHEETS = {
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(x)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${(x.ex || []).length}</div></div></div>`;
     for (const e of x.ex || []){
       h += `<div class="stack" style="gap:6px"><div class="row" style="flex-wrap:nowrap">${thumb(e.exId)}<b style="flex:1;min-width:0">${esc(getEx(e.exId).missing ? e.name : getEx(e.exId).name)}</b></div>
-        <div class="set-list">${(e.sets || []).map(t => `<span>${e.mode === 'time' ? fmtN(t.sec) + ' s' + (t.kg ? ' · ' + fmtN(t.kg) + ' kg' : '') : (t.kg ? fmtN(t.kg) + ' kg × ' : '') + (t.reps ?? 0)}</span>`).join('')}</div>${e.note ? `<p class="note" style="margin:0">„${esc(e.note)}”</p>` : ''}</div>`;
+        <div class="set-list">${(e.sets || []).map(t => `<span>${esc(e.mode === 'time' ? fmtN(t.sec) + ' s' + (t.kg ? ' · ' + fmtN(t.kg) + ' kg' : '') : (t.kg ? fmtN(t.kg) + ' kg × ' : '') + (t.reps ?? 0))}</span>`).join('')}</div>${e.note ? `<p class="note" style="margin:0">„${esc(e.note)}”</p>` : ''}</div>`;
     }
     return h + `<div class="row"><button class="btn sm" data-act="sedOpen">${svg('edit','i s')}Edytuj</button><button class="btn sm danger" data-act="sessDel" data-id="${esc(x.id)}">${svg('trash','i s')}Usuń trening</button></div>`;
   },
@@ -4300,10 +4372,11 @@ const ACT = {
     let d; try { d = JSON.parse($('#imp').value); } catch { toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (!d || d.app !== 'dziennik-silowni' || !d.state){ toast('To nie wygląda na kopię danych z tej aplikacji.'); return; }
     if (d.diet && !dietCanEdit()) return;
+    const clean = importSanitize(d.state, d.sessions);   // kopia to dane z zewnątrz: czyścimy ją przed użyciem
     confirmBox('Przywrócić dane z kopii?', 'Plany, własne ćwiczenia i ustawienia zostaną zastąpione kopią. Treningi, dni diety, „Moje produkty”, gotowe posiłki i pomiary masy ciała z kopii zostaną dodane do obecnych (istniejące zostają). Cele diety (zwykłe i treningowe, także cel wody) oraz profil kalkulatora zostaną zastąpione, jeśli kopia je ma. Woda i odhaczone suplementy w dniach oraz lista suplementów z kopii zostaną dodane (istniejąca woda w dniu zostaje).', 'Przywróć', async () => {
-      S = normalize(d.state); S.plans.forEach(p => { delete p.share; }); commit();   // kody udostępnień zostają przy oryginałach
+      S = clean.state; S.plans.forEach(p => { delete p.share; }); commit();   // kody udostępnień zostają przy oryginałach
       const have = new Set(SESS.map(s => s.id));
-      for (const s of sortSess((d.sessions || []).filter(s => s && s.id && !have.has(s.id)))) await saveSession(s);
+      for (const s of sortSess(clean.sessions.filter(s => !have.has(s.id)))) await saveSession(s);
       // dieta: stare kopie jej nie mają (wtedy zostaje obecna); „Moje produkty” łączymy (obecny produkt o tym samym id wygrywa)
       if (d.diet){
         const inc = normalizeDiet(d.diet), have = new Set(DIET.mine.map(p => p.id)), add = [];
@@ -4337,7 +4410,8 @@ const ACT = {
           if (add.length || tr !== undefined || Object.keys(x).length){ for (const m of Object.keys(day.meals)) day.meals[m].sort((a, b) => a.o - b.o); persistDay(k, add, [], tr, Object.keys(x).length ? x : undefined); }
         }
       }
-      sheets.length = 0; renderSheet(); render(); toast('Przywrócono dane.');
+      sheets.length = 0; renderSheet(); render();
+      toast(clean.skipped ? `Przywrócono dane. Pominięto ${clean.skipped} ${pl(clean.skipped, 'uszkodzoną pozycję', 'uszkodzone pozycje', 'uszkodzonych pozycji')}.` : 'Przywrócono dane.');
     }, false);
   },
   /* trening */
@@ -4457,7 +4531,7 @@ const BIND = {
   pickq(t){ topSheet().q = t.value; fillPickList(); },
   planName(t){ const p = planById(t.dataset.plan); if (p){ p.name = t.value; persist(); } },
   pset(t){ const {it} = itemRef(t); if (!it) return; it.sets[+t.dataset.i][t.dataset.f] = limitInput(t); persist();
-    const m = $(`.item-h[data-item="${it.id}"] .meta`); if (m) m.textContent = setsSummary(it); },
+    const m = $(`.item-h[data-item="${CSS.escape(String(it.id))}"] .meta`); if (m) m.textContent = setsSummary(it); },
   note(t){ const {it} = itemRef(t); if (it){ it.note = t.value; persist(); } },
   sedSet(t){ const q = topSheet()?.edit?.ex[+t.dataset.i]?.sets[+t.dataset.j]; if (q) q[t.dataset.f] = limitInput(t); },
   sedNote(t){ const e = topSheet()?.edit?.ex[+t.dataset.i]; if (e) e.note = t.value.trim(); },
