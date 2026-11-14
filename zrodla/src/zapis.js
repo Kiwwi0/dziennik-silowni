@@ -8,7 +8,7 @@
    Stan w pamięci aplikacji (S) zostaje {plans:[], custom:[], settings:{}} – tablice jak dotąd.
 
    Stan silnika zapisu Z (osobny dla konta, w localStorage):
-     q  – kolejka niewysłanych zmian: p/c {id:u}, pd/cd {id:czas usunięcia}, s {klucz:czas}, po/co czas zmiany kolejności, t ostatni znacznik
+     q  – kolejka niewysłanych zmian: p/c {id:u}, pd/cd {id:czas usunięcia}, s {klucz:czas}, po/co czas zmiany kolejności, t ostatni znacznik, mx największy czas widziany w bazie (zegary urządzeń się rozjeżdżają)
      kn – znane czasy zatwierdzonych pozycji: p/c {id:u}, v3 true gdy to urządzenie widziało układ v3
    Wszystkie funkcje poniżej nie dotykają stanu wejściowego (kopiują), poza `afterSend`, `afterFail`. */
 const ZP = (() => {
@@ -25,10 +25,12 @@ const ZP = (() => {
     {k:'c', d:'cd', o:'co', os:'cos', t:'ct', m:'cm', mirror:'custom'},
   ];
 
-  const emptyQueue = () => ({p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0, t:0});
+  const emptyQueue = () => ({p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0, t:0, mx:0});
   const emptyKnown = () => ({p:{}, c:{}, v3:false});
   const newZ = () => ({q:emptyQueue(), kn:emptyKnown()});
-  const stampQ = (q, now) => (q.t = Math.max(now == null ? Date.now() : now, (q.t || 0) + 1));
+  /* Znacznik zmiany: nigdy mniejszy od niczego, co to urządzenie widziało w bazie (q.mx) – urządzenie z zegarem „do tyłu” nie przegra z cudzą zmianą, którą już widziało. */
+  const stampQ = (q, now) => (q.t = Math.max(now == null ? Date.now() : now, (q.t || 0) + 1, (q.mx || 0) + 1));
+  const MX_AHEAD = 30 * 864e5;              // czasy z bazy dalej niż 30 dni w przyszłość (zepsuty zegar) nie podnoszą q.mx
   const emptyQ = q => !Object.keys(q.p).length && !Object.keys(q.pd).length && !Object.keys(q.c).length && !Object.keys(q.cd).length
     && !Object.keys(q.s).length && !q.po && !q.co && !q.f && !q.m;
   /* Odczyt zapisanego stanu (z localStorage): brakujące albo uszkodzone pola dostają wartości puste. */
@@ -36,7 +38,7 @@ const ZP = (() => {
     const o = newZ();
     if (!isObj(z)) return o;
     const rec = v => { const r = {}; if (isObj(v)) for (const k of Object.keys(v)) if (Number.isFinite(+v[k])) r[k] = +v[k]; return r; };
-    if (isObj(z.q)){ for (const f of ['p', 'pd', 'c', 'cd', 's']) o.q[f] = rec(z.q[f]); o.q.po = +z.q.po || 0; o.q.co = +z.q.co || 0; o.q.f = +z.q.f || 0; o.q.m = +z.q.m || 0; o.q.t = +z.q.t || 0; }
+    if (isObj(z.q)){ for (const f of ['p', 'pd', 'c', 'cd', 's']) o.q[f] = rec(z.q[f]); o.q.po = +z.q.po || 0; o.q.co = +z.q.co || 0; o.q.f = +z.q.f || 0; o.q.m = +z.q.m || 0; o.q.t = +z.q.t || 0; o.q.mx = +z.q.mx || 0; }
     if (isObj(z.kn)){ o.kn.p = rec(z.kn.p); o.kn.c = rec(z.kn.c); o.kn.v3 = !!z.kn.v3; }
     return o;
   }
@@ -107,6 +109,9 @@ const ZP = (() => {
   const later = (ua, ja, ub, jb) => ua > ub || (ua === ub && ja > jb);
   function merge(S, q0, kn0, R, now){
     const q = cl(q0), kn = cl(kn0), notes = [], L = split(S), res = {p:{}, po:[], c:{}, co:[], s:{}};
+    // największy czas widziany w bazie: kolejne zmiany tego urządzenia dostaną większy znacznik (stampQ)
+    const lim = (now == null ? Date.now() : now) + MX_AHEAD, seen = u => { if (u > (q.mx || 0) && u <= lim) q.mx = u; };
+    for (const K of KINDS){ for (const r of Object.values(R[K.k])) seen(r.u); for (const ts of Object.values(R[K.t])) seen(ts); seen(R[K.os]); }
     for (const K of KINDS){
       const Li = L[K.k], Ri = R[K.k], Rt = R[K.t], E = q[K.k], D = q[K.d], KN = kn[K.k], out = res[K.k];
       const ids = new Set([...Object.keys(Li), ...Object.keys(Ri), ...Object.keys(D), ...Object.keys(E)]);

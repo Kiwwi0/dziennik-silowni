@@ -36,33 +36,34 @@ class Serwer {
 const blank = () => ({plans:[], custom:[], settings:{restSet:90, sound:true}});
 const plan = (id, name, extra) => ({id, name, items:[{id:'i1', exId:'ex1', mode:'reps', sets:[{reps:10, kg:20}]}], ...extra});
 class Urz {
+  get now(){ return clock.t + this.off; }                                    // zegar urządzenia (off = przesunięcie względem wspólnego zegara testu)
   constructor(nazwa, serwer, S){
-    this.nazwa = nazwa; this.sv = serwer; this.S = S || blank(); this.z = ZP.newZ(); this.last = ZP.snap(this.S);
+    this.nazwa = nazwa; this.off = 0; this.sv = serwer; this.S = S || blank(); this.z = ZP.newZ(); this.last = ZP.snap(this.S);
     this.online = true; this.outbox = []; this.lay = 'empty'; this.tombs = {pt:{}, ct:{}}; this.fail = false; this.notes = []; this.repaired = 0;
   }
-  edit(fn){ fn(this.S); this.last = ZP.diff(this.last, this.S, this.z.q, clock.t); }
+  edit(fn){ fn(this.S); this.last = ZP.diff(this.last, this.S, this.z.q, this.now); }
   odbierz(){
     const doc = this.sv.get(), lay = ZP.layout(doc);
     this.lay = lay; if (lay === 'empty') return [];
     let R;
     if (lay === 'v3'){ R = ZP.remoteV3(doc); this.z.kn.v3 = true; this.tombs = {pt:doc.pt || {}, ct:doc.ct || {}}; }
     else R = ZP.remoteOld({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}, this.z.kn.v3);
-    const mg = ZP.merge(this.S, this.z.q, this.z.kn, R, clock.t);
+    const mg = ZP.merge(this.S, this.z.q, this.z.kn, R, this.now);
     this.S = mg.S; this.z.q = mg.q; this.z.kn = mg.kn; this.last = ZP.snap(this.S);
-    if (lay === 'v3') ZP.checkMirror(doc, this.S, this.z.q, clock.t);
+    if (lay === 'v3') ZP.checkMirror(doc, this.S, this.z.q, this.now);
     this.notes.push(...mg.notes);
     return mg.notes;
   }
   wyslij(){
     if (ZP.emptyQ(this.z.q) || this.fail) return false;
     if (this.lay === 'v3'){
-      const bw = ZP.buildWrite(this.S, this.z.q, clock.t, {tombs:this.tombs});
+      const bw = ZP.buildWrite(this.S, this.z.q, this.now, {tombs:this.tombs});
       if (!bw) return false;
       if (!this.online){ this.outbox.push(bw); return true; }          // SDK trzyma zapis, aż wróci sieć
       this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent); return true;
     }
     if (!this.online) return false;                                       // migracja = transakcja, wymaga sieci
-    const tx = ZP.migrate(this.S, this.z, this.sv.get(), clock.t, doc => ({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}));
+    const tx = ZP.migrate(this.S, this.z, this.sv.get(), this.now, doc => ({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}));
     if (tx.noop){ this.z.q.f = 0; this.lay = 'v3'; return this.wyslij(); }        // ktoś już naprawił: zwykły zapis
     this.sv.setFull(tx.doc); ZP.afterSend(this.z, tx.sent, tx.written); this.lay = 'v3'; if (tx.repaired) this.repaired++;
     return true;
@@ -364,6 +365,22 @@ test('12b. id z listy bez treningu w pamięci nie wraca jako pusty wpis; lista o
   assert.deepEqual(m.list, []); assert.deepEqual(m.unsent, []);
   const k1 = ZP.mergeSessions([], [tr('X')], ['X'], false), k2 = ZP.mergeSessions([], [tr('Y')], ['Y'], false);
   assert.deepEqual(k1.list.map(s => s.id), ['X']); assert.deepEqual(k2.list.map(s => s.id), ['Y']);
+});
+
+/* ======================= A6b: poprawki po przeglądzie A6 ======================= */
+test('13. zegar: urządzenie z zegarem +1 dzień nie przebija późniejszej zmiany tego samego planu z drugiego urządzenia', () => {
+  const {sv, tel, lap} = konto();
+  tel.off = 864e5; tick();                                                   // zegar telefonu idzie o dobę do przodu
+  tel.edit(S => { byId(S, 'P1').name = 'telefon (zegar +1 dzień)'; }); tel.wyslij();
+  const uTel = sv.doc.pm.P1.u; assert.ok(uTel > clock.t + 864e5 - 1000, 'znacznik telefonu jest „z przyszłości”');
+  lap.odbierz(); tick(3600e3);                                               // laptop widzi zmianę telefonu, godzinę później zmienia ten sam plan
+  lap.edit(S => { byId(S, 'P1').name = 'laptop (godzinę później)'; }); lap.wyslij();
+  assert.ok(sv.doc.pm.P1.u > uTel, 'znacznik późniejszej zmiany musi być większy od największego widzianego w bazie');
+  uspokoj(tel, lap);
+  for (const d of [tel, lap]) assert.equal(byId(d.S, 'P1').name, 'laptop (godzinę później)');
+  assert.equal(sv.doc.pm.P1.name, 'laptop (godzinę później)');
+  assert.ok(ZP.fixZ(JSON.parse(JSON.stringify(lap.z))).q.mx >= uTel, 'największe widziane u przeżywa zapis do localStorage');
+  const q = ZP.emptyQueue(); q.mx = 5000; assert.equal(ZP.stampQ(q, 1000), 5001, 'stampQ = max(teraz, q.t+1, mx+1)');
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
