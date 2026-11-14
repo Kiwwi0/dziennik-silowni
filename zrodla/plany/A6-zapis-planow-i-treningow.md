@@ -1,7 +1,8 @@
 # A6 – zapis planów i treningów odporny na dwa urządzenia i nieudany zapis (plan)
 
 Zlecenie A6 z raportu audytu: E1-09 (plany nadpisywane w całości) i E1-10 (nieudany zapis treningu znika z historii).
-Segment 5 (Ustawienia i dane). Gałąź `a6-zapis`. Ten plik powstał **przed** zmianami w kodzie; budowa i przegląd – patrz pkt 10.
+Segment 5 (Ustawienia i dane). Gałąź `a6-zapis`. Plik powstał przed kodem, a po przeglądach A6b i A6c został **zaktualizowany do stanu faktycznego**:
+pkt 1–10 opisują działanie (z poprawkami tam, gdzie kod poszedł inaczej), pkt 11 to lista wszystkich zmian A6b i A6c z numerami testów.
 
 Stan wyjściowy: `main` @ `e82b8c6`. Kod: `zrodla/src/app.html` – `store`, `persist`, `flush`, `commit`, `openFolder`
 (nasłuch `data/state` i nasłuch `sessions`), `saveSession`, `deleteSession`, `normalize`. Wzór: `persistDiet` / `flushDiet`.
@@ -62,18 +63,28 @@ Kolejność planów = kolejność w tablicy. Zapis: cały dokument naraz.
 - Identyfikatory planów/ćwiczeń to `uid()` (a–z 0–9) albo ze starej kopii (`SAFE_ID`: `A-Za-z0-9_-`), więc nadają się na nazwy pól.
 - `S.plans` = `po` przefiltrowane do istniejących w `pm`, a potem brakujące w `pm` dopisane po `u`, potem po id (dwa urządzenia
   dodające plan naraz nadpisują sobie `po`, ale oba plany są w `pm`, więc żaden nie ginie).
-- Rozmiar: lustro podwaja treść, a limit dokumentu to 1 MiB. Plany to kilka–kilkadziesiąt KB; kontrola w `flush`: gdy dokument
-  miałby >600 KB, lustro jest pomijane i pokazujemy ostrzeżenie (stare karty wtedy nie zobaczą planów – zob. ryzyka).
+- Rozmiar: lustro podwaja treść, a limit dokumentu to 1 MiB. Plany to kilka–kilkadziesiąt KB. Próg `DOC_MAX` = **900 000 bajtów UTF-8
+  całego dokumentu** (pm + nagrobki + ustawienia + lustro, liczone `TextEncoder`, nie znaki samego lustra): powyżej niego migracja i naprawa
+  pomijają lustro (`fullDoc` → `mirrorSkipped`, toast „Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.”),
+  a transakcja lustra usuwa stare lustro z dokumentu (`mirrorPatch` → `drop`; nieaktualne byłoby gorsze niż brak). Zwykły zapis (setDoc z `mergeFields`)
+  nie zna rozmiaru dokumentu, więc ostrzega: rozmiar dokumentu z ostatniego odczytu + dane zapisu > `DOC_WARN` = 950 000 bajtów → toast
+  „Plany zbliżają się do limitu rozmiaru w bazie (1 MB na konto). Zapis może się nie udać – usuń nieużywane plany.” (raz na otwarcie konta; zapis i tak idzie).
 - `firestore.rules`: blok `data/{docId}` pozwala członkowi na dowolny kształt `state`, więc **reguły się nie zmieniają**.
 
 ## 3. Kolejka zmian i znaczniki (pamięć przeglądarki, osobno dla konta)
 
-Klucze `dz.f.<idKonta>.zq` (kolejka) i `dz.f.<idKonta>.zu` (znane czasy `u` zatwierdzonych pozycji):
+Klucze localStorage konta (nazwy z `ZP.zKey`, `ZP.stateKey`, `ZP.sessKey`; usunięcie konta kasuje je razem z resztą danych konta):
+- `dz.f.<idKonta>.zq` – **jedna wartość `{q, kn}`**: kolejka zmian i znane czasy (osobnego klucza `.zu` nie ma);
+- `dz.f.<idKonta>.state` – lokalna kopia `S` (plany, własne ćwiczenia, ustawienia);
+- `dz.f.<idKonta>.unsent` – lista niewysłanych treningów (pkt 7).
 ```
-kolejka: { p:{id:u}, pd:{id:czasUsunięcia}, c:{id:u}, cd:{id:czas}, s:{klucz:u}, po:czas|0, co:czas|0 }
-zu:      { p:{id:u}, c:{id:u}, v3:true|false }    // v3 = to urządzenie widziało już układ v3
+q  (kolejka): { p:{id:u}, pd:{id:czasUsunięcia}, c:{id:u}, cd:{id:czas}, s:{klucz:u}, po:czas|0, co:czas|0,
+                f:czas|0 (trzeba odtworzyć dokument v3), m:czas|0 (trzeba odświeżyć lustro), t:ostatni znacznik, mx:największy czas widziany w bazie }
+kn (znane):   { p:{id:u}, c:{id:u}, v3:true|false (urządzenie widziało układ v3), pt:{id:czas}, ct:{id:czas} (nagrobki z ostatniego odczytu v3, młodsze niż 60 dni),
+                h:{p:{id:[skrót,…]}, c:{…}} (skróty kilku ostatnich wersji pozycji, pkt 11 A6b-4) }
 ```
-- Czasy są **rosnące na urządzeniu** (`stamp = max(Date.now(), ostatni+1)`), więc dwie zmiany w jednej milisekundzie się nie zlewają.
+- Czasy są **rosnące na urządzeniu**: `stampQ = max(Date.now(), q.t+1, q.mx+1)`, więc dwie zmiany w jednej milisekundzie się nie zlewają, a urządzenie z zegarem
+  „do tyłu” nie wystawi zmiany starszej od czegokolwiek, co już widziało w bazie (`q.mx`; czasy z bazy dalej niż 30 dni w przód są pomijane).
 - **Wykrywanie zmian bez dotykania 40 miejsc wywołujących `commit()`/`persist()`:** `persist()` robi `split(S)` i porównuje
   z poprzednim `split` (`store.last`) po JSON-ie każdej pozycji. Zmieniony/nowy plan → `kolejka.p[id] = stamp`; zniknął →
   `kolejka.pd[id] = stamp`; zmiana tablicy kolejności → `kolejka.po`; zmieniony klucz ustawień → `kolejka.s[klucz]`.
@@ -115,20 +126,35 @@ obie**, bo każdy plan jest osobnym polem i osobną pozycją tabeli.
 z planu pola nie zostają w bazie; zwykłe `merge:true` scalałoby zagnieżdżone obiekty i zostawiało stare pola):
 - plan/ćwiczenie edytowane: `pm.<id>` = `{…pozycja, u}`; usunięte: `pm.<id>` = `deleteField()` i `pt.<id>` = czas usunięcia;
 - `po`, `pos` (gdy zmieniono kolejność lub dodano/usunięto plan); to samo dla `co`, `cos`; ustawienia: `settings.<klucz>`;
-- `v`:3 oraz lustro `plans` / `custom` (w całości, z bieżącego `S`) przy każdej zmianie planów/ćwiczeń;
-- nagrobki starsze niż 60 dni są przy okazji usuwane (`deleteField`), żeby dokument nie rósł.
+- `v`:3. **Lustro `plans` / `custom` NIE idzie w zwykłym zapisie** (taki zapis nie sprawdza, czy dokument jest nadal w układzie v3, i mógłby nadpisać lustro
+  świeżo zapisane przez starą kartę): po udanym zapisie `afterSend` wpisuje `q.m`, a lustro odświeża osobna transakcja (`flushMirror`: czyta dokument i zapisuje
+  lustro tylko, gdy ma on `full`; `ZP.mirrorPatch` → `skip` / `same` / `set` / `drop`, lustro liczone z `pm`/`po`/nagrobków dokumentu);
+- nagrobki starsze niż 60 dni są przy okazji usuwane (`deleteField`), razem ze starszym wpisem `pm.<id>` ukrytym pod nimi (wpis nowszy od nagrobka zostaje).
 - **Wysyłka:** na wpis kolejki przypada licznik „wysłano wersję `u`”. Po `then` wpis jest usuwany **tylko jeśli w międzyczasie się nie
-  zmienił** (porównanie `u`), `zu[id]=u`. Po `catch`: wpis zostaje, ponowienie po 2 s, 5 s, 15 s, 60 s (potem co 60 s), jeden
+  zmienił** (porównanie `u`), `kn[id]=u`. Zajętość zapisu jest **osobna dla konta** (`ZP.newBusy`, `zBusy`): trwająca wysyłka jednego konta nie blokuje
+  drugiego, a ponownie otwarte konto nie wysyła w tym samym czasie drugi raz (po zakończeniu starej wysyłki zapis rusza dla bieżącego `Z`).
+  Po `catch`: wpis zostaje, ponowienie po 2 s, 5 s, 15 s, 60 s (potem co 60 s), jeden
   toast „Nie udało się zapisać zmian w bazie. Spróbuję ponownie.” na serię błędów (nie na każde ponowienie). Ponowienie także po
   zdarzeniu `online` i po otwarciu konta.
 - Zapis offline: Firestore sam trzyma zapis w pamięci i wyśle po powrocie sieci; jeśli karta zostanie zamknięta, kolejka w
   `localStorage` i tak pozwoli wysłać zmiany od nowa (zapis jest idempotentny).
-- Blind-write (bez transakcji) wolno wysłać tylko, gdy to urządzenie **widziało układ v3** (`zu.v3`). W przeciwnym razie (stary
+- Blind-write (bez transakcji) wolno wysłać tylko, gdy to urządzenie **widziało układ v3** (`kn.v3`, w aplikacji `zLay === 'v3'`). W przeciwnym razie (stary
   układ albo brak dokumentu) zmiany czekają w kolejce, aż zrobi się migrację (pkt 5).
+- **Zapis do localStorage jedną funkcją (A6c):** kolejka (`.zq`) i stan (`.state`) są zapisywane wyłącznie przez `ZP.store` / `ZP.settle` → `ZP.saveAll`
+  (zapis planów, odczyt z bazy, koniec wysyłki, ścieżka noop, koniec transakcji lustra). Kolejka łączy się z zapisaną przez drugą kartę tej samej przeglądarki
+  (`saveZ`/`mergeQ`: suma wpisów, przy tym samym id większy znacznik), a stan z zapisanym stanem (`mergeState`: pozycje, które drugą kartę mają w kolejce
+  z innym znacznikiem, usunięcia, kolejność i ustawienia drugiej karty zostają). Wpisy, które karta sama zdjęła przy scalaniu z bazą, schodzą też z zapisanej kolejki
+  (`ZP.dropped`). Stare `Z` (konto zamknięte albo otwarte od nowa w trakcie wysyłki) nie dotyka localStorage (`zCur(fid)`). Pamięć karty (`S`, `Z`) zostaje bez zmian –
+  cudzych wpisów karta nie wysyła, dopiero odświeżona karta czyta je z localStorage.
 
 ## 5. Migracja ze starego układu (jednorazowa, przy pierwszym zapisie)
 
 - Czytanie dokumentu v2 nic nie zmienia w bazie: `S.plans` = tablica jak dotąd, wszystkie pozycje mają `u = 0` (domyślnie).
+- **Dokument nieznanego kształtu** (istnieje, ale nie ma ani tablicy `plans`, ani mapy `pm`; `ZP.holdDoc`): migracja jest **wstrzymana** (`migrate` → `hold`),
+  dokument zostaje nietknięty, zmiany czekają w kolejce. Odczyt takiego dokumentu **nie jest scalany jak pusty** (`ZP.remoteHold`, tryb `hold` w `merge` zwraca stan
+  i kolejkę bez zmian – wcześniej plan bez wpisu w kolejce znikał z widoku, choć baza była nietknięta). Użytkownik dostaje toast „Konto w bazie ma nieznany układ danych.
+  Nie zapisuję do niego; plany zostają w tej przeglądarce, spróbuję po kolejnym odczycie.” (raz na otwarcie konta); po kolejnym odczycie z poprawnym dokumentem
+  zwykła ścieżka (`flush` po odczycie) ponawia migrację.
 - **Pierwszy zapis** (czyli pierwsza niepusta kolejka na dokumencie w starym układzie albo bez dokumentu): `runTransaction`
   (wymaga sieci; bez niej zmiany czekają w kolejce, nic nie ginie): czyta aktualny dokument, scala go z kolejką tym samym algorytmem
   (zdalne pozycje z `u = 0`), zapisuje **pełny** dokument v3 (`set` bez scalania: `v:3`, `full`, `pm`, `po`, `pos`, `cm`, `co`, `cos`,
@@ -151,7 +177,7 @@ tym, co ta karta ma w pamięci.
    widziała, razem ze swoją zmianą.
 2. **Wykrycie po stronie nowej wersji.** Układ v3 jest „kompletny” tylko, gdy w dokumencie jest `full` (+ `pm`, `cm` jako mapy).
    Zapis starej karty zastępuje cały dokument, więc `full` znika, a `v` wraca do 2. Każde urządzenie z nową wersją widzi
-   w nasłuchu: „układ starszy, a wiem, że kiedyś był v3” (`zu.v3`) = **stara karta nadpisała dokument**.
+   w nasłuchu: „układ starszy, a wiem, że kiedyś był v3” (`kn.v3`) = **stara karta nadpisała dokument**.
 
 **Naprawa (na każdym urządzeniu z nową wersją, którym przyjdzie taka migawka z serwera; transakcja, więc bez wyścigów):**
 - Traktuj tablice z dokumentu jak „zapis starej karty”: pozycje z `u = 0`. Z tych pozycji bierz **nowe** (planów, których nie mam) i
@@ -161,8 +187,11 @@ tym, co ta karta ma w pamięci.
   karcie może wrócić – ostrzeżenie w komunikacie.
 - Zapisz w transakcji pełny dokument v3 na nowo (`full`, `pm`, … i lustro). Stara karta dostaje przez nasłuch lustro i sama się
   odświeża (jeśli nic nie ma w toku).
-- Komunikat (toast): „Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je. Odśwież tamtą kartę.”
-  Sprawdzenie tego w kodzie: `ZP.layout(dok)` zwraca `'v3' | 'old' | 'empty'`; „stara po v3” = `'old'` i `zu.v3`.
+- Komunikaty (toast): w odczycie z bazy „Starsza wersja strony zapisała dane na innym urządzeniu. Scalam je.” (gdy scalenie przyjęło zmianę lub nowy plan ze starej karty),
+  po transakcji naprawy „Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.”
+  Sprawdzenie tego w kodzie: `ZP.layout(dok)` zwraca `'v3' | 'old' | 'empty'`; „stara po v3” = `'old'` i `kn.v3`.
+- Przy naprawie (tryb `repair`) kopia ze starej karty jest pomijana, gdy to **znana wcześniejsza wersja** pozycji (skrót w `kn.h`: `old-card-stale`, `old-card-ignored`)
+  albo gdy znamy **nagrobek** pozycji; nagrobki młodsze niż 60 dni przechodzą do nowego dokumentu (`fullDoc`).
 - `build_web.py` liczy wersję service workera z treści strony, więc nowa wersja pobierze się przy najbliższym uruchomieniu strony;
   karta już otwarta (np. iPhone w tle) działa na starym kodzie do odświeżenia. Dlatego ta naprawa jest potrzebna.
 
@@ -192,12 +221,14 @@ zmiany z kolejki są scalane z tym, co jest w tablicach.
 
 | Ryzyko | Co robimy |
 |---|---|
-| Rozjazd zegarów dwóch urządzeń przy edycji tego samego planu | „Późniejsza” = czas urządzenia. Przy różnicy zegarów wygra zegar „do przodu”. Dla 2–3 osób akceptujemy; opisane w komunikatach przy zmianie. Zmiany różnych planów tego nie dotyczą. |
+| Rozjazd zegarów dwóch urządzeń przy edycji tego samego planu | „Późniejsza” = czas urządzenia, ale znacznik zmiany nie jest mniejszy od największego czasu widzianego w bazie (`q.mx`), więc zegar „do tyłu” nie przegra ze zmianą, którą już widział. Zegar „do przodu” wygra (czasy dalej niż 30 dni w przód są pomijane w `mx`). Zmiany różnych planów tego nie dotyczą. |
 | `mergeFields` / `deleteField` / transakcja nie były sprawdzone na prawdziwej bazie | Logika jest testowana na sztucznym „serwerze”; sam Firebase **nie jest testowany** (brak emulatora w sesji). Pierwsze wdrożenie ostrożnie: kopia każdego konta, sprawdzenie dwoma urządzeniami (pkt 9). |
-| Dokument >1 MiB (lustro podwaja rozmiar) | Kontrola rozmiaru w `flush`; powyżej 600 KB lustro pomijane z ostrzeżeniem. |
+| Dokument >1 MiB (lustro podwaja rozmiar) | Próg 900 000 bajtów UTF-8 całego dokumentu: powyżej niego lustro jest pomijane (migracja) albo usuwane (transakcja lustra) z ostrzeżeniem; zwykły zapis ostrzega przy 950 000 B (pkt 2). |
 | Usunięcie planu na starej karcie wróci | Opisane w pkt 6; komunikat. |
 | Pętla ponawiania odrzuconego zapisu | Narastające opóźnienia, jedno ostrzeżenie na serię. |
-| Nagrobki rosną | Czyszczone po 60 dniach przy zapisie. |
+| Nagrobki rosną | Czyszczone po 60 dniach przy zapisie (razem ze starszym wpisem pod nagrobkiem); zapamiętane znane nagrobki (`kn.pt`, `kn.ct`) też wygasają po 60 dniach przy zapisie do localStorage. |
+| Dwie karty tej samej przeglądarki | Kolejka i stan łączone jedną funkcją zapisu (pkt 4, „Zapis do localStorage jedną funkcją”). Karta, która nie została odświeżona, nie wysyła cudzych wpisów. |
+| Dokument konta o nieznanym kształcie | Migracja wstrzymana, plany lokalne zostają w widoku, komunikat, ponowienie po kolejnym odczycie (pkt 5). |
 | `persist()` wywoływane przy ~40 akcjach | Wykrywanie zmian przez porównanie JSON-ów, więc wywołania zostają bez zmian; koszt: JSON każdej pozycji przy każdym `persist()` (pomijalny przy kilkunastu planach). |
 
 **Wycofanie.** Lustro w starym układzie sprawia, że dokument v3 jest **poprawnym dokumentem v2** dla starego kodu (stary kod
@@ -221,13 +252,19 @@ do `test.yml`. Sztuczny „serwer” (mapa dokumentów, `mergeFields`, `deleteFi
 9. kolejka: ponowienie po błędzie, przeżycie „zamknięcia karty” (serializacja do tekstu i odtworzenie), brak podwójnej wysyłki;
 10. treningi: niepotwierdzony wraca po odczycie z bazy i jest wysyłany ponownie; potwierdzony znika z listy; **usunięty nie wraca**;
     lista osobna dla dwóch kont.
+11. (A6b, A6c) zegar, nagrobki, lustro, historia wersji, dwie karty, rozmiar, zajętość konta, lista niewysłanych bez treningu w pamięci, usunięcie konta,
+    migracja wstrzymana, nagrobek w trybie naprawy, wygasanie nagrobków – numery testów w pkt 11. Test 31 czyta `zrodla/src/app.html` (statyczny): pilnuje wywołań,
+    których nie widać z Node (`folderDeleteGo` → `ZP.accountKeys`, `done` → `ZP.settle` z `zCur(fid)`, ścieżki noop/lustro/odczyt przez `ZP.store`, brak osobnych zapisów
+    `.zq`/`.state`, obsługa dokumentu nieznanego kształtu).
 
-**Test dymny (`testy/dymny/dymny.py`)** – musi zostać zielony; nowy krok „zapis: scalanie planów i niewysłane treningi”
+**Test dymny (`testy/dymny/dymny.py`)** – musi zostać zielony; drugi krok A6c „zapis: dwie karty, konto zamknięte w trakcie wysyłki, nieznany kształt dokumentu, rozmiar,
+usunięcie konta” (ten sam sztuczny Firebase, druga karta symulowana przez `ZP.store` na wspólnym localStorage) sprawdza te ścieżki na prawdziwym kodzie strony;
+nowy krok „zapis: scalanie planów i niewysłane treningi”
 (w stronie testowej, bez Firebase: sztuczny `FB` wstawiony w `page.evaluate`: kolejka, odczyt, nieudany zapis treningu, import
 kopii) w Chromium i WebKit. **Eksport i import kopii przed i po zmianie:** ten sam stan (`S`, `SESS`) eksportowany starym
 (z `main`) i nowym kodem daje identyczny JSON; import kopii z `main` w nowym kodzie przywraca identyczny stan.
 
-**Czego nie da się sprawdzić bez prawdziwego Firebase:** zachowanie `mergeFields`+`deleteField`, transakcji i odpowiedzi
+**Czego nie da się sprawdzić bez prawdziwego Firebase** (i bez dwóch prawdziwych kart w prawdziwej przeglądarce): zachowanie `mergeFields`+`deleteField`, transakcji i odpowiedzi
 z pamięci podręcznej (`fromCache`, `hasPendingWrites`) na prawdziwym SDK; praca w trybie samolotowym na telefonie; zgodność z
 regułami na żywej bazie (reguły nie ograniczają kształtu `state`, więc nie powinno być przeszkód). To trzeba sprawdzić na
 wdrożonej stronie dwoma urządzeniami.
@@ -240,3 +277,37 @@ wdrożonej stronie dwoma urządzeniami.
    dymny, `web/` zbudowane, `CLAUDE.md` i `test.yml`. Osobne commity: logika+testy, wpięcie, test dymny+web, dokumentacja.
 3. **Bez wdrożenia i bez scalania do `main`.** Przegląd przez drugi czat (Opus) na podstawie `git diff main..a6-zapis`;
    wdrożenie po jego zgodzie robi osobny czat. Przed wdrożeniem – kopia każdego konta.
+4. Przeglądy: A6b (poprawki po pierwszym przeglądzie, commity A6b-1…6e) i A6c (poprawki po drugim przeglądzie, pkt 11).
+
+## 11. Zmiany po przeglądach (A6b i A6c) – stan faktyczny
+
+Poniżej wszystko, co kod robi inaczej niż pierwotny plan (pkt 1–10 są poprawione tak, żeby zgadzały się z tym stanem). Numery testów – `testy/zapis/test_zapis.js`.
+
+### A6b
+- **A6b-1 – zegary.** `stampQ = max(teraz, q.t+1, q.mx+1)`; `merge` zapamiętuje największe `u`, czasy nagrobków i `pos`/`cos` z bazy w `q.mx` (czasy dalej niż 30 dni w przód pomija). Test 13.
+- **A6b-2 – nagrobki.** Wpis `pm.<id>` ukryty pod nagrobkiem trafia do kolejki jako usunięcie z oryginalnym czasem nagrobka; `buildWrite` czyszczący nagrobek po 60 dniach zabiera
+  starszy `pm.<id>` (nowszy zostaje); `fullDoc` przenosi nagrobki młodsze niż 60 dni (`kn.pt`/`kn.ct` z odczytu v3 + czekające usunięcia); naprawa po starej karcie nie wskrzesza pozycji z nagrobkiem. Testy 14, 15, 16, 16b.
+- **A6b-3 – lustro.** Zwykły zapis nie zawiera `plans`/`custom`; lustro odświeża osobna transakcja `flushMirror` (`ZP.mirrorOf`, `mirrorPatch`, `afterMirror`, kolejka `q.m`), tylko gdy dokument ma `full`. Testy 17, 18 (5b dostosowany).
+- **A6b-4 – historia wersji.** `kn.h` trzyma skróty (32-bitowy FNV-1a + długość) 6 ostatnich wersji każdej pozycji (do 300 pozycji); w trybie naprawy kopia ze starej karty równa znanej wcześniejszej wersji jest pomijana
+  (`old-card-stale`, `old-card-ignored`), więc nie cofa nowszej zmiany ani nie wskrzesza usuniętego. Testy 19, 19b, 19c.
+- **A6b-5 – dwie karty (kolejka).** `ZP.mergeQ`/`saveZ`: suma wpisów, przy tym samym id większy znacznik (edycja kontra usunięcie: późniejsze), wysłane wpisy schodzą z zapisanej kolejki tylko, gdy nikt nie dał im nowszego znacznika;
+  znane czasy: większy z obu, nagrobki: suma. Testy 20, 20b.
+- **A6b-6a – rozmiar.** Limit 900 000 bajtów UTF-8 całego dokumentu (pm + nagrobki + ustawienia + lustro); za duży dokument = lustro pomijane (`fullDoc`) albo usuwane (`mirrorPatch` → `drop`). Test 21.
+- **A6b-6b – zajętość konta.** `ZP.newBusy` (`zBusy` osobno dla konta) i `ZP.settle` (`afterSend` + zapis do localStorage tylko dla bieżącego `Z`). Test 22.
+- **A6b-6c – lista niewysłanych treningów.** `mergeSessions` i `sessResend` nie zdejmują z listy id bez treningu w pamięci; zdejmuje je potwierdzenie serwera albo usunięcie treningu. Testy 23, 12b.
+- **A6b-6d – usunięcie konta.** `ZP.zKey`/`sessKey`/`accountKeys`; `folderDeleteGo` kasuje `.zq` i `.unsent` razem z resztą danych konta. Test 24 (+ 31 i krok dymny: wywołanie w `folderDeleteGo`).
+- **A6b-6e – migracja wstrzymana** dla dokumentu bez `plans` i `pm` (`migrate` → `hold`, bez `tx.set`). Test 25.
+
+### A6c
+1. **Kolejka i stan przy dwóch kartach – jedno miejsce zapisu.** `ZP.saveAll` (przez `ZP.store` / `ZP.settle`) zapisuje `.zq` i `.state`; wszystkie ścieżki w `app.html` (`persist`, odczyt z bazy w `openFolder`, `done`,
+   noop, `flushMirror`) idą tą funkcją; stan łączy `ZP.mergeState`, a wpisy zdjęte przez scalenie `ZP.dropped`. Osobne ścieżki (`zSaveFor`, bezpośredni `LS.set` stanu w trybie fire) zniknęły. `openFolder` czyta stan z tego samego klucza
+   (`ZP.stateKey`). Testy 26, 26b, 26c (Node), 31 (statyczny), krok dymny „dwie karty…” (zapis, odczyt z bazy, noop, odświeżenie strony).
+2. **Nagrobek w trybie naprawy.** Urządzenie, które nigdy nie widziało planu, ale zna nagrobek (`kn.pt`), nie wskrzesza go po zapisie starej karty; test sprawdza też, że nie chroni go historia wersji. Test 27 (po wyłączeniu gałęzi `tomb !== undefined` jest czerwony).
+3. **Testy wywołań w `app.html`.** Test 31 (statyczny) i krok dymny: `folderDeleteGo` czyści `ZP.accountKeys`; `done` zapisuje przez `ZP.settle` z `zCur(fid)` (jawnego `Z === z` w `done` nie ma – warunek jest w `ZP.store`: `current === z`); wysyłka przeciągnięta
+   przez ponowne otwarcie konta nie rusza zapisanej kolejki nowego `Z`.
+4. **Migracja wstrzymana.** `ZP.holdDoc`, `ZP.remoteHold`, tryb `hold` w `merge`; komunikat i ponowienie po kolejnym odczycie (pkt 5). Test 28 i krok dymny.
+5. **Ten plik** zaktualizowany do stanu faktycznego (próg w bajtach UTF-8, brak klucza `.zu`, teksty toastów, A6b i A6c).
+6. **Drobne.** Zrobione: wygasanie znanych nagrobków `kn.pt`/`kn.ct` po 60 dniach w `saveZ` (test 29); ostrzeżenie o rozmiarze przy zwykłym zapisie, `DOC_WARN` (test 30, krok dymny).
+   **Niezrobione celowo:** zerowanie `zBusy` w `openFolder` – od A6b-6b zajętość jest osobna dla konta właśnie po to, żeby ponownie otwarte konto nie wysyłało drugi raz równolegle ze starą wysyłką; reset przy otwarciu
+   zdjąłby tę ochronę, a spóźniony `done` starej wysyłki zwolniłby flagę nowej. Wysyłka zawsze się kończy (sukces albo `zFailed`), więc flaga nie zostaje na stałe.
+
