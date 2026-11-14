@@ -528,6 +528,11 @@ def scenariusz(r):
         page.evaluate(SZTUCZNY_FIREBASE)
         w = page.evaluate(r"""async () => {
           const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          // ===== strażnik A6d: zapis klucza .zq / .state konta do localStorage wolno wykonać tylko wewnątrz ZP.store / ZP.settle (jedno miejsce zapisu); zbieramy naruszenia i sprawdzamy na końcu kroku =====
+          const g = {w:0, bledy:[], klucze:/^dz\.f\..+\.(zq|state)$/}, lsSet = LS.set.bind(LS);
+          LS.set = (k, v) => { if (g.klucze.test(String(k)) && !g.w) g.bledy.push(String(k) + ' ← ' + (new Error().stack || '').split('\n').slice(2, 5).join(' | ')); return lsSet(k, v); };
+          for (const nazwa of ['store', 'settle']){ const o = ZP[nazwa]; ZP[nazwa] = (...a) => { g.w++; try { return o(...a); } finally { g.w--; } }; }
+          const zasiej = (k, v) => { g.w++; try { LS.set(k, v); } finally { g.w--; } };   // przygotowanie danych testu (nie kod aplikacji)
           const P = (id, name, note) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:note || '', sets:[{reps:8, kg:40}]}]});
           const v3 = (plans, extra) => ({v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:plans.map(p => p.id), pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[], ...(extra || {})});
           const kq = id => Object.keys((LS.get(ZP.zKey(id), {q:{p:{}}}).q || {p:{}}).p).sort();
@@ -535,7 +540,7 @@ def scenariusz(r):
           // ===== dwie karty tej samej przeglądarki (A = ta strona, B = druga karta, ten sam kod ZP.store co w persist) =====
           store.mode = 'fire'; FOLDER = {id:'t2', name:'Dwie'};
           sv.doc = v3([P('P1', 'Plan A'), P('P2', 'Plan B')]);
-          LS.set('dz.f.t2.state', {v:2, plans:[P('P1', 'Plan A'), P('P2', 'Plan B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t2.zq');
+          zasiej('dz.f.t2.state', {v:2, plans:[P('P1', 'Plan A'), P('P2', 'Plan B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t2.zq');
           openFolder(FOLDER); sv.emit(); await sleep(80);
           const B = {S:LS.get(ZP.stateKey('t2'), null), z:ZP.fixZ(LS.get(ZP.zKey('t2'), null))}; B.last = ZP.snap(B.S);   // druga karta otwarta na tym samym stanie
           sv.fail = true;                                                                                                  // zapisy do bazy nie idą: wpisy zostają w kolejce
@@ -557,7 +562,7 @@ def scenariusz(r):
           await sleep(500); out.staleKoniec = kq('t2'); sv.delay = 5;
           // ===== dokument nieznanego kształtu (bez plans i pm): plany lokalne zostają, komunikat, po kolejnym odczycie migracja rusza =====
           FOLDER = {id:'t4', name:'Nieznany'}; sv.doc = {settings:{restSet:45}};
-          LS.set('dz.f.t4.state', {v:2, plans:[P('P1', 'lokalny A'), P('P2', 'lokalny B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t4.zq');
+          zasiej('dz.f.t4.state', {v:2, plans:[P('P1', 'lokalny A'), P('P2', 'lokalny B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t4.zq');
           openFolder(FOLDER); S.plans[0].name = 'zmiana czeka'; persist(); sv.emit(); await sleep(80);
           out.holdPlany = S.plans.map(p => p.name); out.holdToast = document.querySelector('#toast').textContent; out.holdKolejka = kq('t4');
           await sleep(900); out.holdSerwer = JSON.stringify(sv.doc);
@@ -565,19 +570,24 @@ def scenariusz(r):
           out.holdPo = {v:sv.doc.v, p1:sv.doc.pm && sv.doc.pm.P1.name, p2:sv.doc.pm && sv.doc.pm.P2.name, plany:S.plans.map(p => p.name)};
           // ===== rozmiar przy zwykłym zapisie: dokument blisko limitu ostrzega =====
           FOLDER = {id:'t5', name:'Duże'}; sv.doc = v3([P('P1', 'duży', 'x'.repeat(951000)), P('P2', 'mały')]);
-          LS.set('dz.f.t5.state', {v:2, plans:[P('P1', 'duży', 'x'.repeat(951000)), P('P2', 'mały')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t5.zq');
+          zasiej('dz.f.t5.state', {v:2, plans:[P('P1', 'duży', 'x'.repeat(951000)), P('P2', 'mały')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t5.zq');
           openFolder(FOLDER); sv.emit(); await sleep(80);
           const toasty = [], toastOrg = toast; toast = m => { toasty.push(m); toastOrg(m); };                              // toasty zasłaniają się nawzajem: zbieramy wszystkie
           S.plans.find(p => p.id === 'P2').name = 'mały zmieniony'; persist(); await sleep(900);
           toast = toastOrg; out.rozmiarToast = toasty.join(' | ');
           // ===== usunięcie konta czyści jego kolejkę i listę niewysłanych treningów, cudze klucze zostają =====
-          for (const id of ['t3', 't6']){ LS.set('dz.f.' + id + '.zq', {q:{p:{P1:5}}}); LS.set('dz.f.' + id + '.unsent', ['T1']); LS.set('dz.f.' + id + '.state', {plans:[]}); }
+          for (const id of ['t3', 't6']){ zasiej('dz.f.' + id + '.zq', {q:{p:{P1:5}}}); LS.set('dz.f.' + id + '.unsent', ['T1']); zasiej('dz.f.' + id + '.state', {plans:[]}); }
           FOLDER = {id:'t3', name:'Trzy'}; openFolder(FOLDER);
           await ACT.folderDeleteGo({id:'t3', name:'Trzy'});
           const has = k => localStorage.getItem(k) !== null;
           out.usuniete = {zq:has('dz.f.t3.zq'), unsent:has('dz.f.t3.unsent'), state:has('dz.f.t3.state'), cudzeZq:has('dz.f.t6.zq'), cudzeUnsent:has('dz.f.t6.unsent')};
+          // strażnik musi działać: zapis klucza .state wprost, poza ZP.store, zostaje wykryty (probe kasujemy z listy i z pamięci)
+          const przed = g.bledy.length; LS.set('dz.f.sonda.state', {}); out.straznikDziala = g.bledy.length === przed + 1; g.bledy.splice(przed); localStorage.removeItem('dz.f.sonda.state');
+          out.straznik = g.bledy;
           return out;
         }""")
+        assert w['straznikDziala'], 'strażnik zapisu (.zq/.state poza ZP.store/ZP.settle) nie wykrył zapisu próbnego'
+        assert w['straznik'] == [], f"zapis klucza .zq/.state do localStorage poza ZP.store / ZP.settle: {w['straznik']}"
         assert w['poZapisach'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"zapisy dwóch kart (kolejka i stan): {w['poZapisach']}"
         assert w['poOdczycie'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"odczyt z bazy u karty A nadpisał kolejkę albo stan drugiej karty: {w['poOdczycie']}"
         assert w['poNoop']['kolejka'] == ['P2'] and w['poNoop']['stan'] == ['A: edycja P1', 'B: edycja P2'] and w['poNoop']['serwer'] == ['A: edycja P1', 'Plan B'], f"ścieżka noop i wysyłka karty A (wpis drugiej karty zostaje w kolejce i w stanie): {w['poNoop']}"
