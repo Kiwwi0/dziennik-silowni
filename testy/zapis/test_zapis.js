@@ -726,6 +726,70 @@ test('26d-4. zmiana kolejności planów i ustawienia na drugiej karcie (jeszcze 
   const C = karta('C', ls, 'X'); assert.deepEqual(ids(C.S), ['P2', 'P1']); assert.equal(C.S.settings.sound, false);
 });
 
+/* ======================= A6e ======================= */
+/* Migawka v3 w karcie – jak handler nasłuchu w openFolder: remoteV3, kn.v3, rememberTombs, merge, zapis przez ZP.store z wpisami zdjętymi przez scalenie. */
+function migawkaV3(k, doc, now){
+  const before = cl(k.z.q), t = now == null ? clock.t : now;
+  k.z.kn.v3 = true; ZP.rememberTombs(k.z.kn, doc, t);
+  const mg = ZP.merge(k.S, k.z.q, k.z.kn, ZP.remoteV3(cl(doc)), t); k.z.q = mg.q; k.z.kn = mg.kn; k.S = mg.S; k.last = ZP.snap(k.S);
+  ZP.store(k.ls, k.fid, k.z, k.z, k.S, ZP.dropped(before, k.z.q), t); return mg.notes;
+}
+const DZIEN = 864e5;
+test('26e. plan usunięty na INNYM urządzeniu (migawka v3), jedna karta: zapisany stan go nie przywraca, nowa karta go nie ma – także po 61 dniach bez nagrobka (A6e-1)', () => {
+  const t0 = clock.t; clock.t = Date.now();                                                       // zapis bez `now` liczy wygasanie nagrobków od Date.now()
+  try {
+  for (const wariant of ['z nagrobkiem', 'po 61 dniach, nagrobek już wyczyszczony']){
+    const ls = wspolnyLS(), A = karta('A', ls, 'X');
+    A.edit(S => { byId(S, 'P2').name = 'A zmienia P2'; }); wyslano(A, 'P2');                      // znany czas P2 trafia do zapisanych znanych czasów
+    assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).kn.p.P2 > 0, wariant + ': znany czas P2 zapisany');
+    const tDel = tick(), tSnap = wariant === 'z nagrobkiem' ? tick() : (clock.t += 61 * DZIEN);
+    const doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:1}}, po:['P1'], pos:0, cm:{}, co:[], cos:0, pt:wariant === 'z nagrobkiem' ? {P2:tDel} : {}, ct:{}, settings:{restSet:90, sound:true}};
+    const notes = migawkaV3(A, doc, tSnap);
+    assert.ok(notes.some(n => n.t === 'deleted-remote' && n.id === 'P2'), wariant + ': scalenie widzi usunięcie z innego urządzenia');
+    assert.deepEqual(ids(A.S), ['P1'], wariant + ': pamięć karty bez P2');
+    assert.deepEqual(ids(ls.get(ZP.stateKey('X'), null)), ['P1'], wariant + ': zapisany stan nie przywraca usuniętego planu (stary znany czas w zapisanej kopii kn)');
+    A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });                                       // kolejny zapis tej samej karty też nie przywraca
+    assert.deepEqual(ids(ls.get(ZP.stateKey('X'), null)), ['P1'], wariant + ': po kolejnym zapisie dalej bez P2');
+    const C = karta('C', ls, 'X');                                                                // nowa karta (np. offline) z localStorage
+    assert.deepEqual(ids(C.S), ['P1'], wariant + ': nowa karta nie ma usuniętego planu');
+    assert.equal(C.z.q.p.P2, undefined, wariant + ': i nie ma wpisu, który wysłałby go z powrotem do bazy');
+  }
+  } finally { clock.t = t0; }
+});
+test('26e-2. plan dodany ponownie (to samo id, np. „Przywróć z kopii”) na karcie A czeka w kolejce; zapis karty B, która nie zna nagrobka, nie wyrzuca go ze stanu; nowa karta ma plan i wpis (A6e-2)', () => {
+  const t0 = clock.t; clock.t = Date.now();
+  try {
+  const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+  A.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); wyslano(A, 'P2');              // usunięcie wysłane: nagrobek w znanych czasach A
+  assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).kn.pt.P2 > 0, 'nagrobek P2 w zapisanych znanych czasach');
+  A.edit(S => { S.plans.push(plan('P2', 'Przywrócony z kopii')); });                              // ponowne dodanie tego samego id, czeka w kolejce
+  assert.ok(A.z.q.p.P2 > A.z.kn.pt.P2, 'wpis P2 nowszy od nagrobka');
+  B.edit(S => { byId(S, 'P1').name = 'B zmienia P1'; });                                          // B nie zna nagrobka, nie ma wpisu P2
+  const st = ls.get(ZP.stateKey('X'), null), q = ZP.fixZ(ls.get(ZP.zKey('X'), null)).q;
+  assert.deepEqual(nazwy(st), ['B zmienia P1', 'Przywrócony z kopii'], 'plan czekający w scalonej kolejce zostaje w zapisanym stanie');
+  assert.ok(q.p.P2 > 0, 'wpis P2 karty A w zapisanej kolejce');
+  const C = karta('C', ls, 'X');
+  assert.deepEqual(nazwy(C.S), ['B zmienia P1', 'Przywrócony z kopii'], 'nowa karta ma przywrócony plan');
+  assert.ok(C.z.q.p.P2 > 0, 'nowa karta ma wpis P2');
+  const doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:1}}, po:['P1'], pos:0, cm:{}, co:[], cos:0, pt:{P2:A.z.kn.pt.P2}, ct:{}, settings:{restSet:90, sound:true}};
+  migawkaV3(C, doc);                                                                              // scalenie z bazą: wpis nowszy od nagrobka zostaje i czeka na wysyłkę
+  assert.ok(ids(C.S).includes('P2'), 'po odczycie z bazy plan zostaje'); assert.ok(C.z.q.p.P2 > 0, 'wpis zostaje do wysłania');
+  } finally { clock.t = t0; }
+});
+test('26e-3. nagrobek nieznany tej karcie, ale znany czas planu nowszy od niego (druga karta usunęła, potem przywróciła i wysłała): plan zostaje w stanie', () => {
+  const t0 = clock.t; clock.t = Date.now();
+  try {
+  const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+  B.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); wyslano(B, 'P2');              // nagrobek P2
+  B.edit(S => { S.plans.push(plan('P2', 'Przywrócony przez B')); }); wyslano(B, 'P2');           // przywrócony i wysłany: znany czas P2 > nagrobek, wpisu w kolejce już nie ma
+  const zap = ZP.fixZ(ls.get(ZP.zKey('X'), null));
+  assert.ok(zap.kn.p.P2 > zap.kn.pt.P2, 'znany czas P2 nowszy od nagrobka'); assert.equal(zap.q.p.P2, undefined, 'wpis P2 zszedł z kolejki');
+  A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });                                          // A nie zna ani nagrobka, ani przywrócenia
+  assert.deepEqual(nazwy(ls.get(ZP.stateKey('X'), null)), ['A zmienia P1', 'Przywrócony przez B'], 'plan przywrócony po nagrobku zostaje w zapisanym stanie (w wersji B)');
+  const C = karta('C', ls, 'X'); assert.deepEqual(nazwy(C.S), ['A zmienia P1', 'Przywrócony przez B'], 'nowa karta ma plan');
+  } finally { clock.t = t0; }
+});
+
 test('27. nagrobek w remoteOld: urządzenie, które NIGDY nie widziało planu, nie wskrzesza go po zapisie starej karty (chroni nagrobek, nie historia wersji)', () => {
   const sv = new Serwer();
   sv.doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:0}, P2:{...plan('P2', 'Plan B'), u:0}}, po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{P3:clock.t}, ct:{}, settings:{restSet:90, sound:true}};

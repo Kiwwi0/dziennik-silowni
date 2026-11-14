@@ -149,8 +149,8 @@ z planu pola nie zostają w bazie; zwykłe `merge:true` scalałoby zagnieżdżon
 - **Stan po cudzej wysyłce (A6d):** `mergeState(stored, S, q, mq, kn, mkn)` dostaje też znane czasy tej karty (`z.kn`) i scalone (`mkn`, wynik `saveZ`, który `saveAll` przekazuje dalej).
   Sytuacja: druga karta (B) wysłała zmianę P2 i jej wpis zszedł z kolejki (`settle`), a ta karta (A) zapisuje zmianę P1, zanim dostanie migawkę. W scalonej kolejce nie ma już P2, więc
   samo porównanie wpisów nie widzi nowszej wersji, a zapisany stan wracał do starej treści P2 – karta otwarta później (offline) edytowałaby i wysyłała starą treść z nowszym znacznikiem.
-  Teraz, gdy `mkn.p[id] > kn.p[id]` (`mkn.c` dla własnych ćwiczeń), a ta karta nie ma własnego wpisu (zmiany ani usunięcia) dla `id`, pozycja idzie z zapisanego stanu. Tak samo nagrobki:
-  nagrobek `mkn.pt[id]` (`mkn.ct`), którego ta karta nie zna, usuwa pozycję ze stanu (usunięty plan nie wraca), chyba że znany czas pozycji jest od niego nowszy; `afterSend` zapisuje w `kn.pt`/`kn.ct`
+  Teraz, gdy `mkn.p[id] > kn.p[id]` (`mkn.c` dla własnych ćwiczeń), ta karta ma pozycję w swoim stanie (A6e) i nie ma własnego wpisu (zmiany ani usunięcia) dla `id`, pozycja idzie z zapisanego stanu. Tak samo nagrobki:
+  nagrobek `mkn.pt[id]` (`mkn.ct`), którego ta karta nie zna, usuwa pozycję ze stanu (usunięty plan nie wraca), chyba że znany czas pozycji jest od niego nowszy albo pozycja czeka w scalonej kolejce (A6e); `afterSend` zapisuje w `kn.pt`/`kn.ct`
   nagrobek wysłanego usunięcia (jest już w bazie), żeby objąć też okno przed odczytem z bazy. Własne wpisy tej karty mają pierwszeństwo (rozstrzyga je `merge` z bazą).
   **Skutek uboczny, zamierzony:** karta, która w pamięci nadal ma wpis kolejki (otwarta, zanim druga go wysłała), po cudzej wysyłce przy kolejnym zapisie dopisuje go z powrotem do zapisanej
   kolejki (`saveZ` łączy kolejki sumą) – ta pozycja zostanie wysłana jeszcze raz. Zapis jest idempotentny (ta sama treść, ten sam `u`), więc to tylko dodatkowy zapis, nie utrata ani cofnięcie danych.
@@ -329,3 +329,16 @@ Poniżej wszystko, co kod robi inaczej niż pierwotny plan (pkt 1–10 są popra
    zapis stanu to `persist` w trybach local i cloud. Statyczny test nie zobaczy klucza zbudowanego inaczej, więc krok dymny A6c łapie to w czasie działania (opis w pkt 9). Zdanie o teście 31 w `CLAUDE.md` poprawione.
 4. **`ZP.accountKeys` zawiera `stateKey`** (`.zq`, `.unsent`, `.state`); `folderDeleteGo` nie kasuje już `.state` na sztywno, tylko przez `ZP.accountKeys`. Testy 24 i 31, krok dymny (usunięcie konta).
 5. **Ten plik:** literówka w pkt 4, porządek w akapicie o teście dymnym (pkt 9: najpierw krok pierwotny, potem A6c i strażnik), opis poprawki 1 i skutku ubocznego (ponowna, idempotentna wysyłka) w pkt 4, ta sekcja.
+
+### A6e (poprawki po przeglądzie A6d)
+1. **Plan usunięty na innym urządzeniu nie wraca ze stanu.** `saveZ` łączy znane czasy `kn.p`/`kn.c` przez maksimum i nigdy ich nie kasuje, a `merge` przy `deleted-remote` kasuje znany czas tylko w pamięci karty.
+   Pętla „druga karta wysłała nowszą wersję” w `mergeState` widziała więc stary znany czas z zapisanej kopii jako „nowszy” i przywracała plan z zapisanego stanu – nawet przy jednej karcie;
+   nowa karta (np. offline) miała go znowu, a jego edycja wysłałaby go z powrotem do bazy. Poprawka: warunek zaczyna się od `id in A[K.k]` – z zapisanego stanu bierzemy tylko nowszą wersję pozycji,
+   którą ta karta ma. Pozycja dodana i wysłana przez drugą kartę, której ta karta jeszcze nie widziała, nie trafia do stanu z tej ścieżki (wpis jest już w bazie, więc wraca z następną migawką;
+   dopóki czeka w kolejce, przenosi ją pętla po `mq`). Test 26e (migawka v3 z nagrobkiem i po 61 dniach bez nagrobka, jedna karta; zapisany stan, kolejny zapis, nowa karta bez planu i bez wpisu).
+2. **Plan dodany ponownie (to samo id) nie znika ze stanu po zapisie drugiej karty.** Pętla nagrobków nie sprawdzała scalonej kolejki: plan przywrócony na karcie A (np. „Przywróć z kopii”) i czekający w kolejce
+   znikał ze `.state` po zapisie karty B, która nie znała nagrobka, a nowa karta wyrzucała wtedy wpis („wpis bez pozycji”). Poprawka: warunek zaczyna się od `mq[K.k][id] === undefined`. Test 26e-2
+   (stan i kolejka po zapisie B, nowa karta ma plan i wpis, po migawce v3 z nagrobkiem wpis zostaje do wysłania).
+3. **Pokrycie warunku `!((mk[id] ?? -1) > ts)`.** Test 26e-3: druga karta usuwa plan, przywraca go i wysyła (znany czas nowszy od nagrobka, brak wpisu w kolejce); zapis karty, która nie zna ani nagrobka,
+   ani przywrócenia, zostawia plan w wersji drugiej karty.
+4. **Mutacje sprawdzone:** bez poprawki 1 czerwony jest 26e (oba warianty osobno), bez poprawki 2 – 26e-2, bez warunku z pkt 3 – 26e-3; pozostałe testy zielone przy każdej mutacji.
