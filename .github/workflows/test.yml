@@ -37,12 +37,14 @@ jobs:
       - name: Zbuduj stronę (web/)
         run: python3 -I zrodla/build_web.py .
       - name: Sprawdź, że web/ odpowiada źródłom
+        # Ikony PNG porównujemy po pikselach (testy/porownaj_png.py): ich bajty zależą od wersji zlib w systemie.
         run: |
-          if ! git diff --exit-code --stat web/; then
+          if ! git diff --exit-code --stat -- web/ ':(exclude)web/*.png'; then
             echo "::error::web/ nie odpowiada źródłom. Uruchom lokalnie: python3 -I zrodla/build_web.py . i zatwierdź zmiany w web/."
             exit 1
           fi
-          if [ -n "$(git status --porcelain --untracked-files=all web/)" ]; then
+          python3 -I testy/porownaj_png.py
+          if [ -n "$(git status --porcelain --untracked-files=all web/ | grep -v '\.png$' || true)" ]; then
             git status --porcelain --untracked-files=all web/
             echo "::error::Budowanie utworzyło pliki spoza repozytorium w web/. Zatwierdź je albo usuń ze źródeł."
             exit 1
