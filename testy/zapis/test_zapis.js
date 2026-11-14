@@ -569,5 +569,15 @@ test('23. mergeSessions nie zdejmuje z listy id bez treningu w pamięci (pamię�
   const m4 = ZP.mergeSessions([], [], ['T-a'], true); assert.deepEqual(m4.unsent, ['T-a'], 'migawka z pamięci podręcznej też niczego nie zdejmuje');
 });
 
+test('24. usunięcie konta kasuje też kolejkę zapisu (.zq) i listę niewysłanych treningów (.unsent) tego konta, nie cudze', () => {
+  const ls = wspolnyLS(); ls.del = k => { delete ls.mem[k]; };                 // jak LS.del w aplikacji
+  assert.equal(ZP.zKey('A'), 'dz.f.A.zq'); assert.equal(ZP.sessKey('A'), 'dz.f.A.unsent');
+  for (const f of ['A', 'B']){ ls.set(ZP.zKey(f), {q:{p:{P1:5}}}); ls.set(ZP.sessKey(f), ['T1']); ls.set('dz.f.' + f + '.state', {}); }
+  assert.deepEqual(ZP.accountKeys('A').sort(), ['dz.f.A.unsent', 'dz.f.A.zq']);
+  ZP.accountKeys('A').forEach(k => ls.del(k));
+  assert.ok(!('dz.f.A.zq' in ls.mem) && !('dz.f.A.unsent' in ls.mem), 'klucze usuniętego konta zniknęły');
+  assert.ok('dz.f.B.zq' in ls.mem && 'dz.f.B.unsent' in ls.mem && 'dz.f.A.state' in ls.mem, 'cudze i inne klucze nietknięte (te kasuje osobno istniejący kod)');
+});
+
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
 process.exit(bledy ? 1 : 0);

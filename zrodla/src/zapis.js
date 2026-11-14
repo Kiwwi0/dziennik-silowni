@@ -331,6 +331,8 @@ const ZP = (() => {
     kn.v3 = !!(st.kn.v3 || z.kn.v3); kn.pt = {...st.kn.pt, ...z.kn.pt}; kn.ct = {...st.kn.ct, ...z.kn.ct}; kn.h = z.kn.h || kn.h;
     const out = {q, kn}; ls.set(key, out); return out;
   }
+  /* Klucze localStorage silnika zapisu (osobne dla konta); usunięcie konta kasuje je razem z resztą jego danych. */
+  const zKey = fid => `dz.f.${fid}.zq`, sessKey = fid => `dz.f.${fid}.unsent`, accountKeys = fid => [zKey(fid), sessKey(fid)];
   /* Zajętość zapisu osobno dla każdego konta: trwająca wysyłka jednego konta nie blokuje drugiego, a ponownie otwarte konto nie wysyła w tym samym czasie drugi raz. */
   function newBusy(){
     const set = new Set();
@@ -364,7 +366,7 @@ const ZP = (() => {
   }
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
-  return {DEL, KINDS, TOMB_TTL, DOC_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, newBusy, settle, split, join, snap, diff, layout,
+  return {DEL, KINDS, TOMB_TTL, DOC_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, newBusy, settle, zKey, sessKey, accountKeys, split, join, snap, diff, layout,
     same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;

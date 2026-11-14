@@ -818,7 +818,7 @@ const sheets = [];
 const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, uid:null, ref:null, col:null, dirty:false, writing:false, t:null, foldersReady:false, pinBusy:false, fireError:false};
 
 /* Silnik zapisu planów (A6, zrodla/src/zapis.js, plan: zrodla/plany/A6-zapis-planow-i-treningow.md): kolejka zmian osobna dla konta w localStorage (`zq`). */
-const zKey = fid => `dz.f.${fid}.zq`;
+const zKey = ZP.zKey;
 let Z = ZP.fixZ(FIRE && FOLDER ? LS.get(zKey(FOLDER.id), null) : null), zLast = ZP.snap(S);
 const zBusy = ZP.newBusy();   // zajętość zapisu osobno dla każdego konta
 let zRetryT = null, zRetryN = 0, zWarned = false, zMirrorAt = 0, zMirrorWarned = false, zLay = 'empty', zTombs = {pt:{}, ct:{}}, zRenderT = null;
@@ -981,7 +981,7 @@ function watchActive(fid){
 /* ---------- treningi niewysłane do bazy (A6, E1-10): lista identyfikatorów w pamięci przeglądarki, osobna dla konta ----------
    Trening trafia na listę przed wysłaniem i schodzi z niej, gdy baza go potwierdzi. Odczyt z bazy dokłada do historii treningi z listy,
    których serwer nie ma, i wysyła je ponownie (ZP.mergeSessions). deleteSession zdejmuje id z listy, więc usunięty trening nie wraca. */
-const sessKey = fid => `dz.f.${fid}.unsent`;
+const sessKey = ZP.sessKey;
 const sessUnsent = fid => { const v = LS.get(sessKey(fid), []); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; };
 const sessMark = (fid, id) => { const l = sessUnsent(fid); if (!l.includes(id)) LS.set(sessKey(fid), [...l, id]); };
 const sessUnmark = (fid, id) => { const l = sessUnsent(fid); if (l.includes(id)) LS.set(sessKey(fid), ZP.without(l, id)); };
@@ -3244,6 +3244,7 @@ const ACT = {
           await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'tries', FB.uid)).catch(() => {});
         }
         LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`); LS.del(`dz.f.${f.id}.diet`); LS.del(`dz.f.${f.id}.dietDays`);
+        ZP.accountKeys(f.id).forEach(k => LS.del(k));   // kolejka zapisu (.zq) i lista niewysłanych treningów (.unsent) usuniętego konta
         toast('Usunięto konto.');
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
   },
