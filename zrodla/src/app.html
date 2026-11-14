@@ -643,6 +643,7 @@ function applyTheme(t){
 try { applyTheme(localStorage.getItem('theme') || 'auto'); } catch (e) {}
 </script>
 <script>/*__ANIM_JS__*/</script>
+<script>/*__ZAPIS_JS__*/</script>
 <script type="application/json" id="exdata">__EXERCISES_JSON__</script>
 <script type="application/json" id="fooddata">__FOODS_JSON__</script>
 <script>
@@ -816,6 +817,10 @@ const ui = {tab:'trening', planId:null, openItem:null, exQ:'', exGroup:'', exEqu
 const sheets = [];
 const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, uid:null, ref:null, col:null, dirty:false, writing:false, t:null, foldersReady:false, pinBusy:false, fireError:false};
 
+/* Silnik zapisu planów (A6, zrodla/src/zapis.js, plan: zrodla/plany/A6-zapis-planow-i-treningow.md): kolejka zmian osobna dla konta w localStorage (`zq`). */
+const zKey = fid => `dz.f.${fid}.zq`;
+let Z = ZP.fixZ(FIRE && FOLDER ? LS.get(zKey(FOLDER.id), null) : null), zLast = ZP.snap(S);
+let zBusy = false, zRetryT = null, zRetryN = 0, zWarned = false, zMirrorAt = 0, zMirrorWarned = false, zLay = 'empty', zTombs = {pt:{}, ct:{}}, zRenderT = null;
 const getEx = id => EXMAP.get(id) || S.custom.find(c => c.id === id) || {id, name:'Usunięte ćwiczenie', group:'', equipment:'', mode:'reps', primary:[], secondary:[], steps:[], tips:[], missing:true};
 const hasImg = id => EXMAP.has(id);
 const planById = id => S.plans.find(p => p.id === id);
@@ -831,17 +836,52 @@ const hasData = s => s.plans.length || s.custom.length;
 /* ====================== zapis: konto claude.ai lub ta przeglądarka ====================== */
 function persist(){
   const k = lsKey('state'); if (k) LS.set(k, S);
-  if (store.mode === 'cloud' || (store.mode === 'fire' && FOLDER && FB.db)){ store.dirty = true; clearTimeout(store.t); store.t = setTimeout(flush, 600); }
-}
-async function flush(){
   if (store.mode === 'fire'){
-    if (!store.dirty || !FOLDER || !FB.db) return;
-    store.dirty = false;
-    // Firestore zapisuje od razu lokalnie i wysyła na serwer, gdy jest internet.
-    FB.setDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'data', 'state'), clone(S)).catch(() => toast('Nie udało się zapisać zmian w bazie.'));
-    syncShares();
+    if (!FOLDER) return;
+    zLast = ZP.diff(zLast, S, Z.q, Date.now()); LS.set(zKey(FOLDER.id), Z);   // co się zmieniło od ostatniego zapisu → kolejka (zostaje w pamięci przeglądarki)
+    if (FB.db){ clearTimeout(store.t); store.t = setTimeout(flush, 600); }
     return;
   }
+  if (store.mode === 'cloud'){ store.dirty = true; clearTimeout(store.t); store.t = setTimeout(flush, 600); }
+}
+/* ---------- zapis w bazie Firebase: scalający, po pozycjach, z kolejką i ponawianiem ---------- */
+const zStateRef = fid => FB.doc(FB.db, 'folders', fid, 'data', 'state');
+const zSaveFor = (fid, z) => LS.set(zKey(fid), z);
+const zUnDel = v => v && typeof v === 'object' ? (v.__del ? FB.deleteField() : Array.isArray(v) ? v.map(zUnDel) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, zUnDel(x)]))) : v;
+function zFailed(){
+  zBusy = false;
+  if (!zWarned){ zWarned = true; toast('Nie udało się zapisać zmian w bazie. Spróbuję ponownie.'); }
+  clearTimeout(zRetryT); zRetryT = setTimeout(flushFire, ZP.backoff(zRetryN++));
+}
+function flushFire(){
+  if (!fireOn() || zBusy || ZP.emptyQ(Z.q)) return;
+  const z = Z, fid = FOLDER.id, ref = zStateRef(fid);
+  zBusy = true;
+  const done = (sent, written) => { ZP.afterSend(z, sent, written); zSaveFor(fid, z); zBusy = false; zRetryN = 0; zWarned = false; if (Z === z && FOLDER && FOLDER.id === fid && !ZP.emptyQ(z.q)) flushFire(); };
+  if (zLay === 'v3'){
+    // zwykły zapis: tylko zmienione pozycje (mergeFields zastępuje wskazane pole w całości, reszta dokumentu zostaje)
+    const bw = ZP.buildWrite(S, z.q, Date.now(), {tombs:zTombs});
+    if (!bw){ zBusy = false; return; }
+    if (bw.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
+    FB.setDoc(zStateRef(fid), zUnDel(bw.data), {mergeFields:bw.fields}).then(() => done(bw.sent), zFailed);
+    syncShares();
+  } else {
+    // migracja ze starego układu i naprawa po starej karcie: transakcja (czyta świeży dokument, scala, zapisuje całość); wymaga sieci
+    if (typeof navigator !== 'undefined' && navigator.onLine === false){ zBusy = false; return; }
+    FB.runTransaction(FB.db, async tx => {
+      const snap = await tx.get(ref), r = ZP.migrate(S, z, snap.exists() ? snap.data() : null, Date.now(), d => normalize(d));
+      if (!r.noop) tx.set(ref, r.doc);
+      return r;
+    }).then(r => {
+      zLay = 'v3';
+      if (r.noop){ z.q.f = 0; zSaveFor(fid, z); zBusy = false; flushFire(); return; }
+      done(r.sent, r.written); syncShares();
+      if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');
+    }, zFailed);
+  }
+}
+async function flush(){
+  if (store.mode === 'fire'){ flushFire(); return; }
   if (store.mode !== 'cloud' || !store.dirty) return;
   if (store.writing){ clearTimeout(store.t); store.t = setTimeout(flush, 400); return; }
   store.writing = true; store.dirty = false;
@@ -851,6 +891,12 @@ async function flush(){
     else toast('Nie udało się zapisać zmian na koncie. Zostały w tej przeglądarce.');
   }
   finally { store.writing = false; }
+}
+// odświeżenie widoku po zmianie z bazy: nie w trakcie wpisywania (dane są już w S, widok dogoni po zejściu z pola)
+function zRenderSoon(){
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.closest && a.closest('#view, #sheet')){ clearTimeout(zRenderT); zRenderT = setTimeout(zRenderSoon, 1200); return; }
+  render();
 }
 function commit(){ persist(); render(); }
 function saveActive(){ if (ACTIVE){ ACTIVE.updatedAt = Date.now(); LS.set('dz.active', ACTIVE); pushActive(); } else LS.del('dz.active'); }
@@ -915,11 +961,40 @@ function watchActive(fid){
     render(); if (ui.showWorkout) renderWorkout();
   }, () => {});
 }
+/* ---------- treningi niewysłane do bazy (A6, E1-10): lista identyfikatorów w pamięci przeglądarki, osobna dla konta ----------
+   Trening trafia na listę przed wysłaniem i schodzi z niej, gdy baza go potwierdzi. Odczyt z bazy dokłada do historii treningi z listy,
+   których serwer nie ma, i wysyła je ponownie (ZP.mergeSessions). deleteSession zdejmuje id z listy, więc usunięty trening nie wraca. */
+const sessKey = fid => `dz.f.${fid}.unsent`;
+const sessUnsent = fid => { const v = LS.get(sessKey(fid), []); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; };
+const sessMark = (fid, id) => { const l = sessUnsent(fid); if (!l.includes(id)) LS.set(sessKey(fid), [...l, id]); };
+const sessUnmark = (fid, id) => { const l = sessUnsent(fid); if (l.includes(id)) LS.set(sessKey(fid), ZP.without(l, id)); };
+const sessFlight = new Set();
+let sessFails = 0, sessWarned = false, sessRetryT = null;
+function sessSend(s, fid){
+  if (sessFlight.has(s.id)) return;
+  sessFlight.add(s.id);
+  FB.setDoc(FB.doc(FB.db, 'folders', fid, 'sessions', s.id), clone(s)).then(() => {
+    sessFlight.delete(s.id); sessFails = 0; sessWarned = false; sessUnmark(fid, s.id);
+  }, () => {
+    sessFlight.delete(s.id);
+    if (!sessWarned){ sessWarned = true; toast('Trening zapisany w tej przeglądarce. Wyślę go do bazy, gdy się uda.'); }
+    clearTimeout(sessRetryT); sessRetryT = setTimeout(() => sessResend(fid), ZP.backoff(sessFails++));
+  });
+}
+function sessResend(fid, only){   // ponowna wysyłka niewysłanych (po odczycie z bazy, po błędzie, po powrocie sieci)
+  if (!FOLDER || FOLDER.id !== fid || !FB.db || store.mode !== 'fire') return;
+  for (const id of sessUnsent(fid)){
+    if (only && !only.includes(id)) continue;
+    const s = SESS.find(x => x.id === id);
+    if (s) sessSend(s, fid); else sessUnmark(fid, id);
+  }
+}
 async function saveSession(s){
   SESS = [s, ...SESS.filter(x => x.id !== s.id)];
   const k = lsKey('sessions'); if (k) LS.set(k, SESS);
-  if (store.mode === 'fire' && FOLDER && FB.db){
-    FB.setDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'sessions', s.id), clone(s)).catch(() => toast('Nie udało się zapisać treningu w bazie.'));
+  if (store.mode === 'fire' && FOLDER){
+    sessMark(FOLDER.id, s.id);   // na liście niewysłanych, dopóki baza nie potwierdzi (A6, E1-10)
+    if (FB.db) sessSend(s, FOLDER.id);
     return;
   }
   if (store.mode === 'cloud'){
@@ -930,9 +1005,12 @@ async function saveSession(s){
 async function deleteSession(id){
   SESS = SESS.filter(x => x.id !== id);
   const k = lsKey('sessions'); if (k) LS.set(k, SESS);
-  if (store.mode === 'fire' && FOLDER && FB.db){ FB.deleteDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'sessions', id)).catch(() => toast('Nie udało się usunąć treningu z bazy.')); return; }
+  if (store.mode === 'fire' && FOLDER){ sessUnmark(FOLDER.id, id); if (FB.db) FB.deleteDoc(FB.doc(FB.db, 'folders', FOLDER.id, 'sessions', id)).catch(() => toast('Nie udało się usunąć treningu z bazy.')); return; }   // usunięty trening schodzi z listy niewysłanych, więc nie wróci
   if (store.mode === 'cloud'){ try { await store.col.doc(id).delete(); } catch { toast('Nie udało się usunąć treningu z konta.'); } }
 }
+// powrót sieci albo ukrycie karty: wyślij, co czeka w kolejce (plany i treningi)
+addEventListener('online', () => { if (store.mode === 'fire' && FOLDER){ zRetryN = 0; sessFails = 0; flushFire(); sessResend(FOLDER.id); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && store.mode === 'fire'){ clearTimeout(store.t); flushFire(); } });
 /* ---------- foldery osób w bazie Firebase ---------- */
 const FB = {};
 let unsubState = null, unsubSess = null;
@@ -977,21 +1055,36 @@ function openFolder(f){
   if (unsubState) unsubState(); if (unsubSess) unsubSess();
   FOLDER = {id:f.id, name:f.name}; LS.set('dz.folder', FOLDER);
   S = normalize(LS.get(lsKey('state'), null)); SESS = sortSess(LS.get(lsKey('sessions'), []));
+  Z = ZP.fixZ(LS.get(zKey(f.id), null)); zLast = ZP.snap(S); zLay = 'empty'; zTombs = {pt:{}, ct:{}}; zBusy = false; zRetryN = 0; zWarned = false; zMirrorAt = 0; clearTimeout(zRetryT); clearTimeout(zRenderT);
   store.ready = false; store.dirty = false; ui.planId = null; ui.openItem = null; shareKnown = null; shareSent.clear();
   const fid = f.id;
   dietOpen(fid);
   unsubState = FB.onSnapshot(FB.doc(FB.db, 'folders', fid, 'data', 'state'), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
     if (!snap.exists()){
-      if (!snap.metadata.fromCache){ store.ready = true; shareSeen(); render(); maybeMoveLocalData(); }
+      if (!snap.metadata.fromCache){ zLay = 'empty'; store.ready = true; shareSeen(); render(); maybeMoveLocalData(); if (!ZP.emptyQ(Z.q)) flushFire(); }
       return;
     }
     const first = !store.ready; store.ready = true;
-    if (store.dirty) return;
-    const inc = normalize(snap.data());
-    if (JSON.stringify(inc) !== JSON.stringify(S)){ S = inc; LS.set(lsKey('state'), S); shareSeen(); render(); }
-    else if (first){ shareSeen(); render(); }
+    // scalamy z niewysłanymi zmianami lokalnymi (kolejka Z); niczego nie pomijamy ani nie nadpisujemy w całości (E1-09)
+    const doc = snap.data(), lay = ZP.layout(doc);
+    zLay = lay; if (lay === 'v3') Z.q.f = 0;   // dokument jest już w układzie v3 (naprawił go ktoś inny albo my)
+    let R;
+    if (lay === 'v3'){ R = ZP.remoteV3(doc, p => normalize({plans:[p]}).plans[0] || p); Z.kn.v3 = true; zTombs = {pt:doc.pt || {}, ct:doc.ct || {}}; }
+    else R = ZP.remoteOld(normalize(doc), Z.kn.v3);
+    const mg = ZP.merge(S, Z.q, Z.kn, R, Date.now());
+    Z.q = mg.q; Z.kn = mg.kn;
+    const inc = normalize(mg.S), changed = !ZP.same(inc, S);
+    if (changed){ S = inc; LS.set(lsKey('state'), S); }
+    zLast = ZP.snap(S);
+    if (!Object.keys(Z.q.p).length && !Object.keys(Z.q.pd).length) shareSeen();   // zmiany planów czekające na wysłanie zostają do syncShares
+    if (lay === 'v3' && Date.now() - zMirrorAt > 30000 && ZP.checkMirror(doc, S, Z.q, Date.now())) zMirrorAt = Date.now();
+    zSaveFor(fid, Z);
+    if (mg.notes.some(n => n.t === 'old-card-changed' || n.t === 'old-card-new')) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scalam je.');
+    else if (mg.notes.some(n => n.t === 'remote-later')) toast('Zmiana z drugiego urządzenia była nowsza i zastąpiła Twoją zmianę tego samego planu.');
+    if (changed || first){ zRenderSoon(); }
     if (first && topSheet() && topSheet().type === 'shareImp') renderSheet();
+    if (!ZP.emptyQ(Z.q)){ clearTimeout(store.t); store.t = setTimeout(flush, 100); }
   }, err => {
     if (err && err.code === 'permission-denied' && FOLDER && FOLDER.id === fid){
       const ag = accGen(fid), lf = FOLDERS.find(x => x.id === fid), changed = ag !== null && !!lf && ag !== (lf.gen || 0);
@@ -1001,9 +1094,13 @@ function openFolder(f){
   unsubSess = FB.onSnapshot(FB.query(FB.collection(FB.db, 'folders', fid, 'sessions'), FB.orderBy('date', 'desc'), FB.limit(1000)), snap => {
     if (!FOLDER || FOLDER.id !== fid) return;
     if (snap.metadata.fromCache && snap.empty && SESS.length) return;
-    const list = sortSess(snap.docs.filter(d => d.id !== ACTIVE_DOC).map(d => ({...d.data(), id:d.id})));
-    if (JSON.stringify(list) === JSON.stringify(SESS)) return;
-    SESS = list; LS.set(lsKey('sessions'), SESS); render();
+    // lista z bazy + treningi niewysłane (których baza jeszcze nie ma) – nieudany zapis nie znika z historii (E1-10)
+    const remote = snap.docs.filter(d => d.id !== ACTIVE_DOC).map(d => ({...d.data(), id:d.id, pending:d.metadata.hasPendingWrites}));
+    const before = sessUnsent(fid), m = ZP.mergeSessions(remote, SESS, before, snap.metadata.fromCache);
+    if (JSON.stringify(m.unsent) !== JSON.stringify(before)) LS.set(sessKey(fid), m.unsent);
+    const list = sortSess(m.list);
+    if (JSON.stringify(list) !== JSON.stringify(SESS)){ SESS = list; LS.set(lsKey('sessions'), SESS); render(); }
+    if (m.resend.length) sessResend(fid, m.resend);
   }, () => {});
   watchActive(fid);
   render();

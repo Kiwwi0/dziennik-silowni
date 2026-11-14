@@ -1,5 +1,5 @@
 // Pozwala korzystać z aplikacji bez internetu (np. na siłowni).
-const VERSION = 'dziennik-1edc64c660';
+const VERSION = 'dziennik-cec4316348';
 const NAV_WAIT_MS = 3000;   // tyle czeka otwarcie strony na sieć, gdy jest zapisana kopia
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const IMAGES = [];

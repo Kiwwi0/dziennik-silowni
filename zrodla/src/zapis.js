@@ -227,6 +227,7 @@ const ZP = (() => {
      Gdy nic nie czeka w kolejce, a lustro różni się od S, dokładamy jego odświeżenie. Wywołuj po `merge` na dokumencie v3. */
   function checkMirror(doc, S, q, now){
     if (layout(doc) !== 'v3' || !emptyQ(q)) return false;
+    if (J({plans:S.plans || [], custom:S.custom || []}).length > MIRROR_MAX) return false;   // lustro i tak byłoby pomijane
     if (J(doc.plans || []) === J(S.plans || []) && J(doc.custom || []) === J(S.custom || [])) return false;
     q.m = stampQ(q, now); return true;
   }
@@ -252,6 +253,6 @@ const ZP = (() => {
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
   return {DEL, KINDS, TOMB_TTL, MIRROR_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, split, join, snap, diff, layout,
-    remoteV3, remoteOld, merge, buildWrite, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
+    same:(a, b) => J(a) === J(b), remoteV3, remoteOld, merge, buildWrite, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;
