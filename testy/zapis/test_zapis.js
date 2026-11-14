@@ -982,10 +982,8 @@ test('31. app.html: usunięcie konta (folderDeleteGo) kasuje klucze z ZP.account
   assert.ok(del.indexOf('ZP.accountKeys(f.id)') > del.indexOf("FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'data', 'state'))"), 'czyszczenie po usunięciu dokumentu w bazie (przy błędzie sieci nic nie jest skasowane lokalnie)');
   assert.ok(del.indexOf('ZP.accountKeys(f.id)') < del.indexOf("toast('Usunięto konto.')"));
   const fire = ciało(APP, 'function flushFire(){');
-  const done = fire.slice(fire.indexOf('const done = '), fire.indexOf('\n', fire.indexOf('const done = ')));
-  assert.ok(done.includes('ZP.settle(LS, fid, zCur(fid), z, sent, written'), 'done zapisuje przez ZP.settle z bieżącym Z konta (stare Z nie nadpisuje kolejki nowego)');
+  assert.ok(fire.includes('ZP.settleTx(LS, fid, zCur(fid), z, r, Date.now(), S)'), 'koniec transakcji zapisuje przez ZP.settleTx z bieżącym Z konta (stare Z nie nadpisuje kolejki nowego)');
   assert.ok(/const zCur = fid => \(FOLDER && FOLDER\.id === fid \? Z : null\)/.test(APP), 'zCur: bieżące Z tylko dla otwartego konta');
-  assert.ok(fire.includes('ZP.store(LS, fid, zCur(fid), z, S, {f:f0})'), 'ścieżka noop zapisuje przez ZP.store z bieżącym Z');
   assert.ok(ciało(APP, 'function flushMirror(').includes('ZP.store(LS, fid, zCur(fid), z, S, {m})'), 'koniec transakcji lustra zapisuje przez ZP.store z bieżącym Z');
   const open = ciało(APP, 'function openFolder(f){'), persist = ciało(APP, 'function persist(){');
   assert.ok(open.includes("S = normalize(LS.get(ZP.stateKey(f.id), null))"), 'konto otwiera się ze stanu z tego samego klucza, do którego pisze ZP.store');
@@ -997,7 +995,7 @@ test('31. app.html: usunięcie konta (folderDeleteGo) kasuje klucze z ZP.account
   const dozwolony = "const k = lsKey('state'); if (k) LS.set(k, S);";
   assert.equal(APP.split(dozwolony).length - 1, 1, 'dokładnie jeden bezpośredni zapis stanu: w persist (tryby local i cloud)');
   const bez = APP.replace(dozwolony, ''), klucz = String.raw`(?:lsKey\('state'\)|(?:ZP\.)?(?:stateKey|zKey)\([^)]*\))`, zapis = String.raw`(?:LS\.set|localStorage\.setItem)\(\s*`;
-  assert.ok(!/zSaveFor|ZP\.saveZ\(|ZP\.saveAll\(/.test(bez), 'żadnych osobnych ścieżek zapisu kolejki i stanu w app.html (saveZ/saveAll tylko przez ZP.store / ZP.settle)');
+  assert.ok(!/zSaveFor|ZP\.saveZ\(|ZP\.saveAll\(/.test(bez), 'żadnych osobnych ścieżek zapisu kolejki i stanu w app.html (saveZ/saveAll tylko przez ZP.store / ZP.settle / ZP.settleTx)');
   assert.ok(!new RegExp(zapis + klucz).test(bez), 'żadnego LS.set na kluczu stanu (.state) ani kolejki (.zq) wprost (lsKey(\'state\'), ZP.stateKey, ZP.zKey, zKey)');
   for (const m of bez.matchAll(new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*=\s*` + klucz, 'g')))   // klucz zapisany w zmiennej, a zapis przez zmienną
     assert.ok(!new RegExp(zapis + m[1] + String.raw`\s*,`).test(bez), 'zapis przez zmienną ' + m[1] + ' z kluczem stanu/kolejki poza ZP.store / ZP.settle');
@@ -1055,11 +1053,15 @@ test('32. losowy test zbieżności (ziarno ' + ZIARNO + '): dwie zakładki i dru
   } finally { clock.t = t0; }
 });
 
-test('33. app.html: ścieżka noop w flushFire (dokument już v3, karta bez migawki) nie wysyła na ślepo – czeka na odczyt z bazy (A6f)', () => {
-  const ff = ciało(APP, 'function flushFire(){'), noop = ff.slice(ff.indexOf('if (r.noop){'), ff.indexOf('\n', ff.indexOf('if (r.noop){')));
-  assert.ok(noop.includes('zBusy.free(fid); return;'), 'noop zwalnia zajętość i kończy');
-  assert.ok(!noop.includes('flushFire()') && !noop.includes("zLay = 'v3'"), 'noop nie ustawia zLay i nie wysyła od razu');
-  assert.ok(ff.indexOf("zLay = 'v3'") > ff.indexOf('if (r.noop){'), 'zLay = v3 dopiero po udanej migracji');
+test('33. app.html: flushFire zapisuje data/state TYLKO w transakcji (tx.set po tx.get + ZP.txPlan), bez setDoc i bez ścieżki noop; bez sieci nic nie wysyła (A6f)', () => {
+  const ff = ciało(APP, 'function flushFire(){');
+  assert.ok(!/FB\.setDoc\(/.test(ff), 'w flushFire nie ma setDoc (zapis bez warunku)');
+  assert.ok(!/FB\.setDoc\(\s*zStateRef\(/.test(APP) && !/FB\.updateDoc\(\s*zStateRef\(/.test(APP), 'nigdzie w app.html setDoc/updateDoc na data/state przez zStateRef');
+  assert.ok(!/noop|ZP\.migrate\(|ZP\.buildWrite\(/.test(ff), 'bez noop i bez osobnych ścieżek migracji / zwykłego zapisu');
+  const tr = ff.indexOf('FB.runTransaction(FB.db, async tx => {'), get = ff.indexOf('await tx.get(ref)'), plan = ff.indexOf('ZP.txPlan('), set1 = ff.indexOf("tx.set(ref, zUnDel(r.data), {mergeFields:r.fields})"), set2 = ff.indexOf('tx.set(ref, r.doc)');
+  assert.ok(tr >= 0 && tr < get && get < plan && plan < set1 && plan < set2, 'kolejność: runTransaction → tx.get → ZP.txPlan → tx.set (mergeFields albo cały dokument)');
+  assert.ok(ff.indexOf("navigator.onLine === false) return;") >= 0 && ff.indexOf("navigator.onLine === false) return;") < tr, 'bez sieci wyjście przed transakcją (kolejka czeka w localStorage)');
+  assert.ok(ff.indexOf('syncShares()') > ff.indexOf('.then(r => {'), 'syncShares dopiero po zatwierdzeniu');
 });
 
 /* ======================= A6f: zapis kolejki transakcją (ZP.txPlan, ZP.afterTx) ======================= */

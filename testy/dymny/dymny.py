@@ -64,8 +64,9 @@ SZTUCZNY_FIREBASE = r"""() => {
       if (sv.fail) return rej(new Error('sztuczny błąd zapisu'));
       try {
         if (/\/data\/state$/.test(ref.path)){
-          if (opts && opts.mergeFields){ if (!sv.doc) sv.doc = {}; for (const f of opts.mergeFields){ let v = data; for (const q of f.split('.')) v = v == null ? undefined : v[q]; if (v === undefined) throw new Error('brak wartości dla ' + f); setPath(sv.doc, f.split('.'), v); } sv.log.push('merge:' + opts.mergeFields.length); }
-          else { sv.doc = cl(data); sv.log.push('set'); }
+          sv.log.push('SETDOC');   // A6f: aplikacja nie może zapisywać data/state przez setDoc (bez warunku) – kroki „zapis: …” sprawdzają, że tego wpisu nie ma
+          if (opts && opts.mergeFields){ if (!sv.doc) sv.doc = {}; for (const f of opts.mergeFields){ let v = data; for (const q of f.split('.')) v = v == null ? undefined : v[q]; if (v === undefined) throw new Error('brak wartości dla ' + f); setPath(sv.doc, f.split('.'), v); } }
+          else sv.doc = cl(data);
         } else if (/\/sessions\/[^/]+$/.test(ref.path)) sv.sess[ref.path.split('/').pop()] = cl(data);
         res();
       } catch (e){ rej(e); }
@@ -73,17 +74,26 @@ SZTUCZNY_FIREBASE = r"""() => {
     writeBatch:() => ({delete(){}, commit:async () => {}}),
     deleteDoc:ref => Promise.resolve().then(() => { if (/\/sessions\//.test(ref.path)) delete sv.sess[ref.path.split('/').pop()]; }),
     getDocs:async () => ({docs:[], empty:true}), getDoc:async () => ({exists:() => false}),
+    // Transakcja jak w SDK: odczyt, funkcja, zatwierdzenie po sv.delay ms; jeśli dokument zmienił się w tym czasie (sv.konflikt – „inny zapis” wstrzyknięty przez test),
+    // funkcja jest wywoływana ponownie na świeżym dokumencie (do 5 razy). tx.set z {mergeFields} zapisuje tylko wskazane pola (deleteField usuwa), bez opcji – cały dokument.
     runTransaction:(db, fn) => new Promise(async (res, rej) => {
-      if (sv.fail) return rej(new Error('sztuczny brak sieci'));
-      const pend = [], tx = {get:async () => snapOf(), set:(ref, data) => pend.push({set:data}), update:(ref, data) => pend.push({upd:data})};
-      try {
-        const r = await fn(tx);
-        for (const d of pend){
-          if (d.set){ sv.doc = cl(d.set); sv.log.push('tx'); }
-          else { for (const [k, v] of Object.entries(d.upd)) setPath(sv.doc, k.split('.'), v); sv.log.push('txu'); }
-        }
-        res(r);
-      } catch (e){ rej(e); }
+      for (let proba = 0; proba < 5; proba++){
+        if (sv.fail) return rej(new Error('sztuczny brak sieci'));
+        const przed = JSON.stringify(sv.doc), pend = [], tx = {get:async () => snapOf(), set:(ref, data, opts) => pend.push({set:data, opts}), update:(ref, data) => pend.push({upd:data})};
+        let r; try { r = await fn(tx); } catch (e){ return rej(e); }
+        await new Promise(ok => setTimeout(ok, sv.delay));
+        if (sv.konflikt){ const k = sv.konflikt; sv.konflikt = null; k(); }
+        if (JSON.stringify(sv.doc) !== przed){ sv.log.push('tx-retry'); continue; }
+        try {
+          for (const d of pend){
+            if (d.set && d.opts && d.opts.mergeFields){ if (!sv.doc) sv.doc = {}; for (const f of d.opts.mergeFields){ let v = d.set; for (const q of f.split('.')) v = v == null ? undefined : v[q]; if (v === undefined) throw new Error('brak wartości dla ' + f); setPath(sv.doc, f.split('.'), v); } sv.log.push('tx:mf'); }
+            else if (d.set){ sv.doc = cl(d.set); sv.log.push('tx'); }
+            else { for (const [k, v] of Object.entries(d.upd)) setPath(sv.doc, k.split('.'), v); sv.log.push('txu'); }
+          }
+        } catch (e){ return rej(e); }
+        return res(r);
+      }
+      rej(new Error('sztuczna transakcja: za dużo konfliktów'));
     }),
     onSnapshot:(target, ...a) => {
       const cb = a.find(x => typeof x === 'function'), e = {target, cb};
@@ -466,7 +476,7 @@ def scenariusz(r):
           out.start = S.plans.map(p => p.name);
           // 1. pierwsza zmiana na starym układzie = migracja (transakcja), plany tablicą
           S.plans[0].name = 'Telefon A'; persist(); await sleep(1000); sv.emit(); await sleep(60);
-          out.mig = {v:sv.doc.v, full:!!sv.doc.full, p1:sv.doc.pm.P1.name, u2:sv.doc.pm.P2.u, po:sv.doc.po, mirror:sv.doc.plans.map(p => p.name), lay:zLay, tablica:Array.isArray(S.plans), bezU:S.plans.every(p => !('u' in p))};
+          out.mig = {v:sv.doc.v, full:!!sv.doc.full, p1:sv.doc.pm.P1.name, u2:sv.doc.pm.P2.u, po:sv.doc.po, mirror:sv.doc.plans.map(p => p.name), log:sv.log.slice(), tablica:Array.isArray(S.plans), bezU:S.plans.every(p => !('u' in p))};
           // 2. zapis się nie udaje, w tym czasie drugie urządzenie zmienia INNY plan; zmiana z drugiego urządzenia nie może zginąć (E1-09)
           sv.fail = true; S.plans[0].name = 'Telefon A2'; persist(); await sleep(900);
           out.kolejka = Object.keys(Z.q.p);
@@ -501,12 +511,13 @@ def scenariusz(r):
           sv.fail = false; clearTimeout(zRetryT); zBusy.free('t1');
           openFolder(FOLDER); sv.emit(); await sleep(500); sv.emit(); await sleep(60);
           out.poOtwarciu = {serwer:sv.doc.pm.P2.name, lokalnie:S.plans.find(p => p.id === 'P2').name};
+          out.setDoc = sv.log.filter(x => x === 'SETDOC').length;
           return out;
         }""")
         assert w['start'] == ['Plan A', 'Plan B'], f"stan startowy: {w['start']}"
         m = w['mig']
         assert m['v'] == 3 and m['full'] and m['p1'] == 'Telefon A' and m['u2'] == 0 and m['po'] == ['P1', 'P2'], f'migracja do v3: {m}'
-        assert m['mirror'] == ['Telefon A', 'Plan B'] and m['lay'] == 'v3', f'lustro starego układu / układ: {m}'
+        assert m['mirror'] == ['Telefon A', 'Plan B'] and 'tx' in m['log'], f'lustro starego układu / migracja transakcją: {m}'
         assert m['tablica'] and m['bezU'], f'S.plans ma zostać tablicą bez pola u: {m}'
         assert w['kolejka'] == ['P1'], f"nieudany zapis ma zostać w kolejce: {w['kolejka']}"
         assert w['polaczone'] == ['Telefon A2', 'Laptop B'], f"zmiana planu B z drugiego urządzenia zginęła albo nadpisała lokalną: {w['polaczone']}"
@@ -519,6 +530,7 @@ def scenariusz(r):
         assert w['przedUsunieciem'] == ['Tdel1'] and w['poUsunieciu']['lista'] == [] and 'Tdel1' not in w['poUsunieciu']['historia'], f"usunięty trening wrócił: {w['poUsunieciu']}"
         assert w['zapisana'] == ['P2'], f"kolejka nie zapisała się w pamięci przeglądarki: {w['zapisana']}"
         assert w['poOtwarciu'] == {'serwer':'po zamknięciu', 'lokalnie':'po zamknięciu'}, f"zmiana z zamkniętej karty nie trafiła do bazy: {w['poOtwarciu']}"
+        assert w['setDoc'] == 0, f"zapis data/state przez setDoc (bez warunku) – ma być tylko transakcja: {w['setDoc']}"
     r.krok('zapis: scalanie planów, kolejka, nieudany zapis treningu, stara karta (sztuczny Firebase)', zapis_scalanie)
 
     # ---- A6c: dwie karty, konto zamknięte w trakcie wysyłki, usunięcie konta, dokument nieznanego kształtu, rozmiar (sztuczny Firebase) ----
@@ -528,10 +540,10 @@ def scenariusz(r):
         page.evaluate(SZTUCZNY_FIREBASE)
         w = page.evaluate(r"""async () => {
           const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
-          // ===== strażnik A6d: zapis klucza .zq / .state konta do localStorage wolno wykonać tylko wewnątrz ZP.store / ZP.settle (jedno miejsce zapisu); zbieramy naruszenia i sprawdzamy na końcu kroku =====
+          // ===== strażnik A6d: zapis klucza .zq / .state konta do localStorage wolno wykonać tylko wewnątrz ZP.store / ZP.settle / ZP.settleTx (jedno miejsce zapisu); zbieramy naruszenia i sprawdzamy na końcu kroku =====
           const g = {w:0, bledy:[], klucze:/^dz\.f\..+\.(zq|state)$/}, lsSet = LS.set.bind(LS);
           LS.set = (k, v) => { if (g.klucze.test(String(k)) && !g.w) g.bledy.push(String(k) + ' ← ' + (new Error().stack || '').split('\n').slice(2, 5).join(' | ')); return lsSet(k, v); };
-          for (const nazwa of ['store', 'settle']){ const o = ZP[nazwa]; ZP[nazwa] = (...a) => { g.w++; try { return o(...a); } finally { g.w--; } }; }
+          for (const nazwa of ['store', 'settle', 'settleTx']){ const o = ZP[nazwa]; ZP[nazwa] = (...a) => { g.w++; try { return o(...a); } finally { g.w--; } }; }
           const zasiej = (k, v) => { g.w++; try { LS.set(k, v); } finally { g.w--; } };   // przygotowanie danych testu (nie kod aplikacji)
           const P = (id, name, note) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:note || '', sets:[{reps:8, kg:40}]}]});
           const v3 = (plans, extra) => ({v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:plans.map(p => p.id), pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[], ...(extra || {})});
@@ -549,8 +561,8 @@ def scenariusz(r):
           out.poZapisach = {kolejka:kq('t2'), stan:kst('t2')};
           sv.emit(); await sleep(80);                                                                                       // ścieżka odczytu z bazy (handler w openFolder) u karty A
           out.poOdczycie = {kolejka:kq('t2'), stan:kst('t2')};
-          sv.fail = false; clearTimeout(zRetryT); zRetryN = 0; zLay = 'old'; zBusy.free('t2'); flushFire(); await sleep(300);   // ścieżka noop (dokument już v3) i zwykły zapis karty A
-          out.poNoop = {kolejka:kq('t2'), stan:kst('t2'), serwer:[sv.doc.pm.P1.name, sv.doc.pm.P2.name]};
+          sv.fail = false; clearTimeout(zRetryT); zRetryN = 0; zBusy.free('t2'); flushFire(); await sleep(300);   // transakcja karty A (bez migawki po błędzie: czyta dokument sama)
+          out.poTx = {kolejka:kq('t2'), stan:kst('t2'), serwer:[sv.doc.pm.P1.name, sv.doc.pm.P2.name]};
           openFolder(FOLDER); sv.emit(); await sleep(700); sv.emit(); await sleep(80);                                     // odświeżenie strony: kolejka i stan z localStorage
           out.poOdswiezeniu = {kolejka:kq('t2'), serwer:[sv.doc.pm.P1.name, sv.doc.pm.P2.name], lokalnie:S.plans.map(p => p.name)};
           // ===== konto zamknięte i otwarte od nowa w trakcie wysyłki: stare Z nie nadpisuje zapisanej kolejki nowego (Z === z) =====
@@ -583,14 +595,14 @@ def scenariusz(r):
           out.usuniete = {zq:has('dz.f.t3.zq'), unsent:has('dz.f.t3.unsent'), state:has('dz.f.t3.state'), cudzeZq:has('dz.f.t6.zq'), cudzeUnsent:has('dz.f.t6.unsent')};
           // strażnik musi działać: zapis klucza .state wprost, poza ZP.store, zostaje wykryty (probe kasujemy z listy i z pamięci)
           const przed = g.bledy.length; LS.set('dz.f.sonda.state', {}); out.straznikDziala = g.bledy.length === przed + 1; g.bledy.splice(przed); localStorage.removeItem('dz.f.sonda.state');
-          out.straznik = g.bledy;
+          out.straznik = g.bledy; out.setDoc = sv.log.filter(x => x === 'SETDOC').length;
           return out;
         }""")
         assert w['straznikDziala'], 'strażnik zapisu (.zq/.state poza ZP.store/ZP.settle) nie wykrył zapisu próbnego'
         assert w['straznik'] == [], f"zapis klucza .zq/.state do localStorage poza ZP.store / ZP.settle: {w['straznik']}"
         assert w['poZapisach'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"zapisy dwóch kart (kolejka i stan): {w['poZapisach']}"
         assert w['poOdczycie'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"odczyt z bazy u karty A nadpisał kolejkę albo stan drugiej karty: {w['poOdczycie']}"
-        assert w['poNoop']['kolejka'] == ['P2'] and w['poNoop']['stan'] == ['A: edycja P1', 'B: edycja P2'] and w['poNoop']['serwer'] == ['A: edycja P1', 'Plan B'], f"ścieżka noop i wysyłka karty A (wpis drugiej karty zostaje w kolejce i w stanie): {w['poNoop']}"
+        assert w['poTx']['kolejka'] == ['P2'] and w['poTx']['stan'] == ['A: edycja P1', 'B: edycja P2'] and w['poTx']['serwer'] == ['A: edycja P1', 'Plan B'], f"transakcja karty A (wpis drugiej karty zostaje w kolejce i w stanie): {w['poTx']}"
         assert w['poOdswiezeniu']['serwer'] == ['A: edycja P1', 'B: edycja P2'] and w['poOdswiezeniu']['lokalnie'] == ['A: edycja P1', 'B: edycja P2'] and w['poOdswiezeniu']['kolejka'] == [], f"po odświeżeniu zmiana drugiej karty ma trafić do bazy: {w['poOdswiezeniu']}"
         assert 'P1' in w['staleW'], f"stare Z (konto otwarte od nowa w trakcie wysyłki) zdjęło wpis z zapisanej kolejki nowego Z: {w['staleW']}"
         assert w['staleKoniec'] == [], f"po wysyłce nowego Z kolejka ma być pusta: {w['staleKoniec']}"
@@ -600,7 +612,65 @@ def scenariusz(r):
         assert w['holdPo']['v'] == 3 and w['holdPo']['p1'] == 'zmiana czeka' and w['holdPo']['plany'] == ['zmiana czeka', 'lokalny B'], f"po kolejnym odczycie migracja ma ruszyć: {w['holdPo']}"
         assert 'limitu rozmiaru' in w['rozmiarToast'], f"brak ostrzeżenia o rozmiarze przy zwykłym zapisie: {w['rozmiarToast']}"
         assert w['usuniete'] == {'zq':False, 'unsent':False, 'state':False, 'cudzeZq':True, 'cudzeUnsent':True}, f"usunięcie konta: {w['usuniete']}"
+        assert w['setDoc'] == 0, f"zapis data/state przez setDoc (bez warunku) – ma być tylko transakcja: {w['setDoc']}"
     r.krok('zapis: dwie karty, konto zamknięte w trakcie wysyłki, nieznany kształt dokumentu, rozmiar, usunięcie konta (sztuczny Firebase)', zapis_a6c)
+
+    # ---- A6f: zapis kolejki transakcją (tylko nowsze niż w bazie), bez sieci nic nie wysyła, konflikt = ponowienie (sztuczny Firebase) ----
+    def zapis_a6f():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.evaluate(SZTUCZNY_FIREBASE)
+        w = page.evaluate(r"""async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          const P = (id, name) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:'', sets:[{reps:8, kg:40}]}]});
+          const plans = [P('P1', 'Plan A'), P('P2', 'Plan B')];
+          let online = true; Object.defineProperty(navigator, 'onLine', {configurable:true, get:() => online});
+          const toasty = [], toastOrg = toast; toast = m => { toasty.push(m); toastOrg(m); };
+          const nazwa = id => S.plans.find(p => p.id === id).name, kq = () => Object.keys(LS.get(ZP.zKey('t7'), {q:{p:{}}}).q.p).sort();
+          store.mode = 'fire'; FOLDER = {id:'t7', name:'A6f'};
+          sv.doc = {v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[]};
+          LS.set('dz.f.t7.state', {v:2, plans, custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t7.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80); sv.log.length = 0;
+          // 1. zwykła zmiana: transakcja z mergeFields (+ transakcja lustra), żadnego setDoc
+          S.plans[0].name = 'A: edycja'; persist(); await sleep(900); sv.emit(); await sleep(60);
+          out.zwykla = {log:sv.log.slice(), p1:sv.doc.pm.P1.name, p2u:sv.doc.pm.P2.u, kolejka:kq(), lustro:sv.doc.plans.map(p => p.name)};
+          // 2. bez sieci: nic nie trafia do bazy (ani teraz, ani „później z SDK”), kolejka w localStorage; po powrocie sieci jeden zapis
+          sv.log.length = 0; online = false;
+          S.plans[1].name = 'B: offline'; persist(); await sleep(900);
+          out.offline = {log:sv.log.slice(), p2:sv.doc.pm.P2.name, kolejka:kq()};
+          online = true; window.dispatchEvent(new Event('online')); await sleep(300); sv.emit(); await sleep(60);
+          out.poPowrocie = {log:sv.log.slice(), p2:sv.doc.pm.P2.name, kolejka:kq(), lokalnie:nazwa('P2')};
+          // 3. przebieg 42: karta bez świeżej migawki ma STARSZĄ zmianę niż baza – transakcja jej nie zapisuje, migawka daje wersję z bazy
+          sv.log.length = 0; online = false;
+          S.plans[0].name = 'A: starsza lokalna'; persist(); await sleep(700);
+          sv.doc.pm.P1 = {...sv.doc.pm.P1, name:'inne urządzenie: nowsza', u:Date.now() + 60000};   // inne urządzenie zapisało później (nasłuch tej karty jeszcze o tym nie wie)
+          online = true; window.dispatchEvent(new Event('online')); await sleep(300);
+          out.starsza = {log:sv.log.slice(), p1:sv.doc.pm.P1.name, kolejka:kq(), toast:toasty.some(t => /była nowsza/.test(t))};
+          sv.emit(); await sleep(60); out.starsza.lokalnie = nazwa('P1');
+          // 4. konflikt: dokument zmienia się między odczytem a zatwierdzeniem – SDK powtarza funkcję na świeżym dokumencie, nowsza zmiana z bazy wygrywa
+          sv.log.length = 0;
+          S.plans[1].name = 'B: ta karta'; persist();
+          sv.konflikt = () => { sv.doc.pm.P2 = {...sv.doc.pm.P2, name:'B: konflikt (nowszy)', u:Date.now() + 120000}; };
+          await sleep(900); sv.emit(); await sleep(60);
+          out.konflikt = {log:sv.log.slice(), p2:sv.doc.pm.P2.name, kolejka:kq(), lokalnie:nazwa('P2')};
+          toast = toastOrg; delete navigator.onLine;
+          out.setDoc = sv.log.filter(x => x === 'SETDOC').length;
+          return out;
+        }""")
+        z = w['zwykla']
+        assert z['p1'] == 'A: edycja' and z['p2u'] == 1 and z['kolejka'] == [] and z['lustro'] == ['A: edycja', 'Plan B'], f'zwykły zapis transakcją: {z}'
+        assert z['log'][:1] == ['tx:mf'] and 'SETDOC' not in z['log'], f'zapis ma iść transakcją z mergeFields, nie setDoc: {z["log"]}'
+        o = w['offline']
+        assert o['log'] == [] and o['p2'] == 'Plan B' and o['kolejka'] == ['P2'], f'bez sieci nic nie może trafić do bazy, kolejka w localStorage: {o}'
+        p = w['poPowrocie']
+        assert p['log'].count('tx:mf') == 1 and p['p2'] == 'B: offline' and p['kolejka'] == [] and p['lokalnie'] == 'B: offline', f'po powrocie sieci jeden zapis: {p}'
+        s_ = w['starsza']
+        assert s_['p1'] == 'inne urządzenie: nowsza' and 'tx:mf' not in s_['log'] and s_['kolejka'] == [], f'starsza zmiana nie może nadpisać nowszej w bazie: {s_}'
+        assert s_['toast'] and s_['lokalnie'] == 'inne urządzenie: nowsza', f'komunikat i wersja z bazy po migawce: {s_}'
+        k = w['konflikt']
+        assert 'tx-retry' in k['log'] and k['p2'] == 'B: konflikt (nowszy)' and k['kolejka'] == [] and k['lokalnie'] == 'B: konflikt (nowszy)', f'konflikt w transakcji: {k}'
+        assert w['setDoc'] == 0, f"zapis data/state przez setDoc: {w['setDoc']}"
+    r.krok('zapis: transakcja (tylko nowsze niż w bazie), bez sieci nic, konflikt (sztuczny Firebase, A6f)', zapis_a6f)
 
     def kopia_przed_i_po():
         page.goto(BASE + '/', wait_until='load')
