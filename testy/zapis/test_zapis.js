@@ -735,6 +735,18 @@ function migawkaV3(k, doc, now){
   ZP.store(k.ls, k.fid, k.z, k.z, k.S, ZP.dropped(before, k.z.q), t); return mg.notes;
 }
 const DZIEN = 864e5;
+/* Karta połączona ze sztucznym serwerem (A6e): odbiór = migawka v3 jak w openFolder, wysyłka = buildWrite + mergeFields + ZP.settle jak `done` w flushFire. */
+const serwerV3 = () => { const sv = new Serwer(); sv.doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:1}, P2:{...plan('P2', 'Plan B'), u:1}}, po:['P1', 'P2'], pos:1, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{restSet:90, sound:true}}; return sv; };
+function kartaSv(nazwa, ls, sv){
+  const k = karta(nazwa, ls, 'X'); k.sv = sv;
+  k.odbierz = () => migawkaV3(k, sv.get(), tick(1));
+  k.wyslij = () => {
+    if (ZP.emptyQ(k.z.q)) return false;
+    const now = tick(1), bw = ZP.buildWrite(k.S, k.z.q, now, {tombs:ZP.tombInfo(sv.get())}); if (!bw) return false;
+    sv.merge(bw.data, bw.fields); ZP.settle(ls, 'X', k.z, k.z, bw.sent, undefined, now, k.S); return true;
+  };
+  return k;
+}
 test('26e. plan usunięty na INNYM urządzeniu (migawka v3), jedna karta: zapisany stan go nie przywraca, nowa karta go nie ma – także po 61 dniach bez nagrobka (A6e-1)', () => {
   const t0 = clock.t; clock.t = Date.now();                                                       // zapis bez `now` liczy wygasanie nagrobków od Date.now()
   try {
@@ -823,6 +835,30 @@ test('26e-5. własne ćwiczenie usunięte na INNYM urządzeniu (migawka v3), jed
   } finally { clock.t = t0; }
 });
 
+test('26e-6. wpis w kolejce z ZAMKNIĘTEJ karty, starszy niż nagrobek z innego urządzenia: plan trzyma się w stanie razem z wpisem, znika przy pierwszej nowej karcie i nie trafia do bazy', () => {
+  const t0 = clock.t; clock.t = Date.now();
+  try {
+  const sv = serwerV3(), ls = wspolnyLS(), A = kartaSv('A', ls, sv), B = kartaSv('B', ls, sv), C = kartaSv('C', ls, sv); A.odbierz(); B.odbierz(); C.odbierz();
+  A.edit(S => { byId(S, 'P2').name = 'A edytuje (wcześniej)'; });                                // wpis A czeka; potem karta A zostaje zamknięta, zanim wyśle
+  const pend = A.z.q.p.P2;
+  const D = kartaSv('D', wspolnyLS(), sv); D.odbierz(); D.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); D.wyslij();   // usunięcie z innego urządzenia, później
+  const tomb = sv.doc.pt.P2; assert.ok(tomb > pend, 'nagrobek późniejszy niż wpis z zamkniętej karty'); assert.equal(sv.doc.pm.P2, undefined);
+  B.odbierz();                                                                                   // B zna nagrobek
+  C.edit(S => { byId(S, 'P1').name = 'C zmienia P1'; });                                          // C nie zna nagrobka; w scalonej kolejce jest wpis zamkniętej karty
+  for (let i = 0; i < 3; i++) for (const k of [B, C]){ k.odbierz(); k.wyslij(); }                // otwarte karty dostają migawki i wysyłają swoje zmiany
+  assert.deepEqual(ids(ls.get(ZP.stateKey('X'), null)).sort(), ['P1', 'P2'], 'plan zostaje w stanie, bo jego wpis wciąż czeka (stan i kolejka spójne)');
+  assert.equal(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.p.P2, pend, 'wpis zamkniętej karty czeka w zapisanej kolejce');
+  assert.equal(sv.doc.pm.P2, undefined, 'otwarte karty nie wysłały cudzego wpisu');
+  const N = kartaSv('N', ls, sv);                                                                 // pierwsza nowa karta: wczytuje wpis i plan z localStorage
+  assert.ok(N.z.q.p.P2 > 0 && ids(N.S).includes('P2'));
+  const notes = N.odbierz(); N.wyslij();
+  assert.ok(notes.some(x => x.t === 'deleted-later' && x.id === 'P2'), 'scalenie z bazą: nagrobek późniejszy niż wpis');
+  assert.ok(!ids(N.S).includes('P2'), 'nowa karta nie ma planu'); assert.equal(N.z.q.p.P2, undefined);
+  assert.equal(sv.doc.pm.P2, undefined, 'plan nie trafia do bazy'); assert.equal(sv.doc.pt.P2, tomb, 'nagrobek bez zmian');
+  assert.ok(!ids(ls.get(ZP.stateKey('X'), null)).includes('P2'), 'zapisany stan bez planu'); assert.equal(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.p.P2, undefined, 'zapisana kolejka bez wpisu');
+  assert.ok(!ids(kartaSv('N2', ls, sv).S).includes('P2'), 'kolejna nowa karta też nie ma planu');
+  } finally { clock.t = t0; }
+});
 test('27. nagrobek w remoteOld: urządzenie, które NIGDY nie widziało planu, nie wskrzesza go po zapisie starej karty (chroni nagrobek, nie historia wersji)', () => {
   const sv = new Serwer();
   sv.doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:0}, P2:{...plan('P2', 'Plan B'), u:0}}, po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{P3:clock.t}, ct:{}, settings:{restSet:90, sound:true}};
