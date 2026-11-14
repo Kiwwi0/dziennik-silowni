@@ -2220,7 +2220,7 @@ const ZP = (() => {
     const q = z.q;
     for (const K of KINDS){
       for (const [id, u] of Object.entries(sent[K.k] || {})){ if (q[K.k][id] === u) delete q[K.k][id]; z.kn[K.k][id] = u; }
-      for (const [id, ts] of Object.entries(sent[K.d] || {})){ if (q[K.d][id] === ts) delete q[K.d][id]; delete z.kn[K.k][id]; }
+      for (const [id, ts] of Object.entries(sent[K.d] || {})){ if (q[K.d][id] === ts) delete q[K.d][id]; delete z.kn[K.k][id]; if ((now == null ? Date.now() : now) - ts <= TOMB_TTL) (z.kn[K.t] ||= {})[id] = ts; }   // nagrobek jest już w bazie: zna go też zapisany stan (mergeState)
       if (sent[K.o] && q[K.o] === sent[K.o]) q[K.o] = 0;
       for (const [id, u] of Object.entries((written && written[K.k]) || {})) z.kn[K.k][id] = u;
     }
@@ -2267,8 +2267,8 @@ const ZP = (() => {
     const out = {q, kn}; ls.set(key, out); return out;
   }
   /* Klucze localStorage silnika zapisu (osobne dla konta); usunięcie konta kasuje je razem z resztą jego danych.
-     `.zq` trzyma {q, kn} (kolejka i znane czasy w jednej wartości), `.state` to lokalna kopia S. */
-  const zKey = fid => `dz.f.${fid}.zq`, sessKey = fid => `dz.f.${fid}.unsent`, stateKey = fid => `dz.f.${fid}.state`, accountKeys = fid => [zKey(fid), sessKey(fid)];
+     `.zq` trzyma {q, kn} (kolejka i znane czasy w jednej wartości), `.state` to lokalna kopia S; `accountKeys` = wszystko, co kasuje usunięcie konta. */
+  const zKey = fid => `dz.f.${fid}.zq`, sessKey = fid => `dz.f.${fid}.unsent`, stateKey = fid => `dz.f.${fid}.state`, accountKeys = fid => [zKey(fid), sessKey(fid), stateKey(fid)];
   /* Wpisy kolejki, które ta karta właśnie zdjęła sama (scalenie z bazą uznało je za nieaktualne): w kształcie `sent`, żeby saveZ zdjął je też
      z zapisanej kolejki (o ile druga karta nie dała im nowszego znacznika). Tylko wpisy, które zniknęły; zmienione zostają. */
   function dropped(before, after){
@@ -2279,13 +2279,23 @@ const ZP = (() => {
   }
   /* Lokalny stan (S) zapisywany do localStorage łączy się z tym, co zapisała druga karta: pozycję, która w scalonej kolejce ma znacznik inny niż w kolejce
      tej karty (druga karta zmieniła ją później albo tej karty wpis już zszedł), bierzemy z zapisanego stanu; usunięcia drugiej karty też; kolejność i ustawienia
-     tak samo. Reszta zostaje z S tej karty. Bez tego stan zapisuje „ostatnia karta” i zmiana drugiej karty ginie ze stanu, mimo że jej wpis siedzi w kolejce. */
-  function mergeState(stored, S, q, mq){
+     tak samo. Reszta zostaje z S tej karty. Bez tego stan zapisuje „ostatnia karta” i zmiana drugiej karty ginie ze stanu, mimo że jej wpis siedzi w kolejce.
+     A6d: druga karta mogła tymczasem wysłać zmianę (wpis zszedł z kolejki, więc `mq` go już nie widzi), a ta karta nie ma w pamięci ani wpisu, ani nowszej wersji:
+     wtedy o nowszej wersji mówią znane czasy. `kn` = znane czasy tej karty, `mkn` = scalone (wynik saveZ): gdy mkn.p[id] > kn.p[id], a ta karta nie ma własnego wpisu
+     (zmiany ani usunięcia) dla id, pozycję bierzemy z zapisanego stanu; gdy w mkn jest nagrobek pt[id] (ct), którego ta karta nie zna, a pozycja nie jest nowsza od nagrobka –
+     pozycja znika (usunięty plan nie wraca do stanu). Własne wpisy tej karty mają pierwszeństwo – ich scalenie z bazą rozstrzyga `merge`. */
+  function mergeState(stored, S, q, mq, kn, mkn){
     if (!isObj(stored)) return S;
     const A = split(S), B = split(stored), out = {p:{...A.p}, c:{...A.c}, s:{...A.s}}, ord = {};
+    kn = kn || emptyKnown(); mkn = mkn || kn;
     for (const K of KINDS){
       for (const [id, u] of Object.entries(mq[K.k])) if (q[K.k][id] !== u && B[K.k][id]) out[K.k][id] = B[K.k][id];
       for (const [id, ts] of Object.entries(mq[K.d])) if (q[K.d][id] !== ts) delete out[K.k][id];
+      const mk = mkn[K.k] || {}, ok = kn[K.k] || {}, mt = mkn[K.t] || {}, ot = kn[K.t] || {};
+      for (const [id, u] of Object.entries(mk))                      // druga karta wysłała nowszą wersję: wpis zszedł z kolejki, ale znany czas został
+        if (u > (ok[id] ?? -1) && q[K.k][id] === undefined && q[K.d][id] === undefined && B[K.k][id]) out[K.k][id] = B[K.k][id];
+      for (const [id, ts] of Object.entries(mt))                     // druga karta wysłała usunięcie: nagrobek, którego ta karta nie zna
+        if (ts > (ot[id] ?? 0) && q[K.k][id] === undefined && q[K.d][id] === undefined && !((mk[id] ?? -1) > ts)) delete out[K.k][id];
       const seen = new Set(); ord[K.o] = [];
       for (const id of [...(mq[K.o] > q[K.o] ? B[K.o] : A[K.o]), ...A[K.o], ...B[K.o]]) if (id in out[K.k] && !seen.has(id)){ seen.add(id); ord[K.o].push(id); }
     }
@@ -2296,7 +2306,7 @@ const ZP = (() => {
      kolejka i znane czasy łączą się z zapisanymi (saveZ), stan z zapisanym stanem drugiej karty (mergeState). `S` null = tylko kolejka. */
   function saveAll(ls, fid, z, S, sent, now){
     const out = saveZ(ls, zKey(fid), z, sent, now);
-    if (S) ls.set(stateKey(fid), mergeState(ls.get(stateKey(fid), null), S, z.q, out.q));
+    if (S) ls.set(stateKey(fid), mergeState(ls.get(stateKey(fid), null), S, z.q, out.q, z.kn, out.kn));
     return out;
   }
   /* Zapis tylko dla bieżącego Z (konto mogło zostać zamknięte albo otwarte od nowa: stare Z nie dotyka localStorage nowego). current = bieżące Z albo null. */
@@ -4943,8 +4953,8 @@ const ACT = {
           await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid)).catch(() => {});
           await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'tries', FB.uid)).catch(() => {});
         }
-        LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`); LS.del(`dz.f.${f.id}.diet`); LS.del(`dz.f.${f.id}.dietDays`);
-        ZP.accountKeys(f.id).forEach(k => LS.del(k));   // kolejka zapisu (.zq) i lista niewysłanych treningów (.unsent) usuniętego konta
+        LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.sessions`); LS.del(`dz.f.${f.id}.diet`); LS.del(`dz.f.${f.id}.dietDays`);
+        ZP.accountKeys(f.id).forEach(k => LS.del(k));   // kolejka zapisu (.zq), lista niewysłanych treningów (.unsent) i stan (.state) usuniętego konta
         toast('Usunięto konto.');
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
   },
