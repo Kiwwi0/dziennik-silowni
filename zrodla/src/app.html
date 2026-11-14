@@ -1070,8 +1070,8 @@ function openFolder(f){
     const doc = snap.data(), lay = ZP.layout(doc);
     zLay = lay; if (lay === 'v3') Z.q.f = 0;   // dokument jest już w układzie v3 (naprawił go ktoś inny albo my)
     let R;
-    if (lay === 'v3'){ R = ZP.remoteV3(doc, p => normalize({plans:[p]}).plans[0] || p); Z.kn.v3 = true; zTombs = {pt:doc.pt || {}, ct:doc.ct || {}}; }
-    else R = ZP.remoteOld(normalize(doc), Z.kn.v3);
+    if (lay === 'v3'){ R = ZP.remoteV3(doc, p => normalize({plans:[p]}).plans[0] || p); Z.kn.v3 = true; ZP.rememberTombs(Z.kn, doc, Date.now()); zTombs = ZP.tombInfo(doc); }
+    else R = ZP.remoteOld(normalize(doc), Z.kn.v3, {pt:Z.kn.pt, ct:Z.kn.ct});
     const mg = ZP.merge(S, Z.q, Z.kn, R, Date.now());
     Z.q = mg.q; Z.kn = mg.kn;
     const inc = normalize(mg.S), changed = !ZP.same(inc, S);

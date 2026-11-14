@@ -46,8 +46,8 @@ class Urz {
     const doc = this.sv.get(), lay = ZP.layout(doc);
     this.lay = lay; if (lay === 'empty') return [];
     let R;
-    if (lay === 'v3'){ R = ZP.remoteV3(doc); this.z.kn.v3 = true; this.tombs = {pt:doc.pt || {}, ct:doc.ct || {}}; }
-    else R = ZP.remoteOld({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}, this.z.kn.v3);
+    if (lay === 'v3'){ R = ZP.remoteV3(doc); this.z.kn.v3 = true; ZP.rememberTombs(this.z.kn, doc, this.now); this.tombs = ZP.tombInfo(doc); }
+    else R = ZP.remoteOld({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}, this.z.kn.v3, {pt:this.z.kn.pt, ct:this.z.kn.ct});
     const mg = ZP.merge(this.S, this.z.q, this.z.kn, R, this.now);
     this.S = mg.S; this.z.q = mg.q; this.z.kn = mg.kn; this.last = ZP.snap(this.S);
     if (lay === 'v3') ZP.checkMirror(doc, this.S, this.z.q, this.now);
@@ -381,6 +381,56 @@ test('13. zegar: urządzenie z zegarem +1 dzień nie przebija późniejszej zmia
   assert.equal(sv.doc.pm.P1.name, 'laptop (godzinę później)');
   assert.ok(ZP.fixZ(JSON.parse(JSON.stringify(lap.z))).q.mx >= uTel, 'największe widziane u przeżywa zapis do localStorage');
   const q = ZP.emptyQueue(); q.mx = 5000; assert.equal(ZP.stampQ(q, 1000), 5001, 'stampQ = max(teraz, q.t+1, mx+1)');
+});
+
+test('14. nagrobek ukrywa spóźniony zapis pm.<id>: urządzenia dokładają usunięcie, wpis znika z bazy (zapis offline dochodzi po usunięciu)', () => {
+  const {sv, tel, lap} = konto();
+  tel.online = false; tick();
+  tel.edit(S => { byId(S, 'P2').name = 'edycja offline'; }); tel.wyslij(); tick(50);
+  lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();
+  const tomb = sv.doc.pt.P2; assert.ok(tomb > 0);
+  tel.wracaSiec();                                                           // spóźniony zapis ląduje w bazie POD nagrobkiem
+  assert.ok(sv.doc.pm.P2 && sv.doc.pm.P2.u < tomb, 'w bazie został ukryty, starszy wpis');
+  uspokoj(tel, lap);
+  for (const d of [tel, lap]) assert.deepEqual(ids(d.S), ['P1']);
+  assert.equal(sv.doc.pm.P2, undefined, 'wpis pod nagrobkiem został usunięty z bazy'); assert.equal(sv.doc.pt.P2, tomb, 'nagrobek zostaje z oryginalnym czasem');
+  assert.deepEqual(sv.doc.plans.map(p => p.id), ['P1']);
+});
+test('15. czyszczenie nagrobka po 60 dniach usuwa też starszy wpis pm.<id> – po 61 dniach plan nie wraca', () => {
+  const {sv, tel, lap} = konto();
+  lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();
+  const tomb = sv.doc.pt.P2;
+  sv.doc.pm.P2 = {...plan('P2', 'Plan B'), u:tomb - 5};                       // spóźniony zapis pod nagrobkiem (nikt jeszcze go nie widział)
+  const pozniej = tomb + 61 * 864e5;
+  tel.edit(S => { byId(S, 'P1').name = 'zmiana po 61 dniach'; });
+  const bw = ZP.buildWrite(tel.S, tel.z.q, pozniej, {tombs:ZP.tombInfo(sv.get())});
+  assert.ok(bw.fields.includes('pt.P2') && bw.fields.includes('pm.P2'), 'czyszczony nagrobek zabiera ze sobą starszy wpis');
+  sv.merge(bw.data, bw.fields); ZP.afterSend(tel.z, bw.sent);
+  assert.equal(sv.doc.pt.P2, undefined); assert.equal(sv.doc.pm.P2, undefined);
+  const nowy = new Urz('nowy', sv, {plans:[plan('P1', 'Plan A'), plan('P2', 'Plan B')], custom:[], settings:{restSet:90, sound:true}}); nowy.off = 61 * 864e5;
+  nowy.odbierz(); assert.deepEqual(ids(nowy.S), ['P1'], 'plan z pamięci urządzenia znika zamiast wracać do bazy');
+  // wpis nowszy od nagrobka (prawdziwa, późniejsza edycja) nie jest ruszany
+  sv.doc.pt.P3 = tomb; sv.doc.pm.P3 = {...plan('P3', 'późniejszy'), u:tomb + 10};
+  const bw2 = ZP.buildWrite(tel.S, (tel.edit(S => { byId(S, 'P1').name = 'jeszcze raz'; }), tel.z.q), pozniej, {tombs:ZP.tombInfo(sv.get())});
+  assert.ok(bw2.fields.includes('pt.P3') && !bw2.fields.includes('pm.P3'), 'wpis późniejszy od nagrobka zostaje');
+});
+test('16. naprawa po starej karcie nie wskrzesza planu usuniętego później niż edytowany; nagrobki młodsze niż 60 dni przechodzą do nowego dokumentu', () => {
+  const {sv, tel, lap} = konto();
+  tel.edit(S => { byId(S, 'P2').name = 'P2 edytowany'; }); tel.wyslij(); tick(50);
+  lap.odbierz(); lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();
+  uspokoj(tel, lap); const tomb = sv.doc.pt.P2; assert.ok(tomb > 0); assert.deepEqual(ids(tel.S), ['P1']);
+  // stara karta (otwarta przed usunięciem) zapisuje cały dokument ze starą kopią P2 – znika full, pm i nagrobki
+  sv.doc = {v:2, plans:[plan('P1', 'Plan A'), {...plan('P2', 'Plan B'), name:'P2 edytowany'}], custom:cl(sv.doc.custom), settings:{...sv.doc.settings}};
+  uspokoj(tel, lap);
+  for (const d of [tel, lap]) assert.deepEqual(ids(d.S), ['P1'], 'usunięty plan nie wraca ze starej karty');
+  assert.equal(ZP.layout(sv.doc), 'v3'); assert.equal(sv.doc.pm.P2, undefined); assert.deepEqual(sv.doc.po, ['P1']);
+  assert.equal(sv.doc.pt.P2, tomb, 'nagrobek przeniesiony do naprawionego dokumentu (zamiast pustego pt)');
+});
+test('16b. fullDoc przenosi nagrobki młodsze niż 60 dni i czekające usunięcia, starsze pomija', () => {
+  const now = 10 * 864e5 * 10, kn = ZP.emptyKnown(); kn.pt = {A:now - 864e5, B:now - 61 * 864e5}; kn.ct = {C:now - 5};
+  const q = ZP.emptyQueue(); q.pd = {D:now - 10};
+  const fd = ZP.fullDoc({plans:[plan('P1', 'x')], custom:[], settings:{}}, q, kn, now);
+  assert.deepEqual(fd.doc.pt, {A:now - 864e5, D:now - 10}); assert.deepEqual(fd.doc.ct, {C:now - 5});
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);

@@ -9,7 +9,7 @@
 
    Stan silnika zapisu Z (osobny dla konta, w localStorage):
      q  – kolejka niewysłanych zmian: p/c {id:u}, pd/cd {id:czas usunięcia}, s {klucz:czas}, po/co czas zmiany kolejności, t ostatni znacznik, mx największy czas widziany w bazie (zegary urządzeń się rozjeżdżają)
-     kn – znane czasy zatwierdzonych pozycji: p/c {id:u}, v3 true gdy to urządzenie widziało układ v3
+     kn – znane czasy zatwierdzonych pozycji: p/c {id:u}, v3 true gdy to urządzenie widziało układ v3, pt/ct nagrobki z ostatniego odczytu układu v3 (młodsze niż 60 dni)
    Wszystkie funkcje poniżej nie dotykają stanu wejściowego (kopiują), poza `afterSend`, `afterFail`. */
 const ZP = (() => {
   const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -26,7 +26,7 @@ const ZP = (() => {
   ];
 
   const emptyQueue = () => ({p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0, t:0, mx:0});
-  const emptyKnown = () => ({p:{}, c:{}, v3:false});
+  const emptyKnown = () => ({p:{}, c:{}, v3:false, pt:{}, ct:{}});
   const newZ = () => ({q:emptyQueue(), kn:emptyKnown()});
   /* Znacznik zmiany: nigdy mniejszy od niczego, co to urządzenie widziało w bazie (q.mx) – urządzenie z zegarem „do tyłu” nie przegra z cudzą zmianą, którą już widziało. */
   const stampQ = (q, now) => (q.t = Math.max(now == null ? Date.now() : now, (q.t || 0) + 1, (q.mx || 0) + 1));
@@ -39,7 +39,7 @@ const ZP = (() => {
     if (!isObj(z)) return o;
     const rec = v => { const r = {}; if (isObj(v)) for (const k of Object.keys(v)) if (Number.isFinite(+v[k])) r[k] = +v[k]; return r; };
     if (isObj(z.q)){ for (const f of ['p', 'pd', 'c', 'cd', 's']) o.q[f] = rec(z.q[f]); o.q.po = +z.q.po || 0; o.q.co = +z.q.co || 0; o.q.f = +z.q.f || 0; o.q.m = +z.q.m || 0; o.q.t = +z.q.t || 0; o.q.mx = +z.q.mx || 0; }
-    if (isObj(z.kn)){ o.kn.p = rec(z.kn.p); o.kn.c = rec(z.kn.c); o.kn.v3 = !!z.kn.v3; }
+    if (isObj(z.kn)){ o.kn.p = rec(z.kn.p); o.kn.c = rec(z.kn.c); o.kn.v3 = !!z.kn.v3; o.kn.pt = rec(z.kn.pt); o.kn.ct = rec(z.kn.ct); }
     return o;
   }
 
@@ -96,13 +96,30 @@ const ZP = (() => {
     return R;
   }
   /* Stary układ (tablice, już po `normalize`) → widok „zdalny”. seenV3 = to urządzenie widziało już układ v3 (wtedy to zapis starej karty). */
-  function remoteOld(S, seenV3){
+  function remoteOld(S, seenV3, tombs){
     const st = split(S), R = {mode:seenV3 ? 'repair' : 'v2', s:st.s};
     for (const K of KINDS){
       R[K.k] = {}; for (const id of st[K.o]) R[K.k][id] = {u:0, item:st[K.k][id]};
-      R[K.o] = st[K.o].slice(); R[K.os] = 0; R[K.t] = {};
+      R[K.o] = st[K.o].slice(); R[K.os] = 0; R[K.t] = {...((tombs && tombs[K.t]) || {})};   // stara karta nie zostawia nagrobków: używamy tych zapamiętanych z układu v3
     }
     return R;
+  }
+  /* Nagrobki z dokumentu v3: zapamiętane w kn (do naprawy po starej karcie i do nowego dokumentu) i informacja dla czyszczenia przy zapisie. */
+  function rememberTombs(kn, doc, now){
+    for (const K of KINDS){
+      const t = {}; if (isObj(doc && doc[K.t])) for (const [id, ts] of Object.entries(doc[K.t])) if (num(ts) && now - num(ts) <= TOMB_TTL) t[id] = num(ts);
+      kn[K.t] = t;
+    }
+    return kn;
+  }
+  function tombInfo(doc){
+    const o = {pt:{}, ct:{}, pm:{}, cm:{}};
+    if (!isObj(doc)) return o;
+    for (const K of KINDS){
+      if (isObj(doc[K.t])) for (const id of Object.keys(doc[K.t])) o[K.t][id] = num(doc[K.t][id]);
+      if (isObj(doc[K.m])) for (const [id, x] of Object.entries(doc[K.m])) if (isObj(x)) o[K.m][id] = num(x.u);
+    }
+    return o;
   }
 
   /* ---------- scalanie: stan lokalny + kolejka + dokument z bazy (pkt 4 planu) ---------- */
@@ -117,8 +134,8 @@ const ZP = (() => {
       const ids = new Set([...Object.keys(Li), ...Object.keys(Ri), ...Object.keys(D), ...Object.keys(E)]);
       for (const id of ids){
         const l = Li[id], pend = E[id], pdel = D[id], tomb = Rt[id];
-        let r = Ri[id];
-        if (r && R.mode === 'v3' && tomb !== undefined && tomb > r.u) r = undefined;   // starsza wersja pod nagrobkiem = usunięte
+        let r = Ri[id], hid = false;
+        if (r && R.mode === 'v3' && tomb !== undefined && tomb > r.u){ r = undefined; hid = true; }   // starsza wersja pod nagrobkiem = usunięte
         if (pdel !== undefined){                                   // lokalnie usunięte, czeka wysyłka
           if (r && r.u > pdel){ out[id] = r.item; KN[id] = r.u; delete D[id]; notes.push({t:'restored', kind:K.k, id}); }
           else delete KN[id];
@@ -127,7 +144,7 @@ const ZP = (() => {
         if (pend !== undefined && !l) delete E[id];                // wpis bez pozycji – porządkujemy
         else if (pend !== undefined){                              // lokalna zmiana czeka wysyłka
           if (r && later(r.u, J(r.item), pend, J(l))){ out[id] = r.item; KN[id] = r.u; delete E[id]; notes.push({t:'remote-later', kind:K.k, id}); }
-          else if (!r && R.mode === 'v3' && tomb !== undefined && tomb > pend){ delete E[id]; delete KN[id]; notes.push({t:'deleted-later', kind:K.k, id}); }
+          else if (!r && R.mode === 'v3' && tomb !== undefined && tomb > pend){ delete E[id]; delete KN[id]; if (hid) D[id] = tomb; notes.push({t:'deleted-later', kind:K.k, id}); }
           else out[id] = l;
           continue;
         }
@@ -135,6 +152,7 @@ const ZP = (() => {
         if (R.mode !== 'v3'){
           if (r){
             if (l && J(l) === J(r.item)) out[id] = l;
+            else if (R.mode === 'repair' && !l && tomb !== undefined) notes.push({t:'old-card-ignored', kind:K.k, id});   // usunięte (znamy nagrobek z układu v3): stara karta go nie wskrzesza
             else if (R.mode === 'repair'){ out[id] = r.item; E[id] = stampQ(q, now); KN[id] = E[id]; notes.push({t:l ? 'old-card-changed' : 'old-card-new', kind:K.k, id}); }
             else out[id] = r.item;
           } else if (l && R.mode === 'repair') out[id] = l;        // stara karta nie zostawia nagrobków: nie usuwamy na jej podstawie
@@ -144,7 +162,10 @@ const ZP = (() => {
           if (l && KN[id] !== undefined && r.u < KN[id] && J(r.item) !== J(l)){ out[id] = l; E[id] = KN[id]; notes.push({t:'reassert', kind:K.k, id}); }   // spóźniony, starszy zapis w bazie
           else if (!l && tomb !== undefined && tomb > r.u){ /* usunięte później niż zmieniane */ }
           else { out[id] = r.item; KN[id] = r.u; }
-        } else if (l){ delete KN[id]; notes.push({t:'deleted-remote', kind:K.k, id}); }
+        } else {
+          if (l){ delete KN[id]; notes.push({t:'deleted-remote', kind:K.k, id}); }
+          if (hid) D[id] = tomb;                                   // starszy wpis pod nagrobkiem (spóźniony zapis) – sprzątamy go w bazie z oryginalnym czasem usunięcia
+        }
       }
       // kolejność: czekająca lokalna zmiana wygrywa tylko, gdy nie jest starsza od zmiany z bazy
       const have = Object.keys(out), uOf = id => E[id] ?? (Ri[id] && Ri[id].u) ?? KN[id] ?? 0;
@@ -179,7 +200,11 @@ const ZP = (() => {
       }
       if (ch) touched = true;
       for (const [id, ts] of Object.entries((opts.tombs && opts.tombs[K.t]) || {}))
-        if (now - ts > TOMB_TTL && !(id in t)){ (data[K.t] ||= {})[id] = DEL; fields.push(K.t + '.' + id); }
+        if (now - ts > TOMB_TTL && !(id in t)){
+          (data[K.t] ||= {})[id] = DEL; fields.push(K.t + '.' + id);
+          const pu = opts.tombs[K.m] && opts.tombs[K.m][id];     // starszy wpis pod czyszczonym nagrobkiem też znika (inaczej plan wróciłby); wpis nowszy od nagrobka zostaje
+          if (pu !== undefined && pu <= ts && !(id in m)){ (data[K.m] ||= {})[id] = DEL; fields.push(K.m + '.' + id); }
+        }
     }
     if (q.m){ touched = true; sent.m = q.m; }   // samo odświeżenie lustra
     for (const [k, u] of Object.entries(q.s)){ if (k in st.s){ (data.settings ||= {})[k] = cl(st.s[k]); fields.push('settings.' + k); sent.s[k] = u; touched = true; } }
@@ -198,6 +223,9 @@ const ZP = (() => {
     const st = split(S), doc = {v:3, full:now, pm:{}, po:st.po.slice(), pos:q.po || 0, cm:{}, co:st.co.slice(), cos:q.co || 0, pt:{}, ct:{}, settings:{...cl(st.s)}};
     const written = {p:{}, c:{}};
     for (const K of KINDS) for (const id of st[K.o]){ const u = q[K.k][id] ?? kn[K.k][id] ?? 0; doc[K.m][id] = {...cl(st[K.k][id]), u}; written[K.k][id] = u; }
+    for (const K of KINDS)        // nagrobki młodsze niż 60 dni (zapamiętane z układu v3 + czekające usunięcia); wpis nowszy od nagrobka go unieważnia
+      for (const [id, ts] of Object.entries({...(kn[K.t] || {}), ...q[K.d]}))
+        if (now - ts <= TOMB_TTL && !(doc[K.m][id] && doc[K.m][id].u > ts)) doc[K.t][id] = ts;
     const j = join(st);
     if (J(j).length <= MIRROR_MAX){ doc.plans = cl(j.plans); doc.custom = cl(j.custom); }
     return {doc, written, sent:{p:{...q.p}, pd:{...q.pd}, c:{...q.c}, cd:{...q.cd}, s:{...q.s}, po:q.po, co:q.co, f:q.f, m:q.m}};
@@ -207,7 +235,7 @@ const ZP = (() => {
     const lay = layout(doc);
     if (lay === 'v3') return {layout:'v3', noop:true};              // ktoś już naprawił dokument: dalej zwykły zapis scalający
     let R;
-    if (lay === 'old') R = remoteOld(normOld ? normOld(doc) : S, z.kn.v3);
+    if (lay === 'old') R = remoteOld(normOld ? normOld(doc) : S, z.kn.v3, {pt:z.kn.pt, ct:z.kn.ct});
     else R = {mode:'v2', s:{}, p:{}, po:[], pos:0, pt:{}, c:{}, co:[], cos:0, ct:{}};
     const mg = merge(S, z.q, z.kn, R, now);
     if (lay === 'empty') mg.S = join(split(S));                    // brak dokumentu: zapisujemy stan lokalny w całości
@@ -258,6 +286,6 @@ const ZP = (() => {
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
   return {DEL, KINDS, TOMB_TTL, MIRROR_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, split, join, snap, diff, layout,
-    same:(a, b) => J(a) === J(b), remoteV3, remoteOld, merge, buildWrite, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
+    same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;
