@@ -45,6 +45,10 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 - Wersja testowa: `python3 -I zrodla/build.py` → `zrodla/dist/index.html` (bez Firebase i bez 3D; dane w localStorage).
 - Test: `python3 testy/dymny/dymny.py --silniki chromium` (lokalnie Chrome z `/usr/bin/google-chrome`; WebKit zwykle tylko w Actions) zamiast własnych skryptów,
   a zasada brzmi: nowy błąd = nowy krok w tym teście (błąd aplikacji, którego nie naprawiasz od razu, wpisz do `ZNANE_BLEDY` z numerem).
+- Test logiki zapisu planów i treningów (A6): `node testy/zapis/test_zapis.js` (Node, bez przeglądarki i bez Firebase; sztuczny serwer i dwa urządzenia,
+  plik `zrodla/src/zapis.js` jest ten sam, który `build.py` i `build_web.py` wklejają do strony). Nowy błąd w scalaniu/kolejce = nowy przypadek tam.
+  Test dymny ma kroki „zapis: …” (sztuczny Firebase w `SZTUCZNY_FIREBASE`) i „kopia zapasowa” (porównanie z `testy/zapis/kopia_przed.json` – eksport z `main` @ e82b8c6
+  na stanie z `kopia_stan.json`; zmiana formatu kopii = świadoma zmiana tego pliku). Żaden z nich nie sprawdza prawdziwego Firebase (SDK, tryb samolotowy) – to robi właściciel po wdrożeniu.
 - Szkielet strony, z którego korzysta test (jak w prawdziwej stronie z build_web): `<!doctype html><html lang="pl"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><style>[hidden]{display:none!important}</style></head><body>` + zawartość `zrodla/dist/index.html`
   (podana przez `page.route`); reguła `[hidden]` jest konieczna, bo bez niej ukryta warstwa arkuszy zasłania przyciski. Dane testowe: `S.plans = templatePlans(TEMPLATES.find(t => t.id === 'fbw2'))`, potem `render()`.
@@ -54,6 +58,10 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 ## Jak zbudowany jest `zrodla/src/app.html`
 - Stan: `S = {plans, custom, settings}` (osobny dla każdej osoby), `SESS` (zapisane treningi), `ACTIVE` (trwający trening,
   localStorage `dz.active`). Zapis: `commit()` / `persist()` (plany), `saveActive()` (trening), `saveSession()`.
+  Zapis w bazie (tryb „fire”, zlecenie A6, plan w `zrodla/plany/A6-zapis-planow-i-treningow.md`): `data/state` w układzie v3 (mapy `pm`/`cm` po id z czasem `u`, kolejność `po`/`co`,
+  nagrobki `pt`/`ct`, znacznik `full`, lustro `plans`/`custom`/`settings` w starym układzie dla starych kart). `persist()` porównuje stan z poprzednim i wpisuje zmiany do kolejki
+  (`Z.q`, localStorage `dz.f.<konto>.zq`); `flushFire()` wysyła tylko zmienione pozycje (`mergeFields`), a migrację i naprawę po starej karcie robi transakcją; nasłuch w `openFolder` scala
+  (`ZP.merge`, zrodla/src/zapis.js). Treningi: lista niewysłanych `dz.f.<konto>.unsent` (`sessMark`/`sessUnmark`/`sessSend`/`sessResend`, `ZP.mergeSessions`).
 - Widoki: `render()` → `vHome`, `vPlans`, `vExercises`, `vHistory`; trening to nakładka `renderWorkout()`.
 - Arkusze od dołu: `SHEETS[typ]`, otwieranie `openSheet({type, ...})`, odświeżenie `renderSheet()`.
 - Kliknięcia: `data-act="x"` → `ACT.x(el)`. Pola: `data-bind="x"` → `BIND.x(t)`.
