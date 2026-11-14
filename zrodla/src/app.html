@@ -848,9 +848,9 @@ function persist(){
 const zStateRef = fid => FB.doc(FB.db, 'folders', fid, 'data', 'state');
 const zSaveFor = (fid, z) => LS.set(zKey(fid), z);
 const zUnDel = v => v && typeof v === 'object' ? (v.__del ? FB.deleteField() : Array.isArray(v) ? v.map(zUnDel) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, zUnDel(x)]))) : v;
-function zFailed(){
+function zFailed(e, quiet){
   zBusy = false;
-  if (!zWarned){ zWarned = true; toast('Nie udało się zapisać zmian w bazie. Spróbuję ponownie.'); }
+  if (!quiet && !zWarned){ zWarned = true; toast('Nie udało się zapisać zmian w bazie. Spróbuję ponownie.'); }
   clearTimeout(zRetryT); zRetryT = setTimeout(flushFire, ZP.backoff(zRetryN++));
 }
 function flushFire(){
@@ -861,8 +861,7 @@ function flushFire(){
   if (zLay === 'v3'){
     // zwykły zapis: tylko zmienione pozycje (mergeFields zastępuje wskazane pole w całości, reszta dokumentu zostaje)
     const bw = ZP.buildWrite(S, z.q, Date.now(), {tombs:zTombs});
-    if (!bw){ zBusy = false; return; }
-    if (bw.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
+    if (!bw){ if (z.q.m){ flushMirror(z, fid, ref); return; } zBusy = false; return; }   // zostało tylko odświeżenie lustra starego układu
     FB.setDoc(zStateRef(fid), zUnDel(bw.data), {mergeFields:bw.fields}).then(() => done(bw.sent), zFailed);
     syncShares();
   } else {
@@ -879,6 +878,20 @@ function flushFire(){
       if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');
     }, zFailed);
   }
+}
+/* Lustro starego układu (plans/custom dla starych kart) zapisuje osobna transakcja: czyta dokument i zapisuje lustro tylko, gdy dokument ma `full`
+   (nie jest zapisem starej karty). Zwykły zapis scalający lustra nie dotyka, więc nie nadpisze planów dodanych przez starą kartę tuż przed nim. */
+function flushMirror(z, fid, ref){
+  const m = z.q.m;
+  FB.runTransaction(FB.db, async tx => {
+    const snap = await tx.get(ref), p = ZP.mirrorPatch(snap.exists() ? snap.data() : null);
+    if (p.action === 'set') tx.update(ref, {plans:p.plans, custom:p.custom});
+    return p;
+  }).then(p => {
+    ZP.afterMirror(z, m); zSaveFor(fid, z); zBusy = false; zRetryN = 0; zWarned = false;
+    if (p.tooBig && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
+    if (Z === z && FOLDER && FOLDER.id === fid && !ZP.emptyQ(z.q)) flushFire();
+  }, () => zFailed(null, true));
 }
 async function flush(){
   if (store.mode === 'fire'){ flushFire(); return; }

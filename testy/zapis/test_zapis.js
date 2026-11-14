@@ -30,6 +30,10 @@ class Serwer {
     }
   }
   setFull(doc){ this.zapisy.push({full:true}); this.doc = cl(doc); }
+  mirrorTx(p){   // transakcja lustra: p = ZP.mirrorPatch(dokument odczytany w tej samej transakcji)
+    if (p.action === 'set'){ this.zapisy.push({mirror:true}); this.doc.plans = cl(p.plans); this.doc.custom = cl(p.custom); }
+    else if (p.action === 'drop'){ this.zapisy.push({mirror:'drop'}); delete this.doc.plans; delete this.doc.custom; }
+  }
 }
 
 /* ---------- sztuczne urządzenie: robi to samo, co będzie robić aplikacja (S jako tablice, kolejka, odczyt, zapis) ---------- */
@@ -58,9 +62,9 @@ class Urz {
     if (ZP.emptyQ(this.z.q) || this.fail) return false;
     if (this.lay === 'v3'){
       const bw = ZP.buildWrite(this.S, this.z.q, this.now, {tombs:this.tombs});
-      if (!bw) return false;
+      if (!bw) return this.online && this.lustro();
       if (!this.online){ this.outbox.push(bw); return true; }          // SDK trzyma zapis, aż wróci sieć
-      this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent); return true;
+      this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent, undefined, this.now); this.lustro(); return true;
     }
     if (!this.online) return false;                                       // migracja = transakcja, wymaga sieci
     const tx = ZP.migrate(this.S, this.z, this.sv.get(), this.now, doc => ({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}));
@@ -68,7 +72,12 @@ class Urz {
     this.sv.setFull(tx.doc); ZP.afterSend(this.z, tx.sent, tx.written); this.lay = 'v3'; if (tx.repaired) this.repaired++;
     return true;
   }
-  wracaSiec(){ this.online = true; for (const bw of this.outbox.splice(0)){ this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent); } }
+  /* lustro starego układu: osobna transakcja, która czyta dokument i zapisuje lustro tylko, gdy dokument ma `full` */
+  lustro(){
+    if (!this.z.q.m) return false;
+    const m = this.z.q.m; this.sv.mirrorTx(ZP.mirrorPatch(this.sv.get())); ZP.afterMirror(this.z, m); return true;
+  }
+  wracaSiec(){ this.online = true; for (const bw of this.outbox.splice(0)){ this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent, undefined, this.now); } this.lustro(); }
 }
 const ids = S => S.plans.map(p => p.id);
 const byId = (S, id) => S.plans.find(p => p.id === id);
@@ -203,7 +212,8 @@ test('5b. samo edytowanie planu nie rusza kolejności w bazie (pola po/pos poza 
   const {sv, tel} = konto();
   tel.edit(S => { byId(S, 'P1').name = 'x'; }); const bw = ZP.buildWrite(tel.S, tel.z.q, clock.t, {});
   assert.ok(bw.fields.includes('pm.P1')); assert.ok(!bw.fields.includes('po') && !bw.fields.includes('pos'));
-  assert.ok(bw.fields.includes('plans') && bw.fields.includes('custom'), 'lustro starego układu idzie przy zmianie planów');
+  assert.ok(!bw.fields.includes('plans') && !bw.fields.includes('custom'), 'lustro starego układu NIE idzie w zwykłym zapisie (osobna transakcja z kontrolą full, A6b-3)');
+  assert.ok(bw.sent.mir, 'po udanym zapisie lustro trafia do kolejki jako odświeżenie');
   assert.deepEqual(bw.fields.filter(f => f.startsWith('pm.')), ['pm.P1'], 'wysyłamy tylko zmienioną pozycję');
   assert.equal(ZP.buildWrite(tel.S, ZP.emptyQueue(), clock.t, {}), null, 'bez zmian nic nie idzie do bazy');
 });
@@ -431,6 +441,31 @@ test('16b. fullDoc przenosi nagrobki młodsze niż 60 dni i czekające usunięci
   const q = ZP.emptyQueue(); q.pd = {D:now - 10};
   const fd = ZP.fullDoc({plans:[plan('P1', 'x')], custom:[], settings:{}}, q, kn, now);
   assert.deepEqual(fd.doc.pt, {A:now - 864e5, D:now - 10}); assert.deepEqual(fd.doc.ct, {C:now - 5});
+});
+
+test('17. lustro nie jest nadpisywane zwykłym zapisem: stara karta dodaje plan, urządzenie z układem v3 zapisuje tuż po niej – plan ze starej karty zostaje', () => {
+  const {sv, tel, lap} = konto();
+  const lustro = cl(sv.doc.plans); lustro.push(plan('P3', 'plan ze starej karty'));
+  sv.doc = {v:2, plans:lustro, custom:cl(sv.doc.custom), settings:{...sv.doc.settings}};     // setDoc starej karty: znika full, pm, po…
+  tel.edit(S => { byId(S, 'P1').name = 'telefon tuż po starej karcie'; }); tel.wyslij();      // telefon jeszcze nie widział starej karty: zwykły zapis scalający
+  assert.ok(!sv.zapisy.some(z => z.fields && z.fields.includes('plans')), 'żaden zwykły zapis nie dotyka lustra');
+  assert.ok(sv.doc.plans.some(p => p.id === 'P3'), 'plan ze starej karty zostaje w lustrze');
+  uspokoj(tel, lap);
+  for (const d of [tel, lap]) assert.ok(ids(d.S).includes('P3'), d.nazwa + ': plan ze starej karty nie zginął');
+  assert.equal(ZP.layout(sv.doc), 'v3'); assert.ok(sv.doc.pm.P3);
+});
+test('18. lustro: transakcja zapisuje je tylko w dokumencie z full, liczy z pm/po i nagrobków; w dokumencie starej karty nie robi nic', () => {
+  const {sv, tel} = konto();
+  assert.equal(ZP.mirrorPatch({v:2, plans:[plan('P1', 'a')], custom:[], settings:{}}).action, 'skip', 'stary układ: nie ruszamy');
+  assert.equal(ZP.mirrorPatch({v:3, pm:{}, cm:{}, plans:[]}).action, 'skip', 'v3 bez full (zapis częściowy po starej karcie): nie ruszamy');
+  assert.equal(ZP.mirrorPatch(null).action, 'skip');
+  assert.equal(ZP.mirrorPatch(sv.get()).action, 'same', 'po konto() lustro zgadza się z dokumentem');
+  const d = sv.get(); d.pm.P2.u = 50; d.po = ['P2', 'P1']; d.pt = {P1:99}; d.pm.P1.u = 10;                // P1 ukryty nagrobkiem, kolejność z po
+  const p = ZP.mirrorPatch(d); assert.equal(p.action, 'set'); assert.deepEqual(p.plans.map(x => x.id), ['P2']); assert.ok(!('u' in p.plans[0]), 'bez znacznika u');
+  assert.deepEqual(p.custom.map(x => x.id), ['C1']);
+  const d2 = sv.get(); delete d2.plans; delete d2.custom; assert.equal(ZP.mirrorPatch(d2).action, 'set', 'brakujące lustro jest odtwarzane');
+  tel.edit(S => { byId(S, 'P1').name = 'nowa nazwa'; }); tel.wyslij();
+  assert.deepEqual(sv.doc.plans.map(x => x.name), ['nowa nazwa', 'Plan B'], 'po zapisie lustro odświeża osobna transakcja'); assert.equal(tel.z.q.m, 0);
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);

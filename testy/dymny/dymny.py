@@ -74,8 +74,15 @@ SZTUCZNY_FIREBASE = r"""() => {
     getDocs:async () => ({docs:[], empty:true}), getDoc:async () => ({exists:() => false}),
     runTransaction:(db, fn) => new Promise(async (res, rej) => {
       if (sv.fail) return rej(new Error('sztuczny brak sieci'));
-      const pend = [], tx = {get:async () => snapOf(), set:(ref, data) => pend.push(data)};
-      try { const r = await fn(tx); for (const d of pend) sv.doc = cl(d); if (pend.length) sv.log.push('tx'); res(r); } catch (e){ rej(e); }
+      const pend = [], tx = {get:async () => snapOf(), set:(ref, data) => pend.push({set:data}), update:(ref, data) => pend.push({upd:data})};
+      try {
+        const r = await fn(tx);
+        for (const d of pend){
+          if (d.set){ sv.doc = cl(d.set); sv.log.push('tx'); }
+          else { for (const [k, v] of Object.entries(d.upd)) setPath(sv.doc, k.split('.'), v); sv.log.push('txu'); }
+        }
+        res(r);
+      } catch (e){ rej(e); }
     }),
     onSnapshot:(target, ...a) => {
       const cb = a.find(x => typeof x === 'function'), e = {target, cb};

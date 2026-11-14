@@ -188,7 +188,7 @@ const ZP = (() => {
   function buildWrite(S, q, now, opts){
     opts = opts || {};
     const st = split(S), data = {v:3}, fields = ['v'];
-    const sent = {p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, m:0};
+    const sent = {p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, m:0, mir:false};
     let touched = false;
     for (const K of KINDS){
       const m = {}, t = {}; let ch = false;
@@ -206,17 +206,38 @@ const ZP = (() => {
           if (pu !== undefined && pu <= ts && !(id in m)){ (data[K.m] ||= {})[id] = DEL; fields.push(K.m + '.' + id); }
         }
     }
-    if (q.m){ touched = true; sent.m = q.m; }   // samo odświeżenie lustra
     for (const [k, u] of Object.entries(q.s)){ if (k in st.s){ (data.settings ||= {})[k] = cl(st.s[k]); fields.push('settings.' + k); sent.s[k] = u; touched = true; } }
     if (!touched) return null;
-    const plansTouched = Object.keys(sent.p).length || Object.keys(sent.pd).length || sent.po, custTouched = Object.keys(sent.c).length || Object.keys(sent.cd).length || sent.co;
-    if (plansTouched || custTouched || q.m){
-      const j = join(st);
-      if (J(j).length > MIRROR_MAX) opts.mirrorSkipped = true;
-      else { data.plans = cl(j.plans); data.custom = cl(j.custom); fields.push('plans', 'custom'); }
-    }
-    return {data, fields, sent, mirrorSkipped:!!opts.mirrorSkipped};
+    // Lustro starego układu (plans/custom) NIE idzie w zwykłym zapisie: taki zapis nie sprawdza, czy dokument jest nadal w układzie v3, i mógłby
+    // nadpisać lustro, które dopiero co zapisała stara karta. Po udanym zapisie lustro trafia do kolejki (afterSend → q.m) i jest odświeżane
+    // osobną transakcją, która czyta dokument i zapisuje je tylko, gdy ma on `full` (ZP.mirrorPatch).
+    if (Object.keys(sent.p).length || Object.keys(sent.pd).length || sent.po || Object.keys(sent.c).length || Object.keys(sent.cd).length || sent.co) sent.mir = true;
+    return {data, fields, sent};
   }
+  /* Lustro w starym układzie wyliczone z samego dokumentu (pm/po bez wpisów ukrytych nagrobkiem; kolejność jak w merge). */
+  function mirrorOf(doc){
+    const out = {};
+    for (const K of KINDS){
+      const m = isObj(doc[K.m]) ? doc[K.m] : {}, tb = isObj(doc[K.t]) ? doc[K.t] : {}, vis = {};
+      for (const [id, x] of Object.entries(m)) if (isObj(x) && !(tb[id] !== undefined && num(tb[id]) > num(x.u))) vis[id] = x;
+      const seen = new Set(), ord = [];
+      for (const id of Array.isArray(doc[K.o]) ? doc[K.o] : []) if (id in vis && !seen.has(id)){ seen.add(id); ord.push(id); }
+      for (const id of Object.keys(vis).filter(id => !seen.has(id)).sort((a, b) => num(vis[a].u) - num(vis[b].u) || (a < b ? -1 : 1))) ord.push(id);
+      out[K.mirror] = ord.map(id => { const {u, ...item} = vis[id]; item.id = id; return item; });
+    }
+    return out;
+  }
+  /* Treść transakcji lustra: `doc` = dokument odczytany w TEJ SAMEJ transakcji. 'skip' gdy dokument nie ma `full` (zapisała go stara karta albo go nie ma:
+     układ i lustro odtworzy naprawa), 'same' gdy lustro już się zgadza, 'set' → tx.update(ref, {plans, custom}). */
+  function mirrorPatch(doc){
+    if (layout(doc) !== 'v3') return {action:'skip'};
+    const mir = mirrorOf(doc);
+    if (J(mir).length > MIRROR_MAX) return {action:'skip', tooBig:true};
+    if (Array.isArray(doc.plans) && Array.isArray(doc.custom) && J(doc.plans) === J(mir.plans) && J(doc.custom) === J(mir.custom)) return {action:'same'};
+    return {action:'set', plans:mir.plans, custom:mir.custom};
+  }
+  /* Po transakcji lustra (także gdy została pominięta): zdejmij wpis z kolejki, o ile nie pojawił się nowszy. */
+  function afterMirror(z, m){ if (m && z.q.m === m) z.q.m = 0; }
   /* Pełny dokument v3 (migracja albo naprawa po starej karcie) – zapisywany w transakcji bez scalania.
      S = wynik `merge`, q = kolejka z `merge`, kn = znane czasy. */
   function fullDoc(S, q, kn, now){
@@ -243,7 +264,7 @@ const ZP = (() => {
     return {...fd, notes:mg.notes, repaired:lay === 'old' && z.kn.v3, layout:lay};
   }
   /* Po udanym zapisie: usuń z kolejki wpisy, które się od wysyłki nie zmieniły; zapamiętaj czasy zatwierdzonych pozycji. */
-  function afterSend(z, sent, written){
+  function afterSend(z, sent, written, now){
     const q = z.q;
     for (const K of KINDS){
       for (const [id, u] of Object.entries(sent[K.k] || {})){ if (q[K.k][id] === u) delete q[K.k][id]; z.kn[K.k][id] = u; }
@@ -254,14 +275,14 @@ const ZP = (() => {
     for (const [k, u] of Object.entries(sent.s || {})) if (q.s[k] === u) delete q.s[k];
     if (sent.f && q.f === sent.f) q.f = 0;
     if (sent.m && q.m === sent.m) q.m = 0;
+    if (sent.mir && !q.m) q.m = stampQ(q, now);                      // zwykły zapis nie ruszył lustra: odświeży je osobna transakcja
     z.kn.v3 = true;
   }
   /* Lustro w dokumencie (dla starych kart i wycofania) bywa nieaktualne, gdy zapis z urządzenia bez sieci dotarł po zmianach z innych.
-     Gdy nic nie czeka w kolejce, a lustro różni się od S, dokładamy jego odświeżenie. Wywołuj po `merge` na dokumencie v3. */
+     Gdy nic nie czeka w kolejce, a lustro różni się od tego, co wynika z pm/po, dokładamy jego odświeżenie (S nieużywane). Wywołuj po `merge` na dokumencie v3. */
   function checkMirror(doc, S, q, now){
     if (layout(doc) !== 'v3' || !emptyQ(q)) return false;
-    if (J({plans:S.plans || [], custom:S.custom || []}).length > MIRROR_MAX) return false;   // lustro i tak byłoby pomijane
-    if (J(doc.plans || []) === J(S.plans || []) && J(doc.custom || []) === J(S.custom || [])) return false;
+    if (mirrorPatch(doc).action !== 'set') return false;            // zgodne, pominięte (za duże / brak full)
     q.m = stampQ(q, now); return true;
   }
   const BACKOFF = [2000, 5000, 15000, 60000];
@@ -286,6 +307,6 @@ const ZP = (() => {
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
   return {DEL, KINDS, TOMB_TTL, MIRROR_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, split, join, snap, diff, layout,
-    same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
+    same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;
