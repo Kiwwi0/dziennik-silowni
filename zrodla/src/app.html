@@ -875,6 +875,7 @@ function flushFire(){
       zLay = 'v3';
       if (r.noop){ z.q.f = 0; zSaveFor(fid, z); zBusy = false; flushFire(); return; }
       done(r.sent, r.written); syncShares();
+      if (r.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
       if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');
     }, zFailed);
   }
@@ -886,6 +887,7 @@ function flushMirror(z, fid, ref){
   FB.runTransaction(FB.db, async tx => {
     const snap = await tx.get(ref), p = ZP.mirrorPatch(snap.exists() ? snap.data() : null);
     if (p.action === 'set') tx.update(ref, {plans:p.plans, custom:p.custom});
+    else if (p.action === 'drop') tx.update(ref, {plans:FB.deleteField(), custom:FB.deleteField()});   // za duży dokument: stare lustro znika
     return p;
   }).then(p => {
     ZP.afterMirror(z, m); ZP.saveZ(LS, zKey(fid), z, {m}); zBusy = false; zRetryN = 0; zWarned = false;

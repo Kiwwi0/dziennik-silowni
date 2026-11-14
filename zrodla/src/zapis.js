@@ -20,7 +20,9 @@ const ZP = (() => {
   const cl = v => JSON.parse(JSON.stringify(v));
   const DEL = {__del:true};                 // znacznik „usuń pole” – aplikacja zamienia go na deleteField()
   const TOMB_TTL = 60 * 864e5;              // nagrobki starsze niż 60 dni są czyszczone przy zapisie
-  const MIRROR_MAX = 600000;                // powyżej tylu znaków JSON lustro starego układu jest pomijane
+  const DOC_MAX = 900000;                   // przybliżony limit rozmiaru dokumentu w bajtach UTF-8 (limit bazy: 1 MiB); powyżej lustro starego układu jest pomijane
+  const utf8 = t => typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(t).length : unescape(encodeURIComponent(t)).length;
+  const docBytes = d => utf8(JSON.stringify(d));
   const KINDS = [
     {k:'p', d:'pd', o:'po', os:'pos', t:'pt', m:'pm', mirror:'plans'},
     {k:'c', d:'cd', o:'co', os:'cos', t:'ct', m:'cm', mirror:'custom'},
@@ -242,11 +244,13 @@ const ZP = (() => {
     return out;
   }
   /* Treść transakcji lustra: `doc` = dokument odczytany w TEJ SAMEJ transakcji. 'skip' gdy dokument nie ma `full` (zapisała go stara karta albo go nie ma:
-     układ i lustro odtworzy naprawa), 'same' gdy lustro już się zgadza, 'set' → tx.update(ref, {plans, custom}). */
+     układ i lustro odtworzy naprawa), 'same' gdy lustro już się zgadza, 'set' → tx.update(ref, {plans, custom}),
+     'drop' gdy dokument z lustrem przekroczyłby limit rozmiaru → tx.update(ref, {plans: deleteField(), custom: deleteField()}). */
   function mirrorPatch(doc){
     if (layout(doc) !== 'v3') return {action:'skip'};
     const mir = mirrorOf(doc);
-    if (J(mir).length > MIRROR_MAX) return {action:'skip', tooBig:true};
+    const {plans, custom, ...rest} = doc;                          // rozmiar CAŁEGO dokumentu: pm + nagrobki + ustawienia + lustro, w bajtach UTF-8
+    if (docBytes({...rest, ...mir}) > DOC_MAX) return {action:Array.isArray(plans) || Array.isArray(custom) ? 'drop' : 'skip', tooBig:true};   // za duży: stare lustro usuwamy (nieaktualne byłoby gorsze niż brak)
     if (Array.isArray(doc.plans) && Array.isArray(doc.custom) && J(doc.plans) === J(mir.plans) && J(doc.custom) === J(mir.custom)) return {action:'same'};
     return {action:'set', plans:mir.plans, custom:mir.custom};
   }
@@ -261,9 +265,9 @@ const ZP = (() => {
     for (const K of KINDS)        // nagrobki młodsze niż 60 dni (zapamiętane z układu v3 + czekające usunięcia); wpis nowszy od nagrobka go unieważnia
       for (const [id, ts] of Object.entries({...(kn[K.t] || {}), ...q[K.d]}))
         if (now - ts <= TOMB_TTL && !(doc[K.m][id] && doc[K.m][id].u > ts)) doc[K.t][id] = ts;
-    const j = join(st);
-    if (J(j).length <= MIRROR_MAX){ doc.plans = cl(j.plans); doc.custom = cl(j.custom); }
-    return {doc, written, sent:{p:{...q.p}, pd:{...q.pd}, c:{...q.c}, cd:{...q.cd}, s:{...q.s}, po:q.po, co:q.co, f:q.f, m:q.m}};
+    const j = join(st), withMirror = {...doc, plans:j.plans, custom:j.custom}, mirrorSkipped = docBytes(withMirror) > DOC_MAX;
+    if (!mirrorSkipped){ doc.plans = cl(j.plans); doc.custom = cl(j.custom); }
+    return {doc, written, mirrorSkipped, sent:{p:{...q.p}, pd:{...q.pd}, c:{...q.c}, cd:{...q.cd}, s:{...q.s}, po:q.po, co:q.co, f:q.f, m:q.m}};
   }
   /* Treść transakcji migracji/naprawy: świeży dokument z bazy (albo null) + stan lokalny → dokument do zapisania. Nie zmienia Z ani S. */
   function migrate(S, z, doc, now, normOld){
@@ -296,7 +300,7 @@ const ZP = (() => {
      Gdy nic nie czeka w kolejce, a lustro różni się od tego, co wynika z pm/po, dokładamy jego odświeżenie (S nieużywane). Wywołuj po `merge` na dokumencie v3. */
   function checkMirror(doc, S, q, now){
     if (layout(doc) !== 'v3' || !emptyQ(q)) return false;
-    if (mirrorPatch(doc).action !== 'set') return false;            // zgodne, pominięte (za duże / brak full)
+    if (!['set', 'drop'].includes(mirrorPatch(doc).action)) return false;   // zgodne albo pominięte (brak full)
     q.m = stampQ(q, now); return true;
   }
   /* ---------- dwie karty tej samej przeglądarki (wspólny localStorage) ----------
@@ -348,7 +352,7 @@ const ZP = (() => {
   }
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
-  return {DEL, KINDS, TOMB_TTL, MIRROR_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, split, join, snap, diff, layout,
+  return {DEL, KINDS, TOMB_TTL, DOC_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, split, join, snap, diff, layout,
     same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;

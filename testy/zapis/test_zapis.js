@@ -524,5 +524,24 @@ test('20b. wysłane wpisy schodzą z zapisanej kolejki, nowszy wpis drugiej kart
   z2.kn.p = {P1:90, P3:7}; ZP.saveZ(ls, key, z2); assert.deepEqual(stored().kn.p, {P1:100, P2:200, P3:7}, 'znane czasy: większy z obu');
 });
 
+test('21. limit rozmiaru liczony w bajtach UTF-8 całego dokumentu (pm + lustro + nagrobki) wobec ok. 900 KB; stare lustro znika, gdy jest pomijane', () => {
+  const duzy = plan('PB', 'duży'); duzy.note = 'ż'.repeat(260000);         // 260 tys. znaków = ok. 520 KB w UTF-8 (pm); lustro drugie tyle
+  const jedenZnak = ZP.join(ZP.split({plans:[duzy], custom:[], settings:{}})); assert.ok(JSON.stringify(jedenZnak.plans).length < 600000, 'wg starego progu znaków samo lustro by się mieściło');
+  const fd = ZP.fullDoc({plans:[plan('P1', 'a'), duzy], custom:[], settings:{}}, ZP.emptyQueue(), ZP.emptyKnown(), clock.t);
+  assert.equal(fd.doc.plans, undefined); assert.equal(fd.doc.custom, undefined); assert.ok(fd.mirrorSkipped, 'migracja/naprawa pomija lustro i mówi o tym'); assert.ok(fd.doc.pm.PB, 'pm zostaje');
+  const maly = ZP.fullDoc({plans:[plan('P1', 'a')], custom:[], settings:{}}, ZP.emptyQueue(), ZP.emptyKnown(), clock.t);
+  assert.ok(Array.isArray(maly.doc.plans) && Array.isArray(maly.doc.custom)); assert.ok(!maly.mirrorSkipped);
+  // transakcja lustra: dokument urósł (pm + lustro > ok. 900 KB) – stare lustro jest USUWANE, żeby stara karta nie widziała nieaktualnych planów
+  const d = {v:3, full:1, pm:{PB:{...duzy, u:1}}, po:['PB'], pos:1, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{}, plans:[{...duzy}], custom:[]};
+  const p = ZP.mirrorPatch(d); assert.equal(p.action, 'drop'); assert.ok(p.tooBig);
+  const bez = {...d}; delete bez.plans; delete bez.custom; assert.equal(ZP.mirrorPatch(bez).action, 'skip', 'nie ma czego usuwać');
+  // nagrobki też liczą się do limitu
+  const tomb = {}; for (let i = 0; i < 40000; i++) tomb['t' + String(i).padStart(8, '0') + 'x'.repeat(12)] = 1700000000000;
+  const dn = {v:3, full:1, pm:{P1:{...plan('P1', 'a'), u:1}}, po:['P1'], pos:1, cm:{}, co:[], cos:0, pt:tomb, ct:{}, settings:{}, plans:[plan('P1', 'a')], custom:[]};
+  assert.ok(Buffer.byteLength(JSON.stringify(dn)) > 900000); assert.equal(ZP.mirrorPatch(dn).action, 'drop', 'duże nagrobki też wyłączają lustro');
+  // mały dokument z wielobajtowymi znakami mieści się
+  const wiel = plan('PW', 'zażółć gęślą jaźń'); assert.equal(ZP.mirrorPatch({v:3, full:1, pm:{PW:{...wiel, u:1}}, po:['PW'], pos:1, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{}, plans:[wiel], custom:[]}).action, 'same');
+});
+
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
 process.exit(bledy ? 1 : 0);
