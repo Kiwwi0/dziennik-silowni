@@ -356,8 +356,9 @@ const ZP = (() => {
       const r = rm.get(id);
       if (r && !r.pending && !fromCache) continue;                // baza potwierdziła – lista się zwalnia
       if (r){ keep.push(id); continue; }                          // jest (albo czeka w kolejce SDK) – zostaje na liście
-      const s = loc.get(id); if (!s) continue;                    // nie ma czego odtworzyć
-      keep.push(id); list.push(s); if (!fromCache) resend.push(id);
+      keep.push(id);                                              // id zostaje na liście także bez treningu w pamięci (mogła się jeszcze nie wczytać); zdejmuje je tylko potwierdzenie serwera albo usunięcie treningu
+      const s = loc.get(id); if (!s) continue;                    // nie ma czego pokazać ani wysłać
+      list.push(s); if (!fromCache) resend.push(id);
     }
     return {list, unsent:keep, resend};
   }

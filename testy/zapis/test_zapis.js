@@ -370,9 +370,9 @@ test('12. trening USUNIĘTY nie wraca (usunięcie zdejmuje id z listy niewysłan
   const m2 = ZP.mergeSessions([], [tr('T1')], [], false);
   assert.deepEqual(m2.list, []);
 });
-test('12b. id z listy bez treningu w pamięci nie wraca jako pusty wpis; lista osobna dla konta', () => {
+test('12b. id z listy bez treningu w pamięci nie wraca jako pusty wpis (i zostaje na liście, A6b-6c); lista osobna dla konta', () => {
   const m = ZP.mergeSessions([], [], ['T-zgubiony'], false);
-  assert.deepEqual(m.list, []); assert.deepEqual(m.unsent, []);
+  assert.deepEqual(m.list, []); assert.deepEqual(m.unsent, ['T-zgubiony']);
   const k1 = ZP.mergeSessions([], [tr('X')], ['X'], false), k2 = ZP.mergeSessions([], [tr('Y')], ['Y'], false);
   assert.deepEqual(k1.list.map(s => s.id), ['X']); assert.deepEqual(k2.list.map(s => s.id), ['Y']);
 });
@@ -557,6 +557,16 @@ test('22. zajętość zapisu osobno dla konta; po wysyłce kolejka idzie do loca
   assert.equal(ls.mem[key], przed, 'localStorage nietknięty przez nieaktualne Z'); assert.deepEqual(stare.q.p, {}, 'ale stare Z zdjęło wysłany wpis z własnej kolejki');
   ZP.settle(ls, key, nowe, nowe, {...sent, p:{P9:300}}, undefined, 500);       // bieżące Z kończy wysyłkę
   assert.deepEqual(stored().q.p, {P1:100}, 'bieżące Z zapisuje: wysłane P9 zeszło, P1 (wysłane przez stare Z) zostaje do bezpiecznego ponowienia');
+});
+
+test('23. mergeSessions nie zdejmuje z listy id bez treningu w pamięci (pamięć mogła się jeszcze nie wczytać); potwierdzony przez serwer schodzi', () => {
+  const m = ZP.mergeSessions([], [], ['T-a', 'T-b'], false);
+  assert.deepEqual(m.unsent, ['T-a', 'T-b']); assert.deepEqual(m.list, [], 'bez treningu w pamięci nie ma czego pokazać'); assert.deepEqual(m.resend, [], 'ani czego wysłać');
+  const m2 = ZP.mergeSessions([], [tr('T-a')], m.unsent, false);                   // trening wrócił do pamięci: wraca do historii i jest wysyłany
+  assert.deepEqual(m2.list.map(s => s.id), ['T-a']); assert.deepEqual(m2.resend, ['T-a']); assert.deepEqual(m2.unsent, ['T-a', 'T-b']);
+  const m3 = ZP.mergeSessions([{...tr('T-b'), pending:false}], [], ['T-a', 'T-b'], false);   // serwer potwierdził T-b, mimo że nie ma go w pamięci
+  assert.deepEqual(m3.unsent, ['T-a']); assert.deepEqual(m3.list.map(s => s.id), ['T-b']);
+  const m4 = ZP.mergeSessions([], [], ['T-a'], true); assert.deepEqual(m4.unsent, ['T-a'], 'migawka z pamięci podręcznej też niczego nie zdejmuje');
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);

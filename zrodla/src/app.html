@@ -1003,7 +1003,7 @@ function sessResend(fid, only){   // ponowna wysyłka niewysłanych (po odczycie
   for (const id of sessUnsent(fid)){
     if (only && !only.includes(id)) continue;
     const s = SESS.find(x => x.id === id);
-    if (s) sessSend(s, fid); else sessUnmark(fid, id);
+    if (s) sessSend(s, fid);   // bez treningu w pamięci id zostaje na liście (zdejmuje je potwierdzenie serwera albo usunięcie treningu)
   }
 }
 async function saveSession(s){
