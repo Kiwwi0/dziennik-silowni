@@ -1,0 +1,220 @@
+{
+ "app": "dziennik-silowni",
+ "diet": {
+  "goals": {
+   "b": null,
+   "k": null,
+   "t": null,
+   "w": null
+  },
+  "goalsT": {
+   "b": null,
+   "k": null,
+   "t": null,
+   "w": null
+  },
+  "meals": [
+   {
+    "id": "sn",
+    "n": "Śniadanie"
+   },
+   {
+    "id": "ob",
+    "n": "Obiad"
+   },
+   {
+    "id": "ko",
+    "n": "Kolacja"
+   },
+   {
+    "id": "pr",
+    "n": "Przekąski"
+   }
+  ],
+  "mine": [],
+  "prof": null,
+  "sup": {},
+  "tpl": {},
+  "v": 1,
+  "wg": null,
+  "wt": {}
+ },
+ "dietDays": {},
+ "sessions": [
+  {
+   "date": "2026-11-10T17:30:00.000Z",
+   "dayId": null,
+   "dayName": "Dzień A",
+   "dur": 3600,
+   "ex": [
+    {
+     "exId": "Barbell_Bench_Press_-_Medium_Grip",
+     "mode": "reps",
+     "name": "A",
+     "sets": [
+      {
+       "done": true,
+       "kg": 40,
+       "reps": 8
+      }
+     ]
+    }
+   ],
+   "id": "s2",
+   "planId": "plA",
+   "planName": "Dzień A"
+  },
+  {
+   "date": "2026-11-03T17:00:00.000Z",
+   "dayId": null,
+   "dayName": "Dzień B",
+   "dur": 3000,
+   "ex": [
+    {
+     "exId": "Decline_Barbell_Bench_Press",
+     "mode": "reps",
+     "name": "B",
+     "sets": [
+      {
+       "done": true,
+       "kg": 0,
+       "reps": 12
+      }
+     ]
+    }
+   ],
+   "id": "s1",
+   "planId": "plB",
+   "planName": "Dzień B"
+  }
+ ],
+ "state": {
+  "custom": [
+   {
+    "custom": true,
+    "equipment": "Hantle",
+    "group": "Plecy",
+    "id": "cx1",
+    "level": "",
+    "mode": "reps",
+    "name": "Moje ćwiczenie",
+    "primary": [],
+    "secondary": [],
+    "steps": [
+     "krok"
+    ],
+    "tips": []
+   }
+  ],
+  "plans": [
+   {
+    "id": "plA",
+    "items": [
+     {
+      "exId": "Barbell_Bench_Press_-_Medium_Grip",
+      "id": "i1",
+      "mode": "reps",
+      "note": "",
+      "rest": 90,
+      "restAfter": 120,
+      "sets": [
+       {
+        "kg": 40,
+        "reps": 8
+       },
+       {
+        "kg": 40,
+        "reps": 8
+       }
+      ]
+     },
+     {
+      "exId": "Barbell_Incline_Bench_Press_-_Medium_Grip",
+      "id": "i2",
+      "mode": "reps",
+      "note": "",
+      "rest": 90,
+      "restAfter": 120,
+      "sets": [
+       {
+        "kg": 20,
+        "reps": 10
+       }
+      ]
+     }
+    ],
+    "name": "Dzień A"
+   },
+   {
+    "id": "plB",
+    "items": [
+     {
+      "exId": "Decline_Barbell_Bench_Press",
+      "id": "i3",
+      "mode": "reps",
+      "note": "",
+      "rest": 90,
+      "restAfter": 120,
+      "sets": [
+       {
+        "kg": 0,
+        "reps": 12
+       }
+      ]
+     }
+    ],
+    "name": "Dzień B"
+   },
+   {
+    "id": "d1",
+    "items": [
+     {
+      "exId": "Dumbbell_Bench_Press",
+      "id": "i4",
+      "mode": "reps",
+      "note": "",
+      "rest": 90,
+      "restAfter": 120,
+      "sets": [
+       {
+        "kg": 60,
+        "reps": 5
+       }
+      ]
+     }
+    ],
+    "name": "Stary plan – Dzień 1"
+   },
+   {
+    "id": "d2",
+    "items": [
+     {
+      "exId": "Barbell_Bench_Press_-_Medium_Grip",
+      "id": "i5",
+      "mode": "reps",
+      "note": "",
+      "rest": 90,
+      "restAfter": 120,
+      "sets": [
+       {
+        "kg": 45,
+        "reps": 6
+       }
+      ]
+     }
+    ],
+    "name": "Stary plan – Dzień 2"
+   }
+  ],
+  "settings": {
+   "autoRest": true,
+   "bar": 15,
+   "perWeek": 4,
+   "restEx": 150,
+   "restSet": 75,
+   "sound": false
+  },
+  "v": 2
+ },
+ "v": 1
+}
