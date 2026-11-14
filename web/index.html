@@ -2293,9 +2293,9 @@ const ZP = (() => {
       for (const [id, ts] of Object.entries(mq[K.d])) if (q[K.d][id] !== ts) delete out[K.k][id];
       const mk = mkn[K.k] || {}, ok = kn[K.k] || {}, mt = mkn[K.t] || {}, ot = kn[K.t] || {};
       for (const [id, u] of Object.entries(mk))                      // druga karta wysłała nowszą wersję: wpis zszedł z kolejki, ale znany czas został
-        if (u > (ok[id] ?? -1) && q[K.k][id] === undefined && q[K.d][id] === undefined && B[K.k][id]) out[K.k][id] = B[K.k][id];
+        if (id in A[K.k] && u > (ok[id] ?? -1) && q[K.k][id] === undefined && q[K.d][id] === undefined && B[K.k][id]) out[K.k][id] = B[K.k][id];   // A6e: tylko pozycje, które ta karta ma (saveZ nie kasuje kn.p – bez tego wracał plan usunięty na innym urządzeniu)
       for (const [id, ts] of Object.entries(mt))                     // druga karta wysłała usunięcie: nagrobek, którego ta karta nie zna
-        if (ts > (ot[id] ?? 0) && q[K.k][id] === undefined && q[K.d][id] === undefined && !((mk[id] ?? -1) > ts)) delete out[K.k][id];
+        if (mq[K.k][id] === undefined && ts > (ot[id] ?? 0) && q[K.k][id] === undefined && q[K.d][id] === undefined && !((mk[id] ?? -1) > ts)) delete out[K.k][id];   // A6e: nie, gdy druga karta ma pozycję w kolejce (ponowne dodanie tego samego id)
       const seen = new Set(); ord[K.o] = [];
       for (const id of [...(mq[K.o] > q[K.o] ? B[K.o] : A[K.o]), ...A[K.o], ...B[K.o]]) if (id in out[K.k] && !seen.has(id)){ seen.add(id); ord[K.o].push(id); }
     }
