@@ -122,7 +122,9 @@ obie**, bo każdy plan jest osobnym polem i osobną pozycją tabeli.
 - Po scaleniu aplikacja robi `render()` tylko, gdy `S` się zmieniło (jak dziś), i **nigdy nie gubi** zmian z kolejki.
 
 ### Zapis (`flush`) – zamiast `setDoc(S)`
-`setDoc(ref, dane, {mergeFields:[…]})` z listą tylko zmienionych pól (mergeFields zastępuje wskazane pole w całości, więc usunięte
+**Od A6f (pkt 11) zapis kolejki to jedna transakcja:** `tx.get` → `ZP.txPlan` (scalanie z dokumentem z tej transakcji + warunki „tylko nowsze niż w bazie”) →
+`tx.set(ref, dane, {mergeFields:[…]})` albo cały dokument (migracja / naprawa); poniżej opis pól zapisu, który się nie zmienił.
+`tx.set(ref, dane, {mergeFields:[…]})` (przed A6f: `setDoc`) z listą tylko zmienionych pól (mergeFields zastępuje wskazane pole w całości, więc usunięte
 z planu pola nie zostają w bazie; zwykłe `merge:true` scalałoby zagnieżdżone obiekty i zostawiało stare pola):
 - plan/ćwiczenie edytowane: `pm.<id>` = `{…pozycja, u}`; usunięte: `pm.<id>` = `deleteField()` i `pt.<id>` = czas usunięcia;
 - `po`, `pos` (gdy zmieniono kolejność lub dodano/usunięto plan); to samo dla `co`, `cos`; ustawienia: `settings.<klucz>`;
@@ -136,12 +138,13 @@ z planu pola nie zostają w bazie; zwykłe `merge:true` scalałoby zagnieżdżon
   Po `catch`: wpis zostaje, ponowienie po 2 s, 5 s, 15 s, 60 s (potem co 60 s), jeden
   toast „Nie udało się zapisać zmian w bazie. Spróbuję ponownie.” na serię błędów (nie na każde ponowienie). Ponowienie także po
   zdarzeniu `online` i po otwarciu konta.
-- Zapis offline: Firestore sam trzyma zapis w pamięci i wyśle po powrocie sieci; jeśli karta zostanie zamknięta, kolejka w
-  `localStorage` i tak pozwoli wysłać zmiany od nowa (zapis jest idempotentny).
-- Blind-write (bez transakcji) wolno wysłać tylko, gdy to urządzenie **widziało układ v3** (`kn.v3`, w aplikacji `zLay === 'v3'`). W przeciwnym razie (stary
-  układ albo brak dokumentu) zmiany czekają w kolejce, aż zrobi się migrację (pkt 5).
+- Zapis offline (**A6f**): bez sieci (`navigator.onLine === false`) `flushFire` nic nie wysyła – żadnego zapisu odłożonego w pamięci SDK, który dotarłby później
+  bez sprawdzenia bazy. Kolejka czeka w `localStorage` (przeżywa zamknięcie karty), wysyłka po zdarzeniu `online`, po otwarciu konta albo przy kolejnej zmianie.
+  Gdy przeglądarka twierdzi, że sieć jest, a jej nie ma, transakcja kończy się błędem → zwykłe ponawianie z komunikatem.
+- (Przed A6f: zapis bez transakcji wolno było wysłać tylko po zobaczeniu układu v3, `zLay`; ścieżka `noop`. Oba zniknęły – transakcja sama czyta dokument
+  i w tej samej funkcji robi migrację albo naprawę po starej karcie.)
 - **Zapis do localStorage jedną funkcją (A6c):** kolejka (`.zq`) i stan (`.state`) są zapisywane wyłącznie przez `ZP.store` / `ZP.settle` → `ZP.saveAll`
-  (zapis planów, odczyt z bazy, koniec wysyłki, ścieżka noop, koniec transakcji lustra). Kolejka łączy się z zapisaną przez drugą kartę tej samej przeglądarki
+  (zapis planów, odczyt z bazy, koniec transakcji zapisu – `ZP.settleTx` od A6f, koniec transakcji lustra). Kolejka łączy się z zapisaną przez drugą kartę tej samej przeglądarki
   (`saveZ`/`mergeQ`: suma wpisów, przy tym samym id większy znacznik), a stan z zapisanym stanem (`mergeState`: pozycje, które druga karta ma w kolejce
   z innym znacznikiem, usunięcia, kolejność i ustawienia drugiej karty zostają). Wpisy, które karta sama zdjęła przy scalaniu z bazą, schodzą też z zapisanej kolejki
   (`ZP.dropped`). Stare `Z` (konto zamknięte albo otwarte od nowa w trakcie wysyłki) nie dotyka localStorage (`zCur(fid)`). Pamięć karty (`S`, `Z`) zostaje bez zmian –
@@ -237,6 +240,8 @@ zmiany z kolejki są scalane z tym, co jest w tablicach.
 | Nagrobki rosną | Czyszczone po 60 dniach przy zapisie (razem ze starszym wpisem pod nagrobkiem); zapamiętane znane nagrobki (`kn.pt`, `kn.ct`) też wygasają po 60 dniach przy zapisie do localStorage. |
 | Dwie karty tej samej przeglądarki | Kolejka i stan łączone jedną funkcją zapisu (pkt 4, „Zapis do localStorage jedną funkcją”). Karta, która nie została odświeżona, nie wysyła cudzych wpisów. |
 | Dokument konta o nieznanym kształcie | Migracja wstrzymana, plany lokalne zostają w widoku, komunikat, ponowienie po kolejnym odczycie (pkt 5). |
+| Spóźniony zapis bez warunku nadpisuje nowszą zmianę (przebieg 42 testu 32, A6f) | Zapis kolejki to transakcja: pozycja, usunięcie i nagrobek idą tylko, gdy są nowsze niż w dokumencie odczytanym w tej transakcji; bez sieci nic nie jest wysyłane (pkt 11, A6f). |
+| Koszt transakcji | Każda wysyłka = 1 odczyt dokumentu + zapis (przy konflikcie SDK powtarza, do 5 razy). Wysyłka jest odroczona o 600 ms, więc przy zwykłym używaniu to kilka–kilkadziesiąt odczytów na trening. |
 | `persist()` wywoływane przy ~40 akcjach | Wykrywanie zmian przez porównanie JSON-ów, więc wywołania zostają bez zmian; koszt: JSON każdej pozycji przy każdym `persist()` (pomijalny przy kilkunastu planach). |
 
 **Wycofanie.** Lustro w starym układzie sprawia, że dokument v3 jest **poprawnym dokumentem v2** dla starego kodu (stary kod
@@ -345,3 +350,33 @@ Poniżej wszystko, co kod robi inaczej niż pierwotny plan (pkt 1–10 są popra
 5. **Po przeglądzie A6e (ten sam czat):** test 26e-4 pilnuje kosztu poprawki 1 – nowy plan drugiej karty w kolejce zostaje w stanie; wysłany, a niewidziany przez tę kartę chwilowo znika ze `.state`,
    ale nie staje się usunięciem w kolejce (także na nowej karcie otwartej w tej przerwie) i wraca z migawką (czerwony po wyłączeniu pętli po `mq`). Test 26e-5 – to samo co 26e dla własnych ćwiczeń
    (`kn.c`, `ct`; czerwony bez poprawki 1).
+
+### A6f (zapis kolejki transakcją – plan `zrodla/plany/A6f-zapis-transakcja.md`)
+Powód: test 32 (ziarno 71271, przebieg 42) pokazał, że zapis `setDoc` z `mergeFields` liczony z ostatniej migawki (a offline – odłożony w pamięci SDK) mógł
+nadpisać w bazie nowszą zmianę innego urządzenia. Łatki po stronie urządzeń (WIP) nie domykały wszystkich przypadków, więc zapis sprawdza teraz bazę.
+1. **`flushFire` = jedna transakcja.** Migawka `S0`/`z0` (stan i kolejka z chwili wysyłki – funkcja transakcji rusza po `await` i bywa powtarzana, a `S` po `openFolder`
+   należy już do innego konta) → `FB.runTransaction`: `tx.get` → `ZP.txPlan(doc, S0, z0, …)` → `tx.set(ref, data, {mergeFields})` (`'v3'`) albo `tx.set(ref, doc)` (`'full'`:
+   migracja / naprawa po starej karcie) albo nic (`'none'`, `'hold'`). Po zatwierdzeniu `ZP.settleTx` (= `ZP.afterTx` + `ZP.store`), `syncShares`, komunikaty;
+   kolejna wysyłka tylko, gdy kolejka się zmieniła (bez pętli transakcji); samo odświeżenie lustra → `flushMirror` (`ZP.onlyMirror`). Bez sieci – nic (pkt 4).
+   Nigdzie nie ma już `setDoc` ani `updateDoc` na `data/state`; usunięte `zLay`, `zTombs`, `zDocBytes` i ścieżka `noop` (`ZP.migrate` na dokumencie v3 rzuca wyjątek).
+2. **`ZP.txPlan`** (czysta – nie zmienia `S` ani `z`, test 34e): ten sam `merge` co w nasłuchu, na dokumencie z transakcji (wpis przegrany z bazą wypada:
+   `remote-later`, `deleted-later`, `restored`), `buildWrite` z nagrobkami z tego dokumentu, potem warunki: `pm.<id>` tylko gdy nagrobek `pt.<id>` jest starszy
+   (`pt >= u` → przegrana, także przy równym czasie) i wersja w bazie nie jest późniejsza (`later`, jak w merge – zabezpieczenie, scalanie łapie to wcześniej);
+   identyczna treść i `u` → pole pominięte, wpis uznany za wysłany (ponowienie po zgubionej odpowiedzi, 34h); usunięcie tylko gdy `pm.<id>.u` w bazie nie jest
+   nowszy (inaczej przegrana, 34c); nagrobek tylko gdy nowszy niż w bazie (34d). Znacznik naprawy `q.f` schodzi, gdy dokument jest v3; wpis ustawienia, którego nie ma w stanie, też (34i).
+   Wynik: `sent`, `lost` (przegrane), `mx`, `notes`, `warn` (rozmiar z dokumentu transakcji). **`ZP.afterTx`**: `afterSend` + zdjęcie przegranych wpisów o tym samym
+   znaczniku (zmiana zrobiona w trakcie transakcji zostaje, 34g) + `q.mx`. `S` nie jest podmieniane – widok wyrównuje następna migawka (34a). `afterSend`: znany nagrobek nie maleje.
+3. **Łatki z WIP (pkt 6 planu A6f):** każda wyłączona osobno przy zielonym `test_zapis.js` i teście 32 na 40 ziarnach → usunięte: `reassert-tomb` w `merge`,
+   `stale-delete` w `merge`, „najnowszy znany nagrobek” (`rememberTombs` z `kn` + `tomb = max` w `merge`). Zostają: `stale-delete` w `mergeState` (bez niej czerwony 26f),
+   `maxT` nagrobków w `saveZ`. Samo-naprawa przy odczycie po spóźnionym zapisie bez warunku (`reassert`, sprzątanie wpisu pod nagrobkiem) zostaje – testy 2a (drugi wariant)
+   i 14 sprawdzają ją przez `zapisNaSlepo`. Usunięcia bez warunku nie robi żadna wdrożona wersja (`main` ma jeszcze stary układ – naprawa po starej karcie, pkt 6), więc bez `reassert-tomb` nic nie ginie.
+4. **Testy:** `Urz.wyslij` i `kartaSv.wyslij` = transakcja (`txPlan` na `sv.get()`), bez sieci nic (`outbox` usunięty), `naSlepo`/`zapisNaSlepo` – spóźniony zapis starej wersji kodu;
+   3c i 26f: usunięcie starsze niż edycja w ogóle nie trafia do bazy; nowe 34a–34j; test 33 (statyczny): w `flushFire` brak `setDoc`/`noop`/`migrate`/`buildWrite`,
+   kolejność `runTransaction → tx.get → txPlan → tx.set`, migawka `S0`/`z0`, wyjście bez sieci przed transakcją. Test 32: domyślnie ziarna 20261114 i 71271; `SEEDS=40 node testy/zapis/test_zapis.js`
+   – ziarna k·7919, k = 1..40 (wszystkie zielone). Test dymny: sztuczny `runTransaction` z `mergeFields`, `deleteField`, opóźnieniem i ponowieniem przy konflikcie (`sv.konflikt`);
+   `setDoc` na `data/state` zostawia w logu `SETDOC` (kroki „zapis: …” wymagają zera); krok „zapis: transakcja … (A6f)”: zwykły zapis, offline, przebieg 42, konflikt, przełączenie konta w trakcie ponowionej transakcji.
+5. **Przegląd krytyczny (ten sam czat):** znaleziony i poprawiony błąd – funkcja transakcji czytała globalne `S`; po przełączeniu konta ponowiona transakcja zapisywała do bazy
+   konta A ustawienia konta B (krok dymny czerwony przed poprawką). Dopisany 34j (migawka z własnym zapisem przychodzi przed odpowiedzią transakcji – bez ponownej wysyłki).
+   **Zostaje do sprawdzenia przez właściciela po wdrożeniu (nie da się w sesji):** prawdziwy Firebase – `runTransaction` z `mergeFields`/`deleteField` na iPhonie (Safari) i laptopie,
+   tryb samolotowy (zmiana czeka, po powrocie sieci zapisuje się raz), dwa urządzenia edytujące ten sam plan. Przy sieci „udawanej” (Wi-Fi bez internetu) pojawia się komunikat
+   o nieudanym zapisie i ponawianie – zmiany czekają w kolejce.

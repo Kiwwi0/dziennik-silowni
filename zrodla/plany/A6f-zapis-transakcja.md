@@ -3,6 +3,10 @@
 Gałąź robocza `a6f-wip` (po przeglądzie scalenie do `a6-zapis`). **Bez scalania do `main` i bez wdrożenia.**
 Podstawa: A6 pkt 4–6 i sekcje A6d–A6e w `A6-zapis-planow-i-treningow.md`.
 
+**Stan: zbudowane (commity A6f-2 … A6f-7 na `a6f-wip`).** Co faktycznie powstało, los łatek i wynik przeglądu – sekcja „A6f” w pkt 11 planu A6.
+Różnice względem tego planu: testy 34i (migracja/hold/znacznik naprawy w `txPlan`) i 34j (migawka własnego zapisu przed odpowiedzią) ponad 34a–34h; `ZP.settleTx`
+zamiast rozszerzania `ZP.settle`; w `flushFire` migawka `S0`/`z0` (poprawka po przeglądzie).
+
 Stan wyjściowy: `a6f-wip` @ 18f9d75 (łatki w `zapis.js` i `flushFire`, testy 3c, 3d, 26f, 32, 33). `node testy/zapis/test_zapis.js` zielony (66),
 test 32 na 40 ziarnach `SEED = k*7919`: czerwony tylko k = 9 (ziarno 71271), przebieg 42.
 
