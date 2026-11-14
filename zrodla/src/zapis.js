@@ -184,11 +184,8 @@ const ZP = (() => {
           else if (!l && tomb !== undefined && tomb > r.u){ /* usunięte później niż zmieniane */ }
           else { out[id] = r.item; KN[id] = r.u; }
         } else {
-          if (l && KN[id] !== undefined && tomb !== undefined && tomb < KN[id]){ out[id] = l; E[id] = KN[id]; notes.push({t:'reassert-tomb', kind:K.k, id}); }   // A6f: starsze usunięcie dotarło po nowszej wersji (zapis usunięcia jest bez warunku) – wysyłamy znaną, nowszą wersję ponownie
-          else {
-            if (l){ delete KN[id]; notes.push({t:'deleted-remote', kind:K.k, id}); }
-            if (hid) D[id] = tomb;                                 // starszy wpis pod nagrobkiem (spóźniony zapis) – sprzątamy go w bazie z oryginalnym czasem usunięcia
-          }
+          if (l){ delete KN[id]; notes.push({t:'deleted-remote', kind:K.k, id}); }
+          if (hid) D[id] = tomb;                                   // starszy wpis pod nagrobkiem (spóźniony zapis) – sprzątamy go w bazie z oryginalnym czasem usunięcia
         }
       }
       // wersje lokalne, które właśnie zastąpiła zdalna albo które zniknęły: zapamiętujemy ich skróty (rozpoznanie nieaktualnej kopii ze starej karty)

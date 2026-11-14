@@ -214,7 +214,7 @@ test('3d. 3c dla własnych ćwiczeń, a usunięcie NOWSZE niż edycja dalej usuw
     lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();       // usunięcie późniejsze
     tel.wracaSiec(); uspokoj(tel, lap);
     for (const d of [tel, lap]) assert.deepEqual(ids(d.S), ['P1'], 'usunięcie nowsze niż edycja wygrywa');
-    assert.ok(!tel.notes.concat(lap.notes).some(n => n.t === 'reassert-tomb'), 'obrona nie rusza, gdy nagrobek jest nowszy'); }
+    assert.ok(!tel.notes.concat(lap.notes).some(n => n.t === 'reassert' && n.id === 'P2'), 'starsza edycja nie jest wysyłana ponownie'); assert.equal(sv.doc.pm.P2, undefined, 'w bazie bez wpisu P2'); }
 });
 test('4. usunięcie planu na jednym urządzeniu NIE wskrzesza go z drugiego (bez zmian na drugim)', () => {
   const {sv, tel, lap} = konto();
