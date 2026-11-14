@@ -21,6 +21,7 @@ const ZP = (() => {
   const DEL = {__del:true};                 // znacznik „usuń pole” – aplikacja zamienia go na deleteField()
   const TOMB_TTL = 60 * 864e5;              // nagrobki starsze niż 60 dni są czyszczone przy zapisie
   const DOC_MAX = 900000;                   // przybliżony limit rozmiaru dokumentu w bajtach UTF-8 (limit bazy: 1 MiB); powyżej lustro starego układu jest pomijane
+  const DOC_WARN = 950000;                  // zwykły zapis: rozmiar dokumentu z bazy + dane zapisu powyżej tego (górne oszacowanie) = ostrzeżenie przed limitem 1 MiB
   const utf8 = t => typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(t).length : unescape(encodeURIComponent(t)).length;
   const docBytes = d => utf8(JSON.stringify(d));
   const KINDS = [
@@ -90,6 +91,10 @@ const ZP = (() => {
     if (!isObj(doc)) return 'empty';
     return doc.v === 3 && doc.full && isObj(doc.pm) && isObj(doc.cm) ? 'v3' : 'old';
   }
+  /* Dokument istnieje, ale nie ma ani tablicy `plans` (stary układ), ani mapy `pm` (v3): nieznany kształt. Nie wiemy, jakie plany ma konto, więc
+     nie nadpisujemy go (migracja czeka) i nie traktujemy go jak pustego (lokalne plany zostają w widoku, dopóki migracja się nie powiedzie). */
+  const holdDoc = doc => layout(doc) === 'old' && !Array.isArray(doc.plans) && !isObj(doc.pm);
+  const remoteHold = () => ({mode:'hold', s:{}, p:{}, po:[], pos:0, pt:{}, c:{}, co:[], cos:0, ct:{}});
   const num = v => Number.isFinite(+v) ? +v : 0;
   /* Dokument v3 → widok „zdalny”. normPlan (opcjonalnie) normalizuje plan tak samo, jak `normalize` w aplikacji. */
   function remoteV3(doc, normPlan){
@@ -137,6 +142,7 @@ const ZP = (() => {
   /* ---------- scalanie: stan lokalny + kolejka + dokument z bazy (pkt 4 planu) ---------- */
   const later = (ua, ja, ub, jb) => ua > ub || (ua === ub && ja > jb);
   function merge(S, q0, kn0, R, now){
+    if (R.mode === 'hold') return {S:cl(S), q:cl(q0), kn:cl(kn0), notes:[{t:'hold'}]};   // dokument nieznanego kształtu: nic nie zmieniamy (ani planów, ani kolejki)
     const q = cl(q0), kn = cl(kn0), notes = [], L = split(S), res = {p:{}, po:[], c:{}, co:[], s:{}};
     // największy czas widziany w bazie: kolejne zmiany tego urządzenia dostaną większy znacznik (stampQ)
     const lim = (now == null ? Date.now() : now) + MX_AHEAD, seen = u => { if (u > (q.mx || 0) && u <= lim) q.mx = u; };
@@ -273,8 +279,8 @@ const ZP = (() => {
   function migrate(S, z, doc, now, normOld){
     const lay = layout(doc);
     if (lay === 'v3') return {layout:'v3', noop:true};              // ktoś już naprawił dokument: dalej zwykły zapis scalający
-    // dokument istnieje, ale nie ma ani tablicy plans (stary układ), ani pm (v3): nieznany kształt – nie nadpisujemy go; zmiany czekają w kolejce
-    if (lay === 'old' && !Array.isArray(doc.plans) && !isObj(doc.pm)) return {layout:'old', hold:true};
+    // dokument nieznanego kształtu (holdDoc): nie nadpisujemy go; zmiany czekają w kolejce
+    if (holdDoc(doc)) return {layout:'old', hold:true};
     let R;
     if (lay === 'old') R = remoteOld(normOld ? normOld(doc) : S, z.kn.v3, {pt:z.kn.pt, ct:z.kn.ct});
     else R = {mode:'v2', s:{}, p:{}, po:[], pos:0, pt:{}, c:{}, co:[], cos:0, ct:{}};
@@ -317,8 +323,9 @@ const ZP = (() => {
     for (const f of ['po', 'co', 'f', 'm', 't', 'mx']) q[f] = Math.max((a && a[f]) || 0, (b && b[f]) || 0);
     return q;
   }
-  function saveZ(ls, key, z, sent){
+  function saveZ(ls, key, z, sent, now){
     const st = fixZ(ls.get(key, null)), q = mergeQ(st.q, z.q), kn = emptyKnown();
+    const t = now == null ? Date.now() : now, fresh = m => { const r = {}; for (const [id, ts] of Object.entries(m)) if (t - ts <= TOMB_TTL) r[id] = ts; return r; };   // znane nagrobki wygasają po 60 dniach także w zapisanej kopii
     if (sent){
       for (const K of KINDS){
         for (const [id, u] of Object.entries(sent[K.k] || {})) if (q[K.k][id] === u) delete q[K.k][id];
@@ -330,21 +337,54 @@ const ZP = (() => {
       if (sent.m && q.m === sent.m) q.m = 0;
     }
     for (const k of ['p', 'c']){ kn[k] = {...st.kn[k]}; for (const [id, u] of Object.entries(z.kn[k] || {})) if (!(id in kn[k]) || u > kn[k][id]) kn[k][id] = u; }
-    kn.v3 = !!(st.kn.v3 || z.kn.v3); kn.pt = {...st.kn.pt, ...z.kn.pt}; kn.ct = {...st.kn.ct, ...z.kn.ct}; kn.h = z.kn.h || kn.h;
+    kn.v3 = !!(st.kn.v3 || z.kn.v3); kn.pt = fresh({...st.kn.pt, ...z.kn.pt}); kn.ct = fresh({...st.kn.ct, ...z.kn.ct}); kn.h = z.kn.h || kn.h;
     const out = {q, kn}; ls.set(key, out); return out;
   }
-  /* Klucze localStorage silnika zapisu (osobne dla konta); usunięcie konta kasuje je razem z resztą jego danych. */
-  const zKey = fid => `dz.f.${fid}.zq`, sessKey = fid => `dz.f.${fid}.unsent`, accountKeys = fid => [zKey(fid), sessKey(fid)];
+  /* Klucze localStorage silnika zapisu (osobne dla konta); usunięcie konta kasuje je razem z resztą jego danych.
+     `.zq` trzyma {q, kn} (kolejka i znane czasy w jednej wartości), `.state` to lokalna kopia S. */
+  const zKey = fid => `dz.f.${fid}.zq`, sessKey = fid => `dz.f.${fid}.unsent`, stateKey = fid => `dz.f.${fid}.state`, accountKeys = fid => [zKey(fid), sessKey(fid)];
+  /* Wpisy kolejki, które ta karta właśnie zdjęła sama (scalenie z bazą uznało je za nieaktualne): w kształcie `sent`, żeby saveZ zdjął je też
+     z zapisanej kolejki (o ile druga karta nie dała im nowszego znacznika). Tylko wpisy, które zniknęły; zmienione zostają. */
+  function dropped(before, after){
+    const d = {p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0};
+    for (const f of ['p', 'pd', 'c', 'cd', 's']) for (const [id, u] of Object.entries((before && before[f]) || {})) if (!((after && after[f]) && id in after[f])) d[f][id] = u;
+    for (const f of ['po', 'co', 'f', 'm']) if (before && before[f] && !(after && after[f])) d[f] = before[f];
+    return d;
+  }
+  /* Lokalny stan (S) zapisywany do localStorage łączy się z tym, co zapisała druga karta: pozycję, która w scalonej kolejce ma znacznik inny niż w kolejce
+     tej karty (druga karta zmieniła ją później albo tej karty wpis już zszedł), bierzemy z zapisanego stanu; usunięcia drugiej karty też; kolejność i ustawienia
+     tak samo. Reszta zostaje z S tej karty. Bez tego stan zapisuje „ostatnia karta” i zmiana drugiej karty ginie ze stanu, mimo że jej wpis siedzi w kolejce. */
+  function mergeState(stored, S, q, mq){
+    if (!isObj(stored)) return S;
+    const A = split(S), B = split(stored), out = {p:{...A.p}, c:{...A.c}, s:{...A.s}}, ord = {};
+    for (const K of KINDS){
+      for (const [id, u] of Object.entries(mq[K.k])) if (q[K.k][id] !== u && B[K.k][id]) out[K.k][id] = B[K.k][id];
+      for (const [id, ts] of Object.entries(mq[K.d])) if (q[K.d][id] !== ts) delete out[K.k][id];
+      const seen = new Set(); ord[K.o] = [];
+      for (const id of [...(mq[K.o] > q[K.o] ? B[K.o] : A[K.o]), ...A[K.o], ...B[K.o]]) if (id in out[K.k] && !seen.has(id)){ seen.add(id); ord[K.o].push(id); }
+    }
+    for (const [k, u] of Object.entries(mq.s)) if (q.s[k] !== u && k in B.s) out.s[k] = B.s[k];
+    return {...S, plans:ord.po.map(id => out.p[id]), custom:ord.co.map(id => out.c[id]), settings:out.s};
+  }
+  /* JEDYNE miejsce zapisu kolejki (`.zq`) i stanu (`.state`) konta do localStorage (zapis planów, odczyt z bazy, koniec wysyłki, noop, lustro):
+     kolejka i znane czasy łączą się z zapisanymi (saveZ), stan z zapisanym stanem drugiej karty (mergeState). `S` null = tylko kolejka. */
+  function saveAll(ls, fid, z, S, sent, now){
+    const out = saveZ(ls, zKey(fid), z, sent, now);
+    if (S) ls.set(stateKey(fid), mergeState(ls.get(stateKey(fid), null), S, z.q, out.q));
+    return out;
+  }
+  /* Zapis tylko dla bieżącego Z (konto mogło zostać zamknięte albo otwarte od nowa: stare Z nie dotyka localStorage nowego). current = bieżące Z albo null. */
+  function store(ls, fid, current, z, S, sent, now){ return current === z ? saveAll(ls, fid, z, S, sent, now) : null; }
   /* Zajętość zapisu osobno dla każdego konta: trwająca wysyłka jednego konta nie blokuje drugiego, a ponownie otwarte konto nie wysyła w tym samym czasie drugi raz. */
   function newBusy(){
     const set = new Set();
     return {has:id => set.has(id), take:id => (set.has(id) ? false : (set.add(id), true)), free:id => { set.delete(id); }};
   }
-  /* Koniec udanej wysyłki: wpisy znikają z kolejki wysyłającego Z; do localStorage trafia ona tylko, gdy to nadal bieżące Z
+  /* Koniec udanej wysyłki: wpisy znikają z kolejki wysyłającego Z; do localStorage (kolejka i stan) trafia ona tylko, gdy to nadal bieżące Z
      (konto mogło zostać zamknięte i otwarte od nowa – wtedy stare Z nie nadpisuje zapisanej kolejki nowego). */
-  function settle(ls, key, current, z, sent, written, now){
+  function settle(ls, fid, current, z, sent, written, now, S){
     afterSend(z, sent, written, now);
-    if (current === z) saveZ(ls, key, z, sent);
+    return store(ls, fid, current, z, S, sent, now);
   }
   const BACKOFF = [2000, 5000, 15000, 60000];
   const backoff = n => BACKOFF[Math.min(Math.max(0, n | 0), BACKOFF.length - 1)];
@@ -368,7 +408,7 @@ const ZP = (() => {
   }
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
-  return {DEL, KINDS, TOMB_TTL, DOC_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, newBusy, settle, zKey, sessKey, accountKeys, split, join, snap, diff, layout,
-    same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
+  return {DEL, KINDS, TOMB_TTL, DOC_MAX, DOC_WARN, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, saveAll, store, dropped, mergeState, newBusy, settle, zKey, sessKey, stateKey, accountKeys, split, join, snap, diff, layout,
+    holdDoc, remoteHold, docBytes, same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;

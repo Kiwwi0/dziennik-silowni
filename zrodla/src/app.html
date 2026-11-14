@@ -821,7 +821,7 @@ const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, u
 const zKey = ZP.zKey;
 let Z = ZP.fixZ(FIRE && FOLDER ? LS.get(zKey(FOLDER.id), null) : null), zLast = ZP.snap(S);
 const zBusy = ZP.newBusy();   // zajętość zapisu osobno dla każdego konta
-let zRetryT = null, zRetryN = 0, zWarned = false, zMirrorAt = 0, zMirrorWarned = false, zLay = 'empty', zTombs = {pt:{}, ct:{}}, zRenderT = null;
+let zRetryT = null, zRetryN = 0, zWarned = false, zMirrorAt = 0, zMirrorWarned = false, zLay = 'empty', zTombs = {pt:{}, ct:{}}, zRenderT = null, zHoldWarned = false, zSizeWarned = false, zDocBytes = 0;
 const getEx = id => EXMAP.get(id) || S.custom.find(c => c.id === id) || {id, name:'Usunięte ćwiczenie', group:'', equipment:'', mode:'reps', primary:[], secondary:[], steps:[], tips:[], missing:true};
 const hasImg = id => EXMAP.has(id);
 const planById = id => S.plans.find(p => p.id === id);
@@ -836,34 +836,36 @@ const hasData = s => s.plans.length || s.custom.length;
 
 /* ====================== zapis: konto claude.ai lub ta przeglądarka ====================== */
 function persist(){
-  const k = lsKey('state'); if (k) LS.set(k, S);
   if (store.mode === 'fire'){
     if (!FOLDER) return;
-    zLast = ZP.diff(zLast, S, Z.q, Date.now(), Z.kn); ZP.saveZ(LS, zKey(FOLDER.id), Z);   // co się zmieniło od ostatniego zapisu → kolejka (zostaje w pamięci przeglądarki; łączy się z wpisami drugiej karty)
+    zLast = ZP.diff(zLast, S, Z.q, Date.now(), Z.kn); ZP.store(LS, FOLDER.id, Z, Z, S);   // co się zmieniło od ostatniego zapisu → kolejka; kolejka i stan idą do localStorage jedną funkcją (łączy się z drugą kartą)
     if (FB.db){ clearTimeout(store.t); store.t = setTimeout(flush, 600); }
     return;
   }
+  const k = lsKey('state'); if (k) LS.set(k, S);
   if (store.mode === 'cloud'){ store.dirty = true; clearTimeout(store.t); store.t = setTimeout(flush, 600); }
 }
 /* ---------- zapis w bazie Firebase: scalający, po pozycjach, z kolejką i ponawianiem ---------- */
 const zStateRef = fid => FB.doc(FB.db, 'folders', fid, 'data', 'state');
-const zSaveFor = (fid, z) => LS.set(zKey(fid), z);
+const zCur = fid => (FOLDER && FOLDER.id === fid ? Z : null);   // bieżące Z konta fid; konto zamknięte albo otwarte od nowa = null (stare Z nie dotyka localStorage)
 const zUnDel = v => v && typeof v === 'object' ? (v.__del ? FB.deleteField() : Array.isArray(v) ? v.map(zUnDel) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, zUnDel(x)]))) : v;
 function zFailed(fid, quiet){
   zBusy.free(fid);
   if (!quiet && !zWarned){ zWarned = true; toast('Nie udało się zapisać zmian w bazie. Spróbuję ponownie.'); }
   clearTimeout(zRetryT); zRetryT = setTimeout(flushFire, ZP.backoff(zRetryN++));
 }
+function zHoldToast(){ if (zHoldWarned) return; zHoldWarned = true; toast('Konto w bazie ma nieznany układ danych. Nie zapisuję do niego; plany zostają w tej przeglądarce, spróbuję po kolejnym odczycie.'); }
 function flushFire(){
   if (!fireOn() || ZP.emptyQ(Z.q)) return;
   const z = Z, fid = FOLDER.id, ref = zStateRef(fid);
   if (!zBusy.take(fid)) return;
-  // po wysyłce kolejka idzie do localStorage tylko, gdy to nadal bieżące Z (konto mogło zostać otwarte od nowa); kolejny zapis dotyczy bieżącego Z
-  const done = (sent, written) => { ZP.settle(LS, zKey(fid), Z, z, sent, written); zBusy.free(fid); zRetryN = 0; zWarned = false; if (FOLDER && FOLDER.id === fid && !ZP.emptyQ(Z.q)) flushFire(); };
+  // po wysyłce kolejka i stan idą do localStorage tylko, gdy z jest nadal bieżącym Z (ZP.settle, zCur); kolejny zapis dotyczy bieżącego Z
+  const done = (sent, written) => { ZP.settle(LS, fid, zCur(fid), z, sent, written, Date.now(), S); zBusy.free(fid); zRetryN = 0; zWarned = false; if (FOLDER && FOLDER.id === fid && !ZP.emptyQ(Z.q)) flushFire(); };
   if (zLay === 'v3'){
     // zwykły zapis: tylko zmienione pozycje (mergeFields zastępuje wskazane pole w całości, reszta dokumentu zostaje)
     const bw = ZP.buildWrite(S, z.q, Date.now(), {tombs:zTombs});
     if (!bw){ if (z.q.m){ flushMirror(z, fid, ref); return; } zBusy.free(fid); return; }   // zostało tylko odświeżenie lustra starego układu
+    if (!zSizeWarned && zDocBytes + ZP.docBytes(bw.data) > ZP.DOC_WARN){ zSizeWarned = true; toast('Plany zbliżają się do limitu rozmiaru w bazie (1 MB na konto). Zapis może się nie udać – usuń nieużywane plany.'); }   // zdalny rozmiar + dane tego zapisu (górne oszacowanie)
     FB.setDoc(zStateRef(fid), zUnDel(bw.data), {mergeFields:bw.fields}).then(() => done(bw.sent), () => zFailed(fid));
     syncShares();
   } else {
@@ -874,9 +876,9 @@ function flushFire(){
       if (!r.noop && !r.hold) tx.set(ref, r.doc);
       return r;
     }).then(r => {
-      if (r.hold){ zBusy.free(fid); return; }   // dokument nieznanego kształtu (bez plans i pm): nie nadpisujemy go, zmiany czekają w kolejce
+      if (r.hold){ zBusy.free(fid); zHoldToast(); return; }   // dokument nieznanego kształtu (bez plans i pm): nie nadpisujemy go, zmiany czekają w kolejce; ponowienie po kolejnym odczycie z bazy
       zLay = 'v3';
-      if (r.noop){ z.q.f = 0; if (Z === z) zSaveFor(fid, z); zBusy.free(fid); flushFire(); return; }
+      if (r.noop){ const f0 = z.q.f; z.q.f = 0; ZP.store(LS, fid, zCur(fid), z, S, {f:f0}); zBusy.free(fid); flushFire(); return; }
       done(r.sent, r.written); syncShares();
       if (r.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
       if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');
@@ -893,7 +895,7 @@ function flushMirror(z, fid, ref){
     else if (p.action === 'drop') tx.update(ref, {plans:FB.deleteField(), custom:FB.deleteField()});   // za duży dokument: stare lustro znika
     return p;
   }).then(p => {
-    ZP.afterMirror(z, m); if (Z === z) ZP.saveZ(LS, zKey(fid), z, {m}); zBusy.free(fid); zRetryN = 0; zWarned = false;
+    ZP.afterMirror(z, m); ZP.store(LS, fid, zCur(fid), z, S, {m}); zBusy.free(fid); zRetryN = 0; zWarned = false;
     if (p.tooBig && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
     if (FOLDER && FOLDER.id === fid && !ZP.emptyQ(Z.q)) flushFire();
   }, () => zFailed(fid, true));
@@ -1072,8 +1074,8 @@ function closeFolder(){
 function openFolder(f){
   if (unsubState) unsubState(); if (unsubSess) unsubSess();
   FOLDER = {id:f.id, name:f.name}; LS.set('dz.folder', FOLDER);
-  S = normalize(LS.get(lsKey('state'), null)); SESS = sortSess(LS.get(lsKey('sessions'), []));
-  Z = ZP.fixZ(LS.get(zKey(f.id), null)); zLast = ZP.snap(S); zLay = 'empty'; zTombs = {pt:{}, ct:{}}; zRetryN = 0; zWarned = false; zMirrorAt = 0; clearTimeout(zRetryT); clearTimeout(zRenderT);
+  S = normalize(LS.get(ZP.stateKey(f.id), null)); SESS = sortSess(LS.get(lsKey('sessions'), []));   // stan konta: ten sam klucz, do którego pisze ZP.store
+  Z = ZP.fixZ(LS.get(zKey(f.id), null)); zLast = ZP.snap(S); zLay = 'empty'; zTombs = {pt:{}, ct:{}}; zRetryN = 0; zWarned = false; zMirrorAt = 0; zHoldWarned = false; zSizeWarned = false; zDocBytes = 0; clearTimeout(zRetryT); clearTimeout(zRenderT);
   store.ready = false; store.dirty = false; ui.planId = null; ui.openItem = null; shareKnown = null; shareSent.clear();
   const fid = f.id;
   dietOpen(fid);
@@ -1085,24 +1087,26 @@ function openFolder(f){
     }
     const first = !store.ready; store.ready = true;
     // scalamy z niewysłanymi zmianami lokalnymi (kolejka Z); niczego nie pomijamy ani nie nadpisujemy w całości (E1-09)
-    const doc = snap.data(), lay = ZP.layout(doc);
-    zLay = lay; if (lay === 'v3') Z.q.f = 0;   // dokument jest już w układzie v3 (naprawił go ktoś inny albo my)
+    const doc = snap.data(), lay = ZP.layout(doc), hold = ZP.holdDoc(doc), qBefore = JSON.parse(JSON.stringify(Z.q));
+    zLay = lay; zDocBytes = ZP.docBytes(doc); if (lay === 'v3') Z.q.f = 0;   // dokument jest już w układzie v3 (naprawił go ktoś inny albo my)
     let R;
     if (lay === 'v3'){ R = ZP.remoteV3(doc, p => normalize({plans:[p]}).plans[0] || p); Z.kn.v3 = true; ZP.rememberTombs(Z.kn, doc, Date.now()); zTombs = ZP.tombInfo(doc); }
+    else if (hold) R = ZP.remoteHold();   // nieznany kształt (bez plans i pm): to nie jest pusty dokument – lokalne plany zostają, migracja czeka na kolejny odczyt
     else R = ZP.remoteOld(normalize(doc), Z.kn.v3, {pt:Z.kn.pt, ct:Z.kn.ct});
     const mg = ZP.merge(S, Z.q, Z.kn, R, Date.now());
     Z.q = mg.q; Z.kn = mg.kn;
     const inc = normalize(mg.S), changed = !ZP.same(inc, S);
-    if (changed){ S = inc; LS.set(lsKey('state'), S); }
+    if (changed) S = inc;
     zLast = ZP.snap(S);
     if (!Object.keys(Z.q.p).length && !Object.keys(Z.q.pd).length) shareSeen();   // zmiany planów czekające na wysłanie zostają do syncShares
     if (lay === 'v3' && Date.now() - zMirrorAt > 30000 && ZP.checkMirror(doc, S, Z.q, Date.now())) zMirrorAt = Date.now();
-    zSaveFor(fid, Z);
+    ZP.store(LS, fid, Z, Z, S, ZP.dropped(qBefore, Z.q));   // kolejka i stan: jedna funkcja zapisu, łączy się z drugą kartą; zdjęte przez scalenie wpisy schodzą też z zapisanej kolejki
+    if (hold) zHoldToast(); else zHoldWarned = false;
     if (mg.notes.some(n => n.t === 'old-card-changed' || n.t === 'old-card-new')) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scalam je.');
     else if (mg.notes.some(n => n.t === 'remote-later')) toast('Zmiana z drugiego urządzenia była nowsza i zastąpiła Twoją zmianę tego samego planu.');
     if (changed || first){ zRenderSoon(); }
     if (first && topSheet() && topSheet().type === 'shareImp') renderSheet();
-    if (!ZP.emptyQ(Z.q)){ clearTimeout(store.t); store.t = setTimeout(flush, 100); }
+    if (!hold && !ZP.emptyQ(Z.q)){ clearTimeout(store.t); store.t = setTimeout(flush, 100); }   // przy nieznanym kształcie czekamy na kolejny odczyt (transakcja i tak by go wstrzymała)
   }, err => {
     if (err && err.code === 'permission-denied' && FOLDER && FOLDER.id === fid){
       const ag = accGen(fid), lf = FOLDERS.find(x => x.id === fid), changed = ag !== null && !!lf && ag !== (lf.gen || 0);
