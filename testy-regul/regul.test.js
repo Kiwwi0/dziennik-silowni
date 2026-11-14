@@ -763,7 +763,6 @@ describe('foods/{ean}/fix/{key} (grupy poprawek)', () => {
 
 // ---------------------------------------------------------------------------------------------
 // E1-01 i E1-02 zostały naprawione w zleceniu A3 – odwrócone testy są w blokach „members”, „secret/pin” i „E1-02” powyżej.
-// Poniżej zostaje to, czego A3 nie obejmuje: opisuje OBECNE zachowanie reguł i dziś jest zielone, choć to błąd.
 // ---------------------------------------------------------------------------------------------
 const anonimowe = (uid) => testEnv.authenticatedContext(uid, { firebase: { sign_in_provider: 'anonymous' } }).firestore();
 
@@ -786,6 +785,9 @@ describe('E1-02 (naprawione): przejęcie konta przez obce urządzenie', () => {
   });
 });
 
+// ---------------------------------------------------------------------------------------------
+// Poniżej zostaje to, czego A3 nie obejmuje: opisuje OBECNE zachowanie reguł i dziś jest zielone, choć to błąd.
+// ---------------------------------------------------------------------------------------------
 describe('znane dziury poza A3', () => {
   it('E1-03 [znany błąd do naprawy]: produkt we wspólnej bazie (foods) utworzy każde anonimowe zalogowane urządzenie', async () => {
     await assertSucceeds(setDoc(doc(anonimowe('anon1'), 'foods', EAN), produkt({ src: 'user' })));
