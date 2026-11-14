@@ -70,7 +70,7 @@ class Urz {
     if (!this.online) return false;                                       // migracja = transakcja, wymaga sieci
     const tx = ZP.migrate(this.S, this.z, this.sv.get(), this.now, doc => ({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}));
     if (tx.hold) return false;                                            // dokument nietypowy: migracja wstrzymana, zmiany czekają w kolejce
-    if (tx.noop){ this.z.q.f = 0; this.lay = 'v3'; return this.wyslij(); }        // ktoś już naprawił: zwykły zapis
+    if (tx.noop){ this.z.q.f = 0; return false; }                                  // ktoś już naprawił: jak w aplikacji (A6f) – zwykły zapis dopiero po odczycie z bazy (odbierz ustawia lay)
     this.sv.setFull(tx.doc); ZP.afterSend(this.z, tx.sent, tx.written); this.lay = 'v3'; if (tx.repaired) this.repaired++;
     return true;
   }
@@ -179,6 +179,32 @@ test('3b. edycja PÓŹNIEJSZA niż usunięcie: plan zostaje (nowsza zmiana wygry
   for (const d of [tel, lap]){ assert.deepEqual(ids(d.S).sort(), ['P1', 'P2']); assert.equal(byId(d.S, 'P2').name, 'edycja po usunięciu'); }
 });
 
+test('3c. USUNIĘCIE offline wcześniejsze niż edycja z drugiego urządzenia, dociera do bazy PO niej: plan zostaje z nowszą edycją (A6f)', () => {
+  const {sv, tel, lap} = konto();
+  tel.online = false; tick();
+  tel.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); tel.wyslij(); tick(50);     // telefon offline usuwa P2 (zapis czeka w SDK)
+  lap.edit(S => { byId(S, 'P2').name = 'edycja laptopa później'; }); lap.wyslij(); tick();       // laptop edytuje P2 później i wysyła pierwszy
+  tel.wracaSiec();                                                                                // zapis usunięcia (bez warunku) kasuje nowszy wpis w bazie
+  assert.equal(sv.doc.pm.P2, undefined, 'stan pośredni: usunięcie skasowało wpis'); assert.ok(sv.doc.pt.P2 < lap.z.kn.p.P2, 'nagrobek starszy niż edycja');
+  uspokoj(tel, lap);
+  assert.ok(lap.notes.some(n => n.t === 'reassert-tomb' && n.id === 'P2'), 'laptop zna nowszą wersję i wysyła ją ponownie');
+  assert.ok(sv.doc.pm.P2 && sv.doc.pm.P2.u > sv.doc.pt.P2, 'w bazie nowsza wersja nad nagrobkiem');
+  for (const d of [tel, lap]){ assert.deepEqual(ids(d.S).sort(), ['P1', 'P2']); assert.equal(byId(d.S, 'P2').name, 'edycja laptopa później'); }
+  assert.deepEqual(ZP.mirrorOf(sv.get()).plans.map(p => p.name), ['Plan A', 'edycja laptopa później'], 'lustro dla starych kart też ma plan');
+});
+test('3d. 3c dla własnych ćwiczeń, a usunięcie NOWSZE niż edycja dalej usuwa (bez fałszywej obrony)', () => {
+  { const {sv, tel, lap} = konto();
+    tel.online = false; tick(); tel.edit(S => { S.custom = []; }); tel.wyslij(); tick(50);
+    lap.edit(S => { S.custom[0].name = 'Moje – później'; }); lap.wyslij(); tick();
+    tel.wracaSiec(); uspokoj(tel, lap);
+    for (const d of [tel, lap]) assert.deepEqual(d.S.custom.map(c => c.name), ['Moje – później'], 'ćwiczenie zostaje z nowszą edycją'); }
+  { const {sv, tel, lap} = konto();
+    tel.online = false; tick(); tel.edit(S => { byId(S, 'P2').name = 'edycja offline'; }); tel.wyslij(); tick(50);
+    lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();       // usunięcie późniejsze
+    tel.wracaSiec(); uspokoj(tel, lap);
+    for (const d of [tel, lap]) assert.deepEqual(ids(d.S), ['P1'], 'usunięcie nowsze niż edycja wygrywa');
+    assert.ok(!tel.notes.concat(lap.notes).some(n => n.t === 'reassert-tomb'), 'obrona nie rusza, gdy nagrobek jest nowszy'); }
+});
 test('4. usunięcie planu na jednym urządzeniu NIE wskrzesza go z drugiego (bez zmian na drugim)', () => {
   const {sv, tel, lap} = konto();
   lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();
@@ -735,13 +761,17 @@ function migawkaV3(k, doc, now){
   ZP.store(k.ls, k.fid, k.z, k.z, k.S, ZP.dropped(before, k.z.q), t); return mg.notes;
 }
 const DZIEN = 864e5;
+const widocznePlany = doc => { const R = ZP.remoteV3(cl(doc)); return Object.fromEntries(Object.keys(R.p).sort().map(id => [id, R.p[id].item.name])); };
+const planyMapa = S => Object.fromEntries((S ? S.plans : []).map(p => [p.id, p.name]).sort((x, y) => x[0] < y[0] ? -1 : 1));
 /* Karta połączona ze sztucznym serwerem (A6e): odbiór = migawka v3 jak w openFolder, wysyłka = buildWrite + mergeFields + ZP.settle jak `done` w flushFire. */
 const serwerV3 = () => { const sv = new Serwer(); sv.doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:1}, P2:{...plan('P2', 'Plan B'), u:1}}, po:['P1', 'P2'], pos:1, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{restSet:90, sound:true}}; return sv; };
 function kartaSv(nazwa, ls, sv){
   const k = karta(nazwa, ls, 'X'); k.sv = sv;
-  k.odbierz = () => migawkaV3(k, sv.get(), tick(1));
+  k.lay = 'empty';                                                                                // jak zLay w aplikacji: do pierwszej migawki karta nie wysyła na ślepo (A6f)
+  k.odbierz = () => { k.lay = 'v3'; return migawkaV3(k, sv.get(), tick(1)); };
   k.wyslij = () => {
     if (ZP.emptyQ(k.z.q)) return false;
+    if (k.lay !== 'v3'){ k.z.q.f = 0; return false; }                                            // ścieżka noop w flushFire: dokument już v3, czekamy na migawkę
     const now = tick(1), bw = ZP.buildWrite(k.S, k.z.q, now, {tombs:ZP.tombInfo(sv.get())}); if (!bw) return false;
     sv.merge(bw.data, bw.fields); ZP.settle(ls, 'X', k.z, k.z, bw.sent, undefined, now, k.S); return true;
   };
@@ -859,6 +889,24 @@ test('26e-6. wpis w kolejce z ZAMKNIĘTEJ karty, starszy niż nagrobek z innego 
   assert.ok(!ids(kartaSv('N2', ls, sv).S).includes('P2'), 'kolejna nowa karta też nie ma planu');
   } finally { clock.t = t0; }
 });
+test('26f. odświeżona karta przejmuje z localStorage STARSZE usunięcie innej zakładki, a sama wysłała nowszą edycję tego planu: plan zostaje, usunięcie nie trafia do bazy (A6f)', () => {
+  const t0 = clock.t; clock.t = Date.now();
+  try {
+  const sv = serwerV3(), ls = wspolnyLS(), Z1 = kartaSv('Z1', ls, sv), Z2 = kartaSv('Z2', ls, sv); Z1.odbierz(); Z2.odbierz();
+  Z2.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P1'); });                              // Z2 usuwa P1 (czeka, Z2 nie dostaje migawek)
+  Z1.edit(S => { byId(S, 'P1').name = 'Z1 później'; }); Z1.wyslij();                             // Z1 edytuje P1 później i wysyła
+  Z2.edit(S => { byId(S, 'P2').name = 'Z2 zmienia P2'; });                                        // zapis Z2: jej (starsze) usunięcie nie wyrzuca P1 ze stanu
+  assert.equal(byId(ls.get(ZP.stateKey('X'), null), 'P1').name, 'Z1 później', 'stan trzyma nowszą wersję P1 mimo starszego usunięcia w kolejce');
+  const N = kartaSv('Z1', ls, sv);                                                                // odświeżenie Z1: przejmuje kolejkę z usunięciem P1
+  assert.ok(N.z.q.pd.P1 > 0 && ids(N.S).includes('P1'));
+  assert.equal(N.wyslij(), false, 'przed pierwszą migawką nic nie idzie na ślepo');
+  const notes = N.odbierz(); assert.ok(notes.some(x => x.id === 'P1' && (x.t === 'stale-delete' || x.t === 'restored')), 'usunięcie uznane za nieaktualne');
+  N.wyslij(); assert.equal(sv.doc.pm.P1.name, 'Z1 później', 'w bazie nowsza wersja'); assert.equal(sv.doc.pt.P1, undefined, 'bez nagrobka');
+  Z2.odbierz(); Z2.wyslij(); N.odbierz();                                                          // Z2 dostaje migawkę: nowsza wersja w bazie przywraca plan
+  for (const k of [N, Z2]) assert.equal(byId(k.S, 'P1').name, 'Z1 później');
+  assert.equal(sv.doc.pm.P1.name, 'Z1 później', 'usunięcie Z2 nie trafiło do bazy');
+  } finally { clock.t = t0; }
+});
 test('27. nagrobek w remoteOld: urządzenie, które NIGDY nie widziało planu, nie wskrzesza go po zapisie starej karty (chroni nagrobek, nie historia wersji)', () => {
   const sv = new Serwer();
   sv.doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:0}, P2:{...plan('P2', 'Plan B'), u:0}}, po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{P3:clock.t}, ct:{}, settings:{restSet:90, sound:true}};
@@ -943,6 +991,60 @@ test('31. app.html: usunięcie konta (folderDeleteGo) kasuje klucze z ZP.account
     assert.ok(!new RegExp(zapis + m[1] + String.raw`\s*,`).test(bez), 'zapis przez zmienną ' + m[1] + ' z kluczem stanu/kolejki poza ZP.store / ZP.settle');
   assert.ok(open.includes('ZP.holdDoc(doc)') && open.includes('ZP.remoteHold()') && open.includes('zHoldToast()'), 'odczyt nieznanego kształtu: bez scalania z pustym dokumentem, z komunikatem');
   assert.ok(ciało(APP, 'function flushFire(){').includes('zHoldToast()'), 'wstrzymana migracja w transakcji też pokazuje komunikat');
+});
+
+test('32. losowy test zbieżności (stałe ziarno): dwie zakładki i drugie urządzenie edytują, usuwają i dodają ponownie te same plany, odświeżają karty; po uspokojeniu baza, pamięć kart, zapisany stan i nowe karty są zgodne, żadna zmiana nie przepadła, usunięty plan nie wrócił', () => {
+  const t0 = clock.t; clock.t = Date.now(); let seed = +(process.env.SEED || 20261114);
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }, pick = a => a[Math.floor(rnd() * a.length)];
+  const POOL = ['P1', 'P2', 'P3', 'P4'], PRZEBIEGI = 300;
+  try {
+  for (let run = 0; run < PRZEBIEGI; run++){
+    const sv = serwerV3(), ls1 = wspolnyLS(), ls2 = wspolnyLS(), log = [], nazwy0 = {P1:'Plan A', P2:'Plan B'};
+    const karty = [kartaSv('Z1', ls1, sv), kartaSv('Z2', ls1, sv), kartaSv('U2', ls2, sv)]; karty.forEach(k => k.odbierz());
+    const ops = {};                                                                                // id → [{u, name} | {u, del:true}] – każda zmiana użytkownika ze swoim znacznikiem
+    const zanotuj = (id, op) => (ops[id] ||= []).push(op);
+    let nr = 0;
+    for (let i = 0; i < 14; i++){
+      const ki = Math.floor(rnd() * karty.length), k = karty[ki], op = pick(['edit', 'edit', 'del', 'add', 'odb', 'odb', 'wys', 'wys', 'nowa']);
+      log.push(k.nazwa + ':' + op);
+      if (op === 'edit' || op === 'del'){
+        const p = k.S.plans.length ? pick(k.S.plans) : null; if (!p) continue;
+        if (op === 'edit'){ const name = k.nazwa + '#' + (++nr); k.edit(S => { byId(S, p.id).name = name; }); zanotuj(p.id, {u:k.z.q.p[p.id], name}); }
+        else { k.edit(S => { S.plans = S.plans.filter(x => x.id !== p.id); }); zanotuj(p.id, {u:k.z.q.pd[p.id], del:true}); }
+      } else if (op === 'add'){
+        const id = pick(POOL); if (k.S.plans.some(x => x.id === id)) continue;
+        const name = k.nazwa + '+' + (++nr); k.edit(S => { S.plans.push(plan(id, name)); }); zanotuj(id, {u:k.z.q.p[id], name});
+      } else if (op === 'odb') k.odbierz();
+      else if (op === 'wys') k.wyslij();
+      else karty[ki] = kartaSv(k.nazwa, k.ls, sv);                                                  // odświeżenie karty: stara znika bez wysyłki, nowa czyta localStorage
+    }
+    for (let r = 0; r < 8; r++) for (const k of karty){ k.odbierz(); k.wyslij(); }                  // uspokojenie: wszyscy odbierają i wysyłają
+    // oczekiwany wynik: dla każdego planu wygrywa zmiana z największym znacznikiem (edycja/dodanie = plan z tą nazwą, usunięcie = brak planu)
+    const ocz = {}; let remis = false;
+    for (const id of POOL){
+      const lista = ops[id] || []; if (!lista.length){ if (nazwy0[id]) ocz[id] = nazwy0[id]; continue; }
+      const max = Math.max(...lista.map(o => o.u)), ost = lista.filter(o => o.u === max); if (ost.length > 1) remis = true;
+      if (!ost[0].del) ocz[id] = ost[0].name;
+    }
+    if (remis) continue;                                                                           // równe znaczniki rozstrzyga porównanie treści – poza tym wzorcem
+    const opis = 'przebieg ' + run + ' [' + log.join(' ') + ']', O = JSON.stringify(Object.fromEntries(Object.entries(ocz).sort()));
+    assert.equal(JSON.stringify(widocznePlany(sv.get())), O, opis + ': baza = ostatnia zmiana każdego planu (nic nie przepadło, usunięty nie wrócił)');
+    for (const k of karty) assert.equal(JSON.stringify(planyMapa(k.S)), O, opis + ': pamięć karty ' + k.nazwa);
+    for (const [nm, ls] of [['LS1', ls1], ['LS2', ls2]]){
+      assert.equal(JSON.stringify(planyMapa(ls.get(ZP.stateKey('X'), null))), O, opis + ': zapisany stan ' + nm);
+      const q = ZP.fixZ(ls.get(ZP.zKey('X'), null)).q;
+      assert.ok(![q.p, q.pd, q.c, q.cd, q.s].some(m => Object.keys(m).length), opis + ': zapisana kolejka ' + nm + ' pusta');
+      const N = kartaSv('N', ls, sv); assert.equal(JSON.stringify(planyMapa(N.S)), O, opis + ': nowa karta z ' + nm + ' przed odczytem z bazy');
+    }
+  }
+  } finally { clock.t = t0; }
+});
+
+test('33. app.html: ścieżka noop w flushFire (dokument już v3, karta bez migawki) nie wysyła na ślepo – czeka na odczyt z bazy (A6f)', () => {
+  const ff = ciało(APP, 'function flushFire(){'), noop = ff.slice(ff.indexOf('if (r.noop){'), ff.indexOf('\n', ff.indexOf('if (r.noop){')));
+  assert.ok(noop.includes('zBusy.free(fid); return;'), 'noop zwalnia zajętość i kończy');
+  assert.ok(!noop.includes('flushFire()') && !noop.includes("zLay = 'v3'"), 'noop nie ustawia zLay i nie wysyła od razu');
+  assert.ok(ff.indexOf("zLay = 'v3'") > ff.indexOf('if (r.noop){'), 'zLay = v3 dopiero po udanej migracji');
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);

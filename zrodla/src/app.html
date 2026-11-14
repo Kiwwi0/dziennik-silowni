@@ -877,8 +877,8 @@ function flushFire(){
       return r;
     }).then(r => {
       if (r.hold){ zBusy.free(fid); zHoldToast(); return; }   // dokument nieznanego kształtu (bez plans i pm): nie nadpisujemy go, zmiany czekają w kolejce; ponowienie po kolejnym odczycie z bazy
+      if (r.noop){ const f0 = z.q.f; z.q.f = 0; ZP.store(LS, fid, zCur(fid), z, S, {f:f0}); zBusy.free(fid); return; }   // A6f: dokument jest już v3, a ta karta nie scaliła jeszcze migawki – wysyłka po odczycie z bazy (nasłuch ustawi zLay i wyśle), nie na ślepo
       zLay = 'v3';
-      if (r.noop){ const f0 = z.q.f; z.q.f = 0; ZP.store(LS, fid, zCur(fid), z, S, {f:f0}); zBusy.free(fid); flushFire(); return; }
       done(r.sent, r.written); syncShares();
       if (r.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
       if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');

@@ -2051,6 +2051,7 @@ const ZP = (() => {
   function rememberTombs(kn, doc, now){
     for (const K of KINDS){
       const t = {}; if (isObj(doc && doc[K.t])) for (const [id, ts] of Object.entries(doc[K.t])) if (num(ts) && now - num(ts) <= TOMB_TTL) t[id] = num(ts);
+      for (const [id, ts] of Object.entries((kn[K.t]) || {})) if (num(ts) && now - num(ts) <= TOMB_TTL && num(ts) > (t[id] ?? 0)) t[id] = num(ts);   // A6f: nowszy znany nagrobek zostaje, choć w bazie nadpisał go starszy (zapis nagrobka jest bez warunku)
       kn[K.t] = t;
     }
     return kn;
@@ -2077,10 +2078,11 @@ const ZP = (() => {
       const Li = L[K.k], Ri = R[K.k], Rt = R[K.t], E = q[K.k], D = q[K.d], KN = kn[K.k], out = res[K.k];
       const ids = new Set([...Object.keys(Li), ...Object.keys(Ri), ...Object.keys(D), ...Object.keys(E)]);
       for (const id of ids){
-        const l = Li[id], pend = E[id], pdel = D[id], tomb = Rt[id];
+        const l = Li[id], pend = E[id], pdel = D[id], kt = kn[K.t] && kn[K.t][id], tomb = R.mode === 'v3' && kt !== undefined && !(Rt[id] >= kt) ? kt : Rt[id];   // A6f: w v3 najnowszy znany nagrobek (baza albo pamięć urządzenia)
         let r = Ri[id], hid = false;
         if (r && R.mode === 'v3' && tomb !== undefined && tomb > r.u){ r = undefined; hid = true; }   // starsza wersja pod nagrobkiem = usunięte
-        if (pdel !== undefined){                                   // lokalnie usunięte, czeka wysyłka
+        if (pdel !== undefined && l && KN[id] !== undefined && KN[id] > pdel){ delete D[id]; notes.push({t:'stale-delete', kind:K.k, id}); }   // A6f: usunięcie starsze niż znana wersja (np. przejęte z innej karty) jest nieaktualne – pozycja zostaje, dalej jak bez wpisu
+        else if (pdel !== undefined){                              // lokalnie usunięte, czeka wysyłka
           if (r && r.u > pdel){ out[id] = r.item; KN[id] = r.u; delete D[id]; notes.push({t:'restored', kind:K.k, id}); }
           else delete KN[id];
           continue;
@@ -2108,8 +2110,11 @@ const ZP = (() => {
           else if (!l && tomb !== undefined && tomb > r.u){ /* usunięte później niż zmieniane */ }
           else { out[id] = r.item; KN[id] = r.u; }
         } else {
-          if (l){ delete KN[id]; notes.push({t:'deleted-remote', kind:K.k, id}); }
-          if (hid) D[id] = tomb;                                   // starszy wpis pod nagrobkiem (spóźniony zapis) – sprzątamy go w bazie z oryginalnym czasem usunięcia
+          if (l && KN[id] !== undefined && tomb !== undefined && tomb < KN[id]){ out[id] = l; E[id] = KN[id]; notes.push({t:'reassert-tomb', kind:K.k, id}); }   // A6f: starsze usunięcie dotarło po nowszej wersji (zapis usunięcia jest bez warunku) – wysyłamy znaną, nowszą wersję ponownie
+          else {
+            if (l){ delete KN[id]; notes.push({t:'deleted-remote', kind:K.k, id}); }
+            if (hid) D[id] = tomb;                                 // starszy wpis pod nagrobkiem (spóźniony zapis) – sprzątamy go w bazie z oryginalnym czasem usunięcia
+          }
         }
       }
       // wersje lokalne, które właśnie zastąpiła zdalna albo które zniknęły: zapamiętujemy ich skróty (rozpoznanie nieaktualnej kopii ze starej karty)
@@ -2263,7 +2268,8 @@ const ZP = (() => {
       if (sent.m && q.m === sent.m) q.m = 0;
     }
     for (const k of ['p', 'c']){ kn[k] = {...st.kn[k]}; for (const [id, u] of Object.entries(z.kn[k] || {})) if (!(id in kn[k]) || u > kn[k][id]) kn[k][id] = u; }
-    kn.v3 = !!(st.kn.v3 || z.kn.v3); kn.pt = fresh({...st.kn.pt, ...z.kn.pt}); kn.ct = fresh({...st.kn.ct, ...z.kn.ct}); kn.h = z.kn.h || kn.h;
+    kn.v3 = !!(st.kn.v3 || z.kn.v3); const maxT = (a, b) => { const r = {...(a || {})}; for (const [id, ts] of Object.entries(b || {})) if (!(r[id] >= ts)) r[id] = ts; return r; };   // A6f: nagrobki łączone przez maksimum
+    kn.pt = fresh(maxT(st.kn.pt, z.kn.pt)); kn.ct = fresh(maxT(st.kn.ct, z.kn.ct)); kn.h = z.kn.h || kn.h;
     const out = {q, kn}; ls.set(key, out); return out;
   }
   /* Klucze localStorage silnika zapisu (osobne dla konta); usunięcie konta kasuje je razem z resztą jego danych.
@@ -2292,6 +2298,8 @@ const ZP = (() => {
       for (const [id, u] of Object.entries(mq[K.k])) if (q[K.k][id] !== u && B[K.k][id]) out[K.k][id] = B[K.k][id];
       for (const [id, ts] of Object.entries(mq[K.d])) if (q[K.d][id] !== ts) delete out[K.k][id];
       const mk = mkn[K.k] || {}, ok = kn[K.k] || {}, mt = mkn[K.t] || {}, ot = kn[K.t] || {};
+      for (const [id, ts] of [...Object.entries(q[K.d]), ...Object.entries(mq[K.d])])   // A6f: usunięcie starsze niż znana wersja jest nieaktualne – pozycja zostaje w stanie (merge rozstrzyga je jako stale-delete)
+        if (!(id in out[K.k]) && (mk[id] ?? -1) > ts && B[K.k][id]) out[K.k][id] = B[K.k][id];
       for (const [id, u] of Object.entries(mk))                      // druga karta wysłała nowszą wersję: wpis zszedł z kolejki, ale znany czas został
         if (id in A[K.k] && u > (ok[id] ?? -1) && q[K.k][id] === undefined && q[K.d][id] === undefined && B[K.k][id]) out[K.k][id] = B[K.k][id];   // A6e: tylko pozycje, które ta karta ma (saveZ nie kasuje kn.p – bez tego wracał plan usunięty na innym urządzeniu)
       for (const [id, ts] of Object.entries(mt))                     // druga karta wysłała usunięcie: nagrobek, którego ta karta nie zna
@@ -2582,8 +2590,8 @@ function flushFire(){
       return r;
     }).then(r => {
       if (r.hold){ zBusy.free(fid); zHoldToast(); return; }   // dokument nieznanego kształtu (bez plans i pm): nie nadpisujemy go, zmiany czekają w kolejce; ponowienie po kolejnym odczycie z bazy
+      if (r.noop){ const f0 = z.q.f; z.q.f = 0; ZP.store(LS, fid, zCur(fid), z, S, {f:f0}); zBusy.free(fid); return; }   // A6f: dokument jest już v3, a ta karta nie scaliła jeszcze migawki – wysyłka po odczycie z bazy (nasłuch ustawi zLay i wyśle), nie na ślepo
       zLay = 'v3';
-      if (r.noop){ const f0 = z.q.f; z.q.f = 0; ZP.store(LS, fid, zCur(fid), z, S, {f:f0}); zBusy.free(fid); flushFire(); return; }
       done(r.sent, r.written); syncShares();
       if (r.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
       if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');
