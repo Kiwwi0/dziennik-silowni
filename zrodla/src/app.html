@@ -838,7 +838,7 @@ function persist(){
   const k = lsKey('state'); if (k) LS.set(k, S);
   if (store.mode === 'fire'){
     if (!FOLDER) return;
-    zLast = ZP.diff(zLast, S, Z.q, Date.now(), Z.kn); LS.set(zKey(FOLDER.id), Z);   // co się zmieniło od ostatniego zapisu → kolejka (zostaje w pamięci przeglądarki)
+    zLast = ZP.diff(zLast, S, Z.q, Date.now(), Z.kn); ZP.saveZ(LS, zKey(FOLDER.id), Z);   // co się zmieniło od ostatniego zapisu → kolejka (zostaje w pamięci przeglądarki; łączy się z wpisami drugiej karty)
     if (FB.db){ clearTimeout(store.t); store.t = setTimeout(flush, 600); }
     return;
   }
@@ -857,7 +857,7 @@ function flushFire(){
   if (!fireOn() || zBusy || ZP.emptyQ(Z.q)) return;
   const z = Z, fid = FOLDER.id, ref = zStateRef(fid);
   zBusy = true;
-  const done = (sent, written) => { ZP.afterSend(z, sent, written); zSaveFor(fid, z); zBusy = false; zRetryN = 0; zWarned = false; if (Z === z && FOLDER && FOLDER.id === fid && !ZP.emptyQ(z.q)) flushFire(); };
+  const done = (sent, written) => { ZP.afterSend(z, sent, written); ZP.saveZ(LS, zKey(fid), z, sent); zBusy = false; zRetryN = 0; zWarned = false; if (Z === z && FOLDER && FOLDER.id === fid && !ZP.emptyQ(z.q)) flushFire(); };
   if (zLay === 'v3'){
     // zwykły zapis: tylko zmienione pozycje (mergeFields zastępuje wskazane pole w całości, reszta dokumentu zostaje)
     const bw = ZP.buildWrite(S, z.q, Date.now(), {tombs:zTombs});
@@ -888,7 +888,7 @@ function flushMirror(z, fid, ref){
     if (p.action === 'set') tx.update(ref, {plans:p.plans, custom:p.custom});
     return p;
   }).then(p => {
-    ZP.afterMirror(z, m); zSaveFor(fid, z); zBusy = false; zRetryN = 0; zWarned = false;
+    ZP.afterMirror(z, m); ZP.saveZ(LS, zKey(fid), z, {m}); zBusy = false; zRetryN = 0; zWarned = false;
     if (p.tooBig && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
     if (Z === z && FOLDER && FOLDER.id === fid && !ZP.emptyQ(z.q)) flushFire();
   }, () => zFailed(null, true));

@@ -299,6 +299,34 @@ const ZP = (() => {
     if (mirrorPatch(doc).action !== 'set') return false;            // zgodne, pominięte (za duże / brak full)
     q.m = stampQ(q, now); return true;
   }
+  /* ---------- dwie karty tej samej przeglądarki (wspólny localStorage) ----------
+     Zapis kolejki nie nadpisuje tego, co już jest w localStorage, tylko łączy: suma wpisów, przy tym samym id większy znacznik
+     (edycja kontra usunięcie tej samej pozycji: wygrywa późniejsze), znaczniki czasu: większy. `sent` = wpisy właśnie wysłane i
+     potwierdzone przez tę kartę – schodzą z zapisanej kolejki, o ile nikt nie dał im nowszego znacznika. Pamięć karty (Z) zostaje bez zmian:
+     jej S nie zna zmian drugiej karty, więc cudzych wpisów nie wolno jej wysyłać – scalenie dotyczy tylko kopii w localStorage. */
+  function mergeQ(a, b){
+    const q = emptyQueue();
+    for (const f of ['p', 'pd', 'c', 'cd', 's']) for (const src of [a && a[f], b && b[f]]) for (const [id, u] of Object.entries(src || {})) if (!(id in q[f]) || u > q[f][id]) q[f][id] = u;
+    for (const [k, d] of [['p', 'pd'], ['c', 'cd']]) for (const id of Object.keys(q[k])) if (id in q[d]){ if (q[d][id] > q[k][id]) delete q[k][id]; else delete q[d][id]; }
+    for (const f of ['po', 'co', 'f', 'm', 't', 'mx']) q[f] = Math.max((a && a[f]) || 0, (b && b[f]) || 0);
+    return q;
+  }
+  function saveZ(ls, key, z, sent){
+    const st = fixZ(ls.get(key, null)), q = mergeQ(st.q, z.q), kn = emptyKnown();
+    if (sent){
+      for (const K of KINDS){
+        for (const [id, u] of Object.entries(sent[K.k] || {})) if (q[K.k][id] === u) delete q[K.k][id];
+        for (const [id, ts] of Object.entries(sent[K.d] || {})) if (q[K.d][id] === ts) delete q[K.d][id];
+        if (sent[K.o] && q[K.o] === sent[K.o]) q[K.o] = 0;
+      }
+      for (const [k, u] of Object.entries(sent.s || {})) if (q.s[k] === u) delete q.s[k];
+      if (sent.f && q.f === sent.f) q.f = 0;
+      if (sent.m && q.m === sent.m) q.m = 0;
+    }
+    for (const k of ['p', 'c']){ kn[k] = {...st.kn[k]}; for (const [id, u] of Object.entries(z.kn[k] || {})) if (!(id in kn[k]) || u > kn[k][id]) kn[k][id] = u; }
+    kn.v3 = !!(st.kn.v3 || z.kn.v3); kn.pt = {...st.kn.pt, ...z.kn.pt}; kn.ct = {...st.kn.ct, ...z.kn.ct}; kn.h = z.kn.h || kn.h;
+    const out = {q, kn}; ls.set(key, out); return out;
+  }
   const BACKOFF = [2000, 5000, 15000, 60000];
   const backoff = n => BACKOFF[Math.min(Math.max(0, n | 0), BACKOFF.length - 1)];
 
@@ -320,7 +348,7 @@ const ZP = (() => {
   }
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
-  return {DEL, KINDS, TOMB_TTL, MIRROR_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, split, join, snap, diff, layout,
+  return {DEL, KINDS, TOMB_TTL, MIRROR_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, split, join, snap, diff, layout,
     same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;

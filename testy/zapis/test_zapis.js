@@ -496,5 +496,33 @@ test('19c. historia wersji w kn: kilka ostatnich skrótów, przeżywa zapis do l
   assert.deepEqual(ZP.fixZ({kn:{h:{p:{x:'zły', y:[1, 'ok']}}}}).kn.h.p, {y:['ok']}, 'uszkodzony zapis historii jest czyszczony');
 });
 
+/* sztuczny localStorage współdzielony przez dwie „karty” (ten sam interfejs co LS w aplikacji) */
+const wspolnyLS = () => { const mem = {}; return {mem, get:(k, d) => k in mem ? JSON.parse(mem[k]) : d, set:(k, v) => { mem[k] = JSON.stringify(v); }}; };
+test('20. dwie karty tej samej przeglądarki: zapis kolejki łączy wpisy z tym, co już jest w localStorage (suma, większy znacznik)', () => {
+  const ls = wspolnyLS(), key = 'dz.f.X.zq', stored = () => ZP.fixZ(ls.get(key, null));
+  const z1 = ZP.fixZ(ls.get(key, null)), z2 = ZP.fixZ(ls.get(key, null));          // obie karty otwarte na tym samym koncie, obie z pustą kolejką
+  z1.q.p.P1 = 100; z1.q.s.restSet = 100; z1.q.po = 100; z1.q.t = 100; ZP.saveZ(ls, key, z1);
+  z2.q.p.P2 = 200; z2.q.p.P1 = 150; z2.q.cd.C1 = 210; z2.q.t = 210; ZP.saveZ(ls, key, z2);   // karta 2 nie widziała wpisów karty 1 – nie może ich skasować
+  let st = stored();
+  assert.deepEqual(st.q.p, {P1:150, P2:200}, 'suma wpisów, przy tym samym id większy znacznik'); assert.equal(st.q.s.restSet, 100); assert.equal(st.q.po, 100);
+  assert.deepEqual(st.q.cd, {C1:210}); assert.equal(st.q.t, 210);
+  z1.q.p.P2 = 50; ZP.saveZ(ls, key, z1); assert.equal(stored().q.p.P2, 200, 'starszy znacznik z drugiej karty nie obniża zapisanego');
+  // usunięcie i edycja tej samej pozycji na dwóch kartach: wygrywa późniejsze
+  z1.q.p.X = 300; ZP.saveZ(ls, key, z1); z2.q.pd.X = 400; ZP.saveZ(ls, key, z2); st = stored(); assert.equal(st.q.pd.X, 400); assert.equal(st.q.p.X, undefined);
+  z1.q.p.Y = 500; ZP.saveZ(ls, key, z1); z2.q.pd.Y = 450; ZP.saveZ(ls, key, z2); st = stored(); assert.equal(st.q.p.Y, 500); assert.equal(st.q.pd.Y, undefined);
+});
+test('20b. wysłane wpisy schodzą z zapisanej kolejki, nowszy wpis drugiej karty zostaje; znane czasy i nagrobki też się łączą', () => {
+  const ls = wspolnyLS(), key = 'dz.f.X.zq', stored = () => ZP.fixZ(ls.get(key, null));
+  const z1 = ZP.fixZ(null), z2 = ZP.fixZ(null);
+  z1.q.p = {P1:100, P2:200}; z1.q.s = {sound:100}; z1.q.po = 100; ZP.saveZ(ls, key, z1);
+  z2.q.p = {P1:150}; ZP.saveZ(ls, key, z2);
+  const sent = {p:{P1:100, P2:200}, pd:{}, c:{}, cd:{}, s:{sound:100}, po:100, co:0, f:0, m:0};
+  z1.q.p = {}; z1.q.s = {}; z1.q.po = 0; z1.kn.p = {P1:100, P2:200}; z1.kn.v3 = true; z1.kn.pt = {A:5}; ZP.saveZ(ls, key, z1, sent);      // karta 1: wysłane i potwierdzone
+  const st = stored();
+  assert.deepEqual(st.q.p, {P1:150}, 'P2 potwierdzone zeszło z kolejki, P1 z nowszym znacznikiem drugiej karty zostaje'); assert.deepEqual(st.q.s, {}); assert.equal(st.q.po, 0);
+  assert.deepEqual(st.kn.p, {P1:100, P2:200}); assert.equal(st.kn.v3, true); assert.deepEqual(st.kn.pt, {A:5});
+  z2.kn.p = {P1:90, P3:7}; ZP.saveZ(ls, key, z2); assert.deepEqual(stored().kn.p, {P1:100, P2:200, P3:7}, 'znane czasy: większy z obu');
+});
+
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
 process.exit(bledy ? 1 : 0);
