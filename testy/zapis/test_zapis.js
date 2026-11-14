@@ -45,7 +45,7 @@ class Urz {
     this.nazwa = nazwa; this.off = 0; this.sv = serwer; this.S = S || blank(); this.z = ZP.newZ(); this.last = ZP.snap(this.S);
     this.online = true; this.outbox = []; this.lay = 'empty'; this.tombs = {pt:{}, ct:{}}; this.fail = false; this.notes = []; this.repaired = 0;
   }
-  edit(fn){ fn(this.S); this.last = ZP.diff(this.last, this.S, this.z.q, this.now); }
+  edit(fn){ fn(this.S); this.last = ZP.diff(this.last, this.S, this.z.q, this.now, this.z.kn); }
   odbierz(){
     const doc = this.sv.get(), lay = ZP.layout(doc);
     this.lay = lay; if (lay === 'empty') return [];
@@ -466,6 +466,34 @@ test('18. lustro: transakcja zapisuje je tylko w dokumencie z full, liczy z pm/p
   const d2 = sv.get(); delete d2.plans; delete d2.custom; assert.equal(ZP.mirrorPatch(d2).action, 'set', 'brakujące lustro jest odtwarzane');
   tel.edit(S => { byId(S, 'P1').name = 'nowa nazwa'; }); tel.wyslij();
   assert.deepEqual(sv.doc.plans.map(x => x.name), ['nowa nazwa', 'Plan B'], 'po zapisie lustro odświeża osobna transakcja'); assert.equal(tel.z.q.m, 0);
+});
+
+test('19. naprawa po starej karcie: nieaktualna kopia innego planu nie cofa nowszej zmiany z laptopa', () => {
+  const {sv, tel, lap} = konto();
+  const lustro = cl(sv.doc.plans);                                           // stara karta otwarta z P1, P2 w wersjach sprzed zmiany z laptopa
+  lap.edit(S => { byId(S, 'P2').name = 'P2 z laptopa'; }); lap.wyslij(); tick();
+  tel.odbierz(); assert.equal(byId(tel.S, 'P2').name, 'P2 z laptopa');
+  lustro.find(p => p.id === 'P1').name = 'P1 ze starej karty';             // stara karta zmienia P1 i zapisuje CAŁY dokument ze starą kopią P2
+  sv.doc = {v:2, plans:lustro, custom:cl(sv.doc.custom), settings:{...sv.doc.settings}};
+  tel.odbierz(); assert.ok(tel.notes.some(x => x.t === 'old-card-stale' && x.id === 'P2'), 'stara kopia rozpoznana po skrócie wcześniejszej wersji');
+  uspokoj(tel, lap);
+  for (const d of [tel, lap]){ assert.equal(byId(d.S, 'P1').name, 'P1 ze starej karty', 'prawdziwa zmiana starej karty zostaje'); assert.equal(byId(d.S, 'P2').name, 'P2 z laptopa', 'nowsza zmiana z laptopa nie jest cofnięta'); }
+  assert.equal(sv.doc.pm.P2.name, 'P2 z laptopa'); assert.equal(ZP.layout(sv.doc), 'v3');
+});
+test('19b. to samo po zwykłym zapisie z układu v3 tuż po starej karcie: zmiana telefonu i plan starej karty zostają oba', () => {
+  const {sv, tel, lap} = konto();
+  const lustro = cl(sv.doc.plans); lustro.push(plan('P3', 'plan ze starej karty'));
+  sv.doc = {v:2, plans:lustro, custom:cl(sv.doc.custom), settings:{...sv.doc.settings}};
+  tel.edit(S => { byId(S, 'P1').name = 'telefon tuż po starej karcie'; }); tel.wyslij();
+  uspokoj(tel, lap);
+  for (const d of [tel, lap]){ assert.equal(byId(d.S, 'P1').name, 'telefon tuż po starej karcie', 'kopia P1 ze starej karty (sprzed zmiany) nie cofa zmiany telefonu'); assert.ok(byId(d.S, 'P3')); }
+});
+test('19c. historia wersji w kn: kilka ostatnich skrótów, przeżywa zapis do localStorage, nie rośnie bez końca', () => {
+  const {tel} = konto();
+  for (let i = 0; i < 12; i++){ tel.edit(S => { byId(S, 'P1').name = 'wersja ' + i; }); tick(); }
+  const h = tel.z.kn.h.p.P1; assert.ok(Array.isArray(h) && h.length >= 3 && h.length <= 8, 'ostatnie wersje, nie wszystkie: ' + h.length);
+  assert.deepEqual(ZP.fixZ(JSON.parse(JSON.stringify(tel.z))).kn.h.p.P1, h);
+  assert.deepEqual(ZP.fixZ({kn:{h:{p:{x:'zły', y:[1, 'ok']}}}}).kn.h.p, {y:['ok']}, 'uszkodzony zapis historii jest czyszczony');
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);

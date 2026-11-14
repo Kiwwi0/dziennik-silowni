@@ -9,7 +9,8 @@
 
    Stan silnika zapisu Z (osobny dla konta, w localStorage):
      q  – kolejka niewysłanych zmian: p/c {id:u}, pd/cd {id:czas usunięcia}, s {klucz:czas}, po/co czas zmiany kolejności, t ostatni znacznik, mx największy czas widziany w bazie (zegary urządzeń się rozjeżdżają)
-     kn – znane czasy zatwierdzonych pozycji: p/c {id:u}, v3 true gdy to urządzenie widziało układ v3, pt/ct nagrobki z ostatniego odczytu układu v3 (młodsze niż 60 dni)
+     kn – znane czasy zatwierdzonych pozycji: p/c {id:u}, v3 true gdy to urządzenie widziało układ v3, pt/ct nagrobki z ostatniego odczytu układu v3 (młodsze niż 60 dni),
+         h {p:{id:[skrót,…]}, c:{…}} skróty kilku ostatnich wersji każdej pozycji znanych temu urządzeniu (rozpoznawanie nieaktualnej kopii ze starej karty)
    Wszystkie funkcje poniżej nie dotykają stanu wejściowego (kopiują), poza `afterSend`, `afterFail`. */
 const ZP = (() => {
   const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -26,10 +27,18 @@ const ZP = (() => {
   ];
 
   const emptyQueue = () => ({p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0, t:0, mx:0});
-  const emptyKnown = () => ({p:{}, c:{}, v3:false, pt:{}, ct:{}});
+  const emptyKnown = () => ({p:{}, c:{}, v3:false, pt:{}, ct:{}, h:{p:{}, c:{}}});
   const newZ = () => ({q:emptyQueue(), kn:emptyKnown()});
   /* Znacznik zmiany: nigdy mniejszy od niczego, co to urządzenie widziało w bazie (q.mx) – urządzenie z zegarem „do tyłu” nie przegra z cudzą zmianą, którą już widziało. */
   const stampQ = (q, now) => (q.t = Math.max(now == null ? Date.now() : now, (q.t || 0) + 1, (q.mx || 0) + 1));
+  const HIST_N = 6, HIST_IDS = 300;         // ile ostatnich wersji pozycji pamiętamy (skróty) i dla ilu pozycji najwyżej
+  /* Skrót wersji pozycji (32-bit FNV-1a z tekstu JSON + długość): wystarcza do rozpoznania „to już kiedyś widziałem”, nie do zastępowania danych. */
+  const sigT = t => { let h = 2166136261; for (let i = 0; i < t.length; i++){ h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + '.' + t.length.toString(36); };
+  const histPush = (kn, k, id, text) => {
+    const H = ((kn.h ||= {p:{}, c:{}})[k] ||= {}), a = (H[id] ||= []), sg = sigT(text);
+    if (a[a.length - 1] !== sg){ const i = a.indexOf(sg); if (i >= 0) a.splice(i, 1); a.push(sg); if (a.length > HIST_N) a.splice(0, a.length - HIST_N); }
+  };
+  const histHas = (kn, k, id, text) => !!(kn.h && kn.h[k] && kn.h[k][id] && kn.h[k][id].includes(sigT(text)));
   const MX_AHEAD = 30 * 864e5;              // czasy z bazy dalej niż 30 dni w przyszłość (zepsuty zegar) nie podnoszą q.mx
   const emptyQ = q => !Object.keys(q.p).length && !Object.keys(q.pd).length && !Object.keys(q.c).length && !Object.keys(q.cd).length
     && !Object.keys(q.s).length && !q.po && !q.co && !q.f && !q.m;
@@ -39,7 +48,8 @@ const ZP = (() => {
     if (!isObj(z)) return o;
     const rec = v => { const r = {}; if (isObj(v)) for (const k of Object.keys(v)) if (Number.isFinite(+v[k])) r[k] = +v[k]; return r; };
     if (isObj(z.q)){ for (const f of ['p', 'pd', 'c', 'cd', 's']) o.q[f] = rec(z.q[f]); o.q.po = +z.q.po || 0; o.q.co = +z.q.co || 0; o.q.f = +z.q.f || 0; o.q.m = +z.q.m || 0; o.q.t = +z.q.t || 0; o.q.mx = +z.q.mx || 0; }
-    if (isObj(z.kn)){ o.kn.p = rec(z.kn.p); o.kn.c = rec(z.kn.c); o.kn.v3 = !!z.kn.v3; o.kn.pt = rec(z.kn.pt); o.kn.ct = rec(z.kn.ct); }
+    if (isObj(z.kn)){ o.kn.p = rec(z.kn.p); o.kn.c = rec(z.kn.c); o.kn.v3 = !!z.kn.v3; o.kn.pt = rec(z.kn.pt); o.kn.ct = rec(z.kn.ct);
+      for (const k of ['p', 'c']) if (isObj(z.kn.h) && isObj(z.kn.h[k])) for (const id of Object.keys(z.kn.h[k])){ const a = z.kn.h[k][id]; if (Array.isArray(a)){ const r = a.filter(x => typeof x === 'string').slice(-HIST_N); if (r.length) o.kn.h[k][id] = r; } } }
     return o;
   }
 
@@ -61,11 +71,11 @@ const ZP = (() => {
     return o;
   }
   /* Co lokalnie zmieniono od poprzedniego odcisku → wpisy w kolejce. Zwraca nowy odcisk. */
-  function diff(prev, S, q, now){
+  function diff(prev, S, q, now, kn){
     const cur = snap(S);
     for (const K of KINDS){
-      for (const id of Object.keys(cur[K.k])) if (prev[K.k][id] !== cur[K.k][id]){ q[K.k][id] = stampQ(q, now); delete q[K.d][id]; }
-      for (const id of Object.keys(prev[K.k])) if (!(id in cur[K.k])){ q[K.d][id] = stampQ(q, now); delete q[K.k][id]; }
+      for (const id of Object.keys(cur[K.k])) if (prev[K.k][id] !== cur[K.k][id]){ q[K.k][id] = stampQ(q, now); delete q[K.d][id]; if (kn && prev[K.k][id] !== undefined) histPush(kn, K.k, id, prev[K.k][id]); }
+      for (const id of Object.keys(prev[K.k])) if (!(id in cur[K.k])){ q[K.d][id] = stampQ(q, now); delete q[K.k][id]; if (kn) histPush(kn, K.k, id, prev[K.k][id]); }
       if (prev[K.o] !== cur[K.o]) q[K.o] = stampQ(q, now);
     }
     for (const k of Object.keys(cur.s)) if (prev.s[k] !== cur.s[k]) q.s[k] = stampQ(q, now);
@@ -152,7 +162,8 @@ const ZP = (() => {
         if (R.mode !== 'v3'){
           if (r){
             if (l && J(l) === J(r.item)) out[id] = l;
-            else if (R.mode === 'repair' && !l && tomb !== undefined) notes.push({t:'old-card-ignored', kind:K.k, id});   // usunięte (znamy nagrobek z układu v3): stara karta go nie wskrzesza
+            else if (R.mode === 'repair' && l && histHas(kn, K.k, id, J(r.item))){ out[id] = l; notes.push({t:'old-card-stale', kind:K.k, id}); }   // stara karta ma nieaktualną kopię (to urządzenie zna nowszą): nie cofamy
+            else if (R.mode === 'repair' && !l && (tomb !== undefined || histHas(kn, K.k, id, J(r.item)))) notes.push({t:'old-card-ignored', kind:K.k, id});   // usunięte (nagrobek albo znana wersja): stara karta go nie wskrzesza
             else if (R.mode === 'repair'){ out[id] = r.item; E[id] = stampQ(q, now); KN[id] = E[id]; notes.push({t:l ? 'old-card-changed' : 'old-card-new', kind:K.k, id}); }
             else out[id] = r.item;
           } else if (l && R.mode === 'repair') out[id] = l;        // stara karta nie zostawia nagrobków: nie usuwamy na jej podstawie
@@ -167,6 +178,9 @@ const ZP = (() => {
           if (hid) D[id] = tomb;                                   // starszy wpis pod nagrobkiem (spóźniony zapis) – sprzątamy go w bazie z oryginalnym czasem usunięcia
         }
       }
+      // wersje lokalne, które właśnie zastąpiła zdalna albo które zniknęły: zapamiętujemy ich skróty (rozpoznanie nieaktualnej kopii ze starej karty)
+      for (const id of Object.keys(Li)) if (!(id in out) || (out[id] !== Li[id] && J(out[id]) !== J(Li[id]))) histPush(kn, K.k, id, J(Li[id]));
+      const HH = kn.h && kn.h[K.k]; if (HH && Object.keys(HH).length > HIST_IDS) for (const id of Object.keys(HH)) if (!(id in out)) delete HH[id];
       // kolejność: czekająca lokalna zmiana wygrywa tylko, gdy nie jest starsza od zmiany z bazy
       const have = Object.keys(out), uOf = id => E[id] ?? (Ri[id] && Ri[id].u) ?? KN[id] ?? 0;
       let base;

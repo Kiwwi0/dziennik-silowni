@@ -838,7 +838,7 @@ function persist(){
   const k = lsKey('state'); if (k) LS.set(k, S);
   if (store.mode === 'fire'){
     if (!FOLDER) return;
-    zLast = ZP.diff(zLast, S, Z.q, Date.now()); LS.set(zKey(FOLDER.id), Z);   // co się zmieniło od ostatniego zapisu → kolejka (zostaje w pamięci przeglądarki)
+    zLast = ZP.diff(zLast, S, Z.q, Date.now(), Z.kn); LS.set(zKey(FOLDER.id), Z);   // co się zmieniło od ostatniego zapisu → kolejka (zostaje w pamięci przeglądarki)
     if (FB.db){ clearTimeout(store.t); store.t = setTimeout(flush, 600); }
     return;
   }
