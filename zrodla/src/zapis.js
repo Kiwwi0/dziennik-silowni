@@ -11,7 +11,7 @@
      q  – kolejka niewysłanych zmian: p/c {id:u}, pd/cd {id:czas usunięcia}, s {klucz:czas}, po/co czas zmiany kolejności, t ostatni znacznik, mx największy czas widziany w bazie (zegary urządzeń się rozjeżdżają)
      kn – znane czasy zatwierdzonych pozycji: p/c {id:u}, v3 true gdy to urządzenie widziało układ v3, pt/ct nagrobki z ostatniego odczytu układu v3 (młodsze niż 60 dni),
          h {p:{id:[skrót,…]}, c:{…}} skróty kilku ostatnich wersji każdej pozycji znanych temu urządzeniu (rozpoznawanie nieaktualnej kopii ze starej karty)
-   Wszystkie funkcje poniżej nie dotykają stanu wejściowego (kopiują), poza `afterSend`, `afterFail`. */
+   Wszystkie funkcje poniżej nie dotykają stanu wejściowego (kopiują), poza `afterSend`, `afterTx` (i zapisów do localStorage: `saveZ`, `store`, `settle`, `settleTx`). */
 const ZP = (() => {
   const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
   // Firestore zwraca klucze map posortowane, a lokalne obiekty mają kolejność wstawiania: porównujemy tekst z posortowanymi kluczami
@@ -283,7 +283,7 @@ const ZP = (() => {
   /* Treść transakcji migracji/naprawy: świeży dokument z bazy (albo null) + stan lokalny → dokument do zapisania. Nie zmienia Z ani S. */
   function migrate(S, z, doc, now, normOld){
     const lay = layout(doc);
-    if (lay === 'v3') return {layout:'v3', noop:true};              // ktoś już naprawił dokument: dalej zwykły zapis scalający
+    if (lay === 'v3') throw new Error('ZP.migrate: dokument jest już w układzie v3 – zapis liczy ZP.txPlan');   // A6f: bez ścieżki noop
     // dokument nieznanego kształtu (holdDoc): nie nadpisujemy go; zmiany czekają w kolejce
     if (holdDoc(doc)) return {layout:'old', hold:true};
     let R;
@@ -292,14 +292,81 @@ const ZP = (() => {
     const mg = merge(S, z.q, z.kn, R, now);
     if (lay === 'empty') mg.S = join(split(S));                    // brak dokumentu: zapisujemy stan lokalny w całości
     const fd = fullDoc(mg.S, mg.q, mg.kn, now);
-    return {...fd, notes:mg.notes, repaired:lay === 'old' && z.kn.v3, layout:lay};
+    return {...fd, q:mg.q, notes:mg.notes, repaired:lay === 'old' && z.kn.v3, layout:lay};
   }
+  /* ---------- A6f: zapis kolejki jedną transakcją (plan: zrodla/plany/A6f-zapis-transakcja.md) ----------
+     `doc` = dokument odczytany W TEJ transakcji (tx.get). Funkcja jest czysta (SDK może ją wywołać kilka razy przy konflikcie): nie zmienia S ani z.
+     Wynik: kind 'v3' → tx.set(ref, data, {mergeFields:fields}); 'full' → tx.set(ref, doc) (migracja / naprawa po starej karcie); 'hold' → nic (nieznany kształt);
+     'none' → nic do zapisania. Zawsze (poza 'hold'): sent (wysłane albo już identyczne w bazie), lost (wpisy, które przegrały z bazą – schodzą z kolejki),
+     mx (największy czas widziany w dokumencie). Po zatwierdzeniu: ZP.afterTx / ZP.settleTx. */
+  function txPlan(doc, S, z, now, normOld, normPlan){
+    const t = now == null ? Date.now() : now, lay = layout(doc);
+    if (lay !== 'v3'){
+      if (holdDoc(doc)) return {kind:'hold', notes:[{t:'hold'}]};
+      const r = migrate(S, z, doc, t, normOld);
+      return {kind:'full', doc:r.doc, sent:r.sent, written:r.written, lost:dropped(z.q, r.q), mx:r.q.mx || 0, notes:r.notes, mirrorSkipped:r.mirrorSkipped, repaired:r.repaired, layout:r.layout};
+    }
+    // 1–2: ten sam algorytm scalania co w nasłuchu, na dokumencie z tej transakcji – wpis, który przegrywa z bazą, wypada z kolejki (remote-later, deleted-later, restored)
+    const kn = cl(z.kn); kn.v3 = true; rememberTombs(kn, doc, t);
+    const R = remoteV3(doc, normPlan), mg = merge(S, z.q, kn, R, t), mq = mg.q, L = split(mg.S);
+    mq.f = 0;                                                        // dokument jest w układzie v3: naprawa po starej karcie niepotrzebna
+    for (const k of Object.keys(mq.s)) if (!(k in L.s)) delete mq.s[k];   // ustawienie, którego już nie ma w stanie, nie ma czego wysłać
+    const lost = dropped(z.q, mq), base = {notes:mg.notes, lost, mx:mq.mx || 0};
+    // 3: zapis z tego dokumentu (czyszczenie nagrobków po 60 dniach liczone z niego, nie z ostatniej migawki)
+    const bw = buildWrite(mg.S, mq, t, {tombs:tombInfo(doc)});
+    if (!bw) return {kind:'none', sent:null, ...base};
+    // 4: dodatkowe warunki „tylko nowsze niż w bazie”, sprawdzane na `doc` tuż przed zapisem
+    const {data, sent} = bw, drop = new Set();
+    const off = (K, f, id) => { drop.add(f + '.' + id); const m = data[f]; if (m){ delete m[id]; if (!Object.keys(m).length) delete data[f]; } };
+    for (const K of KINDS){
+      const dm = isObj(doc[K.m]) ? doc[K.m] : {}, dt = isObj(doc[K.t]) ? doc[K.t] : {};
+      for (const [id, u] of Object.entries(sent[K.k])){            // pozycja pm.<id> z czasem u
+        const r = R[K.k][id], jl = J(L[K.k][id]);
+        let why = null;
+        if (dt[id] !== undefined && num(dt[id]) >= u) why = 'lost';                      // nagrobek nie starszy niż ta zmiana
+        else if (r && later(r.u, J(r.item), u, jl)) why = 'lost';                         // w bazie nowsza wersja
+        else if (r && r.u === u && J(r.item) === jl) why = 'same';                        // już jest (np. ponowienie po zgubionej odpowiedzi)
+        if (!why) continue;
+        off(K, K.m, id);
+        if (why === 'lost'){ delete sent[K.k][id]; lost[K.k][id] = u; }
+      }
+      for (const [id, ts] of Object.entries(sent[K.d])){           // usunięcie: pm.<id> = deleteField(), pt.<id> = ts
+        const pu = isObj(dm[id]) ? num(dm[id].u) : undefined, newerTomb = dt[id] !== undefined && num(dt[id]) >= ts;
+        if (pu !== undefined && pu > ts){ off(K, K.m, id); off(K, K.t, id); delete sent[K.d][id]; lost[K.d][id] = ts; continue; }   // w bazie wersja nowsza niż usunięcie
+        if (newerTomb){ off(K, K.t, id); if (pu === undefined) off(K, K.m, id); }   // starszy nagrobek nie nadpisuje nowszego; bez wpisu w bazie nie ma czego kasować
+      }
+    }
+    const fields = bw.fields.filter(f => !drop.has(f));
+    sent.mir = KINDS.some(K => Object.keys(sent[K.k]).length || Object.keys(sent[K.d]).length || sent[K.o]);
+    const res = {...base, sent};
+    if (!fields.some(f => f !== 'v')) return {kind:'none', ...res};
+    return {kind:'v3', data, fields, ...res, warn:docBytes(doc) + docBytes(data) > DOC_WARN};
+  }
+  /* Po zatwierdzonej transakcji (także 'none'): wysłane jak afterSend; przegrane schodzą z kolejki, o ile od wysyłki ich nie zmieniono; q.mx rośnie.
+     S nie jest podmieniane – widok wyrównuje następna migawka nasłuchu. Zwraca wpisy, które zeszły (kształt `sent`, do zdjęcia z zapisanej kolejki). */
+  function afterTx(z, res, now){
+    const gone = {p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0}, q = z.q;
+    if (res.sent){
+      afterSend(z, res.sent, res.written, now);
+      for (const f of ['p', 'pd', 'c', 'cd', 's']) Object.assign(gone[f], res.sent[f] || {});
+      for (const f of ['po', 'co', 'f', 'm']) gone[f] = res.sent[f] || 0;
+    }
+    const L = res.lost || {};
+    for (const f of ['p', 'pd', 'c', 'cd', 's']) for (const [id, u] of Object.entries(L[f] || {})) if (q[f][id] === u){ delete q[f][id]; gone[f][id] = u; }
+    for (const f of ['po', 'co', 'f', 'm']) if (L[f] && q[f] === L[f]){ q[f] = 0; gone[f] = L[f]; }
+    if (res.mx > (q.mx || 0)) q.mx = res.mx;
+    return gone;
+  }
+  /* Koniec transakcji zapisu: afterTx + zapis kolejki i stanu do localStorage (tylko dla bieżącego Z, jak settle). */
+  function settleTx(ls, fid, current, z, res, now, S){ return store(ls, fid, current, z, S, afterTx(z, res, now), now); }
+  /* W kolejce zostało tylko odświeżenie lustra starego układu (osobna transakcja flushMirror). */
+  const onlyMirror = q => !!q.m && emptyQ({...q, m:0});
   /* Po udanym zapisie: usuń z kolejki wpisy, które się od wysyłki nie zmieniły; zapamiętaj czasy zatwierdzonych pozycji. */
   function afterSend(z, sent, written, now){
     const q = z.q;
     for (const K of KINDS){
       for (const [id, u] of Object.entries(sent[K.k] || {})){ if (q[K.k][id] === u) delete q[K.k][id]; z.kn[K.k][id] = u; }
-      for (const [id, ts] of Object.entries(sent[K.d] || {})){ if (q[K.d][id] === ts) delete q[K.d][id]; delete z.kn[K.k][id]; if ((now == null ? Date.now() : now) - ts <= TOMB_TTL) (z.kn[K.t] ||= {})[id] = ts; }   // nagrobek jest już w bazie: zna go też zapisany stan (mergeState)
+      for (const [id, ts] of Object.entries(sent[K.d] || {})){ if (q[K.d][id] === ts) delete q[K.d][id]; delete z.kn[K.k][id]; if ((now == null ? Date.now() : now) - ts <= TOMB_TTL && !((z.kn[K.t] ||= {})[id] >= ts)) z.kn[K.t][id] = ts; }   // nagrobek jest już w bazie: zna go też zapisany stan (mergeState)
       if (sent[K.o] && q[K.o] === sent[K.o]) q[K.o] = 0;
       for (const [id, u] of Object.entries((written && written[K.k]) || {})) z.kn[K.k][id] = u;
     }
@@ -427,6 +494,6 @@ const ZP = (() => {
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
   return {DEL, KINDS, TOMB_TTL, DOC_MAX, DOC_WARN, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, saveAll, store, dropped, mergeState, newBusy, settle, zKey, sessKey, stateKey, accountKeys, split, join, snap, diff, layout,
-    holdDoc, remoteHold, docBytes, same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
+    holdDoc, remoteHold, docBytes, same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, txPlan, afterTx, settleTx, onlyMirror, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;

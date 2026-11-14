@@ -38,12 +38,13 @@ class Serwer {
 
 /* ---------- sztuczne urządzenie: robi to samo, co będzie robić aplikacja (S jako tablice, kolejka, odczyt, zapis) ---------- */
 const blank = () => ({plans:[], custom:[], settings:{restSet:90, sound:true}});
+const normOld = doc => ({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}});   // jak normalize w aplikacji (dla starego układu)
 const plan = (id, name, extra) => ({id, name, items:[{id:'i1', exId:'ex1', mode:'reps', sets:[{reps:10, kg:20}]}], ...extra});
 class Urz {
   get now(){ return clock.t + this.off; }                                    // zegar urządzenia (off = przesunięcie względem wspólnego zegara testu)
   constructor(nazwa, serwer, S){
     this.nazwa = nazwa; this.off = 0; this.sv = serwer; this.S = S || blank(); this.z = ZP.newZ(); this.last = ZP.snap(this.S);
-    this.online = true; this.outbox = []; this.lay = 'empty'; this.tombs = {pt:{}, ct:{}}; this.fail = false; this.notes = []; this.repaired = 0;
+    this.online = true; this.lay = 'empty'; this.tombs = {pt:{}, ct:{}}; this.fail = false; this.notes = []; this.repaired = 0;
   }
   edit(fn){ fn(this.S); this.last = ZP.diff(this.last, this.S, this.z.q, this.now, this.z.kn); }
   odbierz(){
@@ -59,27 +60,29 @@ class Urz {
     this.notes.push(...mg.notes);
     return mg.notes;
   }
+  /* Wysyłka kolejki jak flushFire (A6f): jedna transakcja – odczyt dokumentu, ZP.txPlan, zapis (mergeFields albo cały dokument), ZP.afterTx. Bez sieci nic. */
   wyslij(){
-    if (ZP.emptyQ(this.z.q) || this.fail) return false;
-    if (this.lay === 'v3'){
-      const bw = ZP.buildWrite(this.S, this.z.q, this.now, {tombs:this.tombs});
-      if (!bw) return this.online && this.lustro();
-      if (!this.online){ this.outbox.push(bw); return true; }          // SDK trzyma zapis, aż wróci sieć
-      this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent, undefined, this.now); this.lustro(); return true;
-    }
-    if (!this.online) return false;                                       // migracja = transakcja, wymaga sieci
-    const tx = ZP.migrate(this.S, this.z, this.sv.get(), this.now, doc => ({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}));
-    if (tx.hold) return false;                                            // dokument nietypowy: migracja wstrzymana, zmiany czekają w kolejce
-    if (tx.noop){ this.z.q.f = 0; return false; }                                  // ktoś już naprawił: jak w aplikacji (A6f) – zwykły zapis dopiero po odczycie z bazy (odbierz ustawia lay)
-    this.sv.setFull(tx.doc); ZP.afterSend(this.z, tx.sent, tx.written); this.lay = 'v3'; if (tx.repaired) this.repaired++;
-    return true;
+    if (ZP.emptyQ(this.z.q) || this.fail || !this.online) return false;
+    if (ZP.onlyMirror(this.z.q)) return this.lustro();
+    const r = ZP.txPlan(this.sv.get(), this.S, this.z, this.now, normOld);
+    this.notes.push(...(r.notes || []));
+    if (r.kind === 'hold') return false;                                  // dokument nietypowy: migracja wstrzymana, zmiany czekają w kolejce
+    if (r.kind === 'v3') this.sv.merge(r.data, r.fields);
+    else if (r.kind === 'full'){ this.sv.setFull(r.doc); this.lay = 'v3'; if (r.repaired) this.repaired++; }
+    ZP.afterTx(this.z, r, this.now);
+    const w = this.lustro();
+    return r.kind === 'v3' || r.kind === 'full' || w;
   }
+  /* Spóźniony zapis BEZ warunku (stara wersja kodu: setDoc z mergeFields czekający w IndexedDB SDK) – tylko do testów samo-naprawy przy odczycie.
+     naSlepo() liczy zapis teraz (z ostatniej migawki), zapisNaSlepo(bw) dostarcza go do bazy później. */
+  naSlepo(){ return ZP.buildWrite(this.S, this.z.q, this.now, {tombs:this.tombs}); }
+  zapisNaSlepo(bw){ this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent, undefined, this.now); this.lustro(); }
   /* lustro starego układu: osobna transakcja, która czyta dokument i zapisuje lustro tylko, gdy dokument ma `full` */
   lustro(){
     if (!this.z.q.m) return false;
     const m = this.z.q.m; this.sv.mirrorTx(ZP.mirrorPatch(this.sv.get())); ZP.afterMirror(this.z, m); return true;
   }
-  wracaSiec(){ this.online = true; for (const bw of this.outbox.splice(0)){ this.sv.merge(bw.data, bw.fields); ZP.afterSend(this.z, bw.sent, undefined, this.now); } this.lustro(); }
+  wracaSiec(){ this.online = true; this.wyslij(); }                       // bez sieci kolejka czekała (w aplikacji: w localStorage); po powrocie jedna transakcja
 }
 const ids = S => S.plans.map(p => p.id);
 const byId = (S, id) => S.plans.find(p => p.id === id);
@@ -127,15 +130,22 @@ test('1. dwa urządzenia zmieniają RÓŻNE plany (telefon bez sieci) – obie z
 });
 
 test('2a. ten sam plan: wygrywa późniejsza zmiana (późniejsza dociera do bazy pierwsza)', () => {
-  const {sv, tel, lap} = konto();
-  tel.online = false; tick();
-  tel.edit(S => { byId(S, 'P1').name = 'wcześniejsza (telefon)'; }); tel.wyslij(); tick(50);
-  lap.edit(S => { byId(S, 'P1').name = 'późniejsza (laptop)'; }); lap.wyslij(); tick();
-  tel.wracaSiec();                                                           // wcześniejszy zapis dochodzi do bazy OSTATNI i ją nadpisuje
-  assert.equal(sv.doc.pm.P1.name, 'wcześniejsza (telefon)');
-  uspokoj(tel, lap);                                                         // samo-naprawa: laptop zna nowszą wersję i ją odtwarza
-  for (const d of [tel, lap]) assert.equal(byId(d.S, 'P1').name, 'późniejsza (laptop)');
-  assert.equal(sv.doc.pm.P1.name, 'późniejsza (laptop)');
+  { const {sv, tel, lap} = konto();
+    tel.online = false; tick();
+    tel.edit(S => { byId(S, 'P1').name = 'wcześniejsza (telefon)'; }); tel.wyslij(); tick(50);
+    lap.edit(S => { byId(S, 'P1').name = 'późniejsza (laptop)'; }); lap.wyslij(); tick();
+    tel.wracaSiec();                                                         // A6f: transakcja telefonu widzi nowszą wersję w bazie – wcześniejsza zmiana nie jest zapisywana
+    assert.equal(sv.doc.pm.P1.name, 'późniejsza (laptop)', 'wcześniejsza zmiana nie nadpisuje bazy'); assert.equal(tel.z.q.p.P1, undefined, 'i schodzi z kolejki');
+    uspokoj(tel, lap);
+    for (const d of [tel, lap]) assert.equal(byId(d.S, 'P1').name, 'późniejsza (laptop)'); }
+  { const {sv, tel, lap} = konto();                                          // spóźniony zapis BEZ warunku (stara wersja kodu): samo-naprawa przy odczycie dalej działa
+    tick(); tel.edit(S => { byId(S, 'P1').name = 'wcześniejsza (telefon)'; }); const bw = tel.naSlepo(); tick(50);
+    lap.edit(S => { byId(S, 'P1').name = 'późniejsza (laptop)'; }); lap.wyslij(); tick();
+    tel.zapisNaSlepo(bw);                                                    // wcześniejszy zapis dochodzi do bazy OSTATNI i ją nadpisuje
+    assert.equal(sv.doc.pm.P1.name, 'wcześniejsza (telefon)');
+    uspokoj(tel, lap);                                                       // laptop zna nowszą wersję i ją odtwarza
+    for (const d of [tel, lap]) assert.equal(byId(d.S, 'P1').name, 'późniejsza (laptop)');
+    assert.equal(sv.doc.pm.P1.name, 'późniejsza (laptop)'); }
 });
 
 test('2b. ten sam plan: wygrywa późniejsza zmiana (późniejsza zapisana offline, dociera po wcześniejszej)', () => {
@@ -184,11 +194,12 @@ test('3c. USUNIĘCIE offline wcześniejsze niż edycja z drugiego urządzenia, d
   tel.online = false; tick();
   tel.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); tel.wyslij(); tick(50);     // telefon offline usuwa P2 (zapis czeka w SDK)
   lap.edit(S => { byId(S, 'P2').name = 'edycja laptopa później'; }); lap.wyslij(); tick();       // laptop edytuje P2 później i wysyła pierwszy
-  tel.wracaSiec();                                                                                // zapis usunięcia (bez warunku) kasuje nowszy wpis w bazie
-  assert.equal(sv.doc.pm.P2, undefined, 'stan pośredni: usunięcie skasowało wpis'); assert.ok(sv.doc.pt.P2 < lap.z.kn.p.P2, 'nagrobek starszy niż edycja');
+  const n0 = sv.zapisy.length;
+  tel.wracaSiec();                                                                                // A6f: transakcja widzi nowszą edycję – usunięcie w ogóle nie trafia do bazy
+  assert.equal(sv.doc.pm.P2.name, 'edycja laptopa później', 'wpis nietknięty'); assert.equal((sv.doc.pt || {}).P2, undefined, 'bez nagrobka');
+  assert.ok(!sv.zapisy.slice(n0).some(z => z.fields && z.fields.some(f => f.endsWith('.P2'))), 'żadne pole P2 nie poszło do bazy');
+  assert.equal(tel.z.q.pd.P2, undefined, 'usunięcie zeszło z kolejki');
   uspokoj(tel, lap);
-  assert.ok(lap.notes.some(n => n.t === 'reassert-tomb' && n.id === 'P2'), 'laptop zna nowszą wersję i wysyła ją ponownie');
-  assert.ok(sv.doc.pm.P2 && sv.doc.pm.P2.u > sv.doc.pt.P2, 'w bazie nowsza wersja nad nagrobkiem');
   for (const d of [tel, lap]){ assert.deepEqual(ids(d.S).sort(), ['P1', 'P2']); assert.equal(byId(d.S, 'P2').name, 'edycja laptopa później'); }
   assert.deepEqual(ZP.mirrorOf(sv.get()).plans.map(p => p.name), ['Plan A', 'edycja laptopa później'], 'lustro dla starych kart też ma plan');
 });
@@ -421,13 +432,13 @@ test('13. zegar: urządzenie z zegarem +1 dzień nie przebija późniejszej zmia
   const q = ZP.emptyQueue(); q.mx = 5000; assert.equal(ZP.stampQ(q, 1000), 5001, 'stampQ = max(teraz, q.t+1, mx+1)');
 });
 
-test('14. nagrobek ukrywa spóźniony zapis pm.<id>: urządzenia dokładają usunięcie, wpis znika z bazy (zapis offline dochodzi po usunięciu)', () => {
+test('14. nagrobek ukrywa spóźniony zapis pm.<id>: urządzenia dokładają usunięcie, wpis znika z bazy (spóźniony zapis bez warunku ze starej wersji kodu dochodzi po usunięciu)', () => {
   const {sv, tel, lap} = konto();
-  tel.online = false; tick();
-  tel.edit(S => { byId(S, 'P2').name = 'edycja offline'; }); tel.wyslij(); tick(50);
+  tick();
+  tel.edit(S => { byId(S, 'P2').name = 'edycja offline'; }); const bw = tel.naSlepo(); tick(50);   // stara wersja kodu: zapis bez warunku czeka w SDK
   lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();
   const tomb = sv.doc.pt.P2; assert.ok(tomb > 0);
-  tel.wracaSiec();                                                           // spóźniony zapis ląduje w bazie POD nagrobkiem
+  tel.zapisNaSlepo(bw);                                                      // spóźniony zapis ląduje w bazie POD nagrobkiem
   assert.ok(sv.doc.pm.P2 && sv.doc.pm.P2.u < tomb, 'w bazie został ukryty, starszy wpis');
   uspokoj(tel, lap);
   for (const d of [tel, lap]) assert.deepEqual(ids(d.S), ['P1']);
@@ -635,7 +646,7 @@ function karta(nazwa, ls, fid){
     const mg = ZP.merge(k.S, k.z.q, k.z.kn, R, tick()); k.z.q = mg.q; k.z.kn = mg.kn; k.S = mg.S; k.last = ZP.snap(k.S);
     ZP.store(ls, fid, k.z, k.z, k.S, ZP.dropped(before, k.z.q)); return mg.notes;
   };
-  k.noop = () => { const f0 = k.z.q.f; k.z.q.f = 0; ZP.store(ls, fid, k.z, k.z, k.S, {f:f0}); };                                  // ścieżka noop w flushFire
+  k.noop = () => ZP.settleTx(ls, fid, k.z, k.z, {kind:'none', sent:null, lost:{f:k.z.q.f}, mx:0}, tick(), k.S);                 // transakcja bez zapisu (dokument już v3: schodzi tylko znacznik naprawy) – koniec flushFire
   k.mirror = () => { const m = k.z.q.m; ZP.afterMirror(k.z, m); ZP.store(ls, fid, k.z, k.z, k.S, {m}); };                         // koniec flushMirror
   k.otworz();
   return k;
@@ -763,17 +774,17 @@ function migawkaV3(k, doc, now){
 const DZIEN = 864e5;
 const widocznePlany = doc => { const R = ZP.remoteV3(cl(doc)); return Object.fromEntries(Object.keys(R.p).sort().map(id => [id, R.p[id].item.name])); };
 const planyMapa = S => Object.fromEntries((S ? S.plans : []).map(p => [p.id, p.name]).sort((x, y) => x[0] < y[0] ? -1 : 1));
-/* Karta połączona ze sztucznym serwerem (A6e): odbiór = migawka v3 jak w openFolder, wysyłka = buildWrite + mergeFields + ZP.settle jak `done` w flushFire. */
+/* Karta połączona ze sztucznym serwerem (A6e): odbiór = migawka v3 jak w openFolder, wysyłka = transakcja jak flushFire (A6f): ZP.txPlan na dokumencie z serwera, zapis, ZP.settleTx. */
 const serwerV3 = () => { const sv = new Serwer(); sv.doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:1}, P2:{...plan('P2', 'Plan B'), u:1}}, po:['P1', 'P2'], pos:1, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{restSet:90, sound:true}}; return sv; };
 function kartaSv(nazwa, ls, sv){
   const k = karta(nazwa, ls, 'X'); k.sv = sv;
-  k.lay = 'empty';                                                                                // jak zLay w aplikacji: do pierwszej migawki karta nie wysyła na ślepo (A6f)
-  k.odbierz = () => { k.lay = 'v3'; return migawkaV3(k, sv.get(), tick(1)); };
+  k.odbierz = () => migawkaV3(k, sv.get(), tick(1));
   k.wyslij = () => {
-    if (ZP.emptyQ(k.z.q)) return false;
-    if (k.lay !== 'v3'){ k.z.q.f = 0; return false; }                                            // ścieżka noop w flushFire: dokument już v3, czekamy na migawkę
-    const now = tick(1), bw = ZP.buildWrite(k.S, k.z.q, now, {tombs:ZP.tombInfo(sv.get())}); if (!bw) return false;
-    sv.merge(bw.data, bw.fields); ZP.settle(ls, 'X', k.z, k.z, bw.sent, undefined, now, k.S); return true;
+    if (ZP.emptyQ(k.z.q) || ZP.onlyMirror(k.z.q)) return false;
+    const now = tick(1), r = ZP.txPlan(sv.get(), k.S, k.z, now);
+    if (r.kind === 'v3') sv.merge(r.data, r.fields); else if (r.kind === 'full') sv.setFull(r.doc);
+    if (r.kind !== 'hold') ZP.settleTx(ls, 'X', k.z, k.z, r, now, k.S);
+    return r.kind === 'v3' || r.kind === 'full';
   };
   return k;
 }
@@ -899,9 +910,10 @@ test('26f. odświeżona karta przejmuje z localStorage STARSZE usunięcie innej 
   assert.equal(byId(ls.get(ZP.stateKey('X'), null), 'P1').name, 'Z1 później', 'stan trzyma nowszą wersję P1 mimo starszego usunięcia w kolejce');
   const N = kartaSv('Z1', ls, sv);                                                                // odświeżenie Z1: przejmuje kolejkę z usunięciem P1
   assert.ok(N.z.q.pd.P1 > 0 && ids(N.S).includes('P1'));
-  assert.equal(N.wyslij(), false, 'przed pierwszą migawką nic nie idzie na ślepo');
-  const notes = N.odbierz(); assert.ok(notes.some(x => x.id === 'P1' && (x.t === 'stale-delete' || x.t === 'restored')), 'usunięcie uznane za nieaktualne');
-  N.wyslij(); assert.equal(sv.doc.pm.P1.name, 'Z1 później', 'w bazie nowsza wersja'); assert.equal(sv.doc.pt.P1, undefined, 'bez nagrobka');
+  N.wyslij();                                                                                     // A6f: wysyłka przed migawką jest bezpieczna – transakcja czyta dokument
+  assert.equal(sv.doc.pm.P1.name, 'Z1 później', 'przed migawką usunięcie P1 nie trafia do bazy'); assert.equal(sv.doc.pt.P1, undefined, 'bez nagrobka');
+  assert.equal(N.z.q.pd.P1, undefined, 'usunięcie zeszło z kolejki karty'); assert.equal(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.pd.P1, undefined, 'i z zapisanej kolejki');
+  N.odbierz(); N.wyslij(); assert.equal(sv.doc.pm.P1.name, 'Z1 później', 'w bazie nowsza wersja'); assert.equal(sv.doc.pt.P1, undefined, 'bez nagrobka');
   Z2.odbierz(); Z2.wyslij(); N.odbierz();                                                          // Z2 dostaje migawkę: nowsza wersja w bazie przywraca plan
   for (const k of [N, Z2]) assert.equal(byId(k.S, 'P1').name, 'Z1 później');
   assert.equal(sv.doc.pm.P1.name, 'Z1 później', 'usunięcie Z2 nie trafiło do bazy');
@@ -993,8 +1005,11 @@ test('31. app.html: usunięcie konta (folderDeleteGo) kasuje klucze z ZP.account
   assert.ok(ciało(APP, 'function flushFire(){').includes('zHoldToast()'), 'wstrzymana migracja w transakcji też pokazuje komunikat');
 });
 
-test('32. losowy test zbieżności (stałe ziarno): dwie zakładki i drugie urządzenie edytują, usuwają i dodają ponownie te same plany, odświeżają karty; po uspokojeniu baza, pamięć kart, zapisany stan i nowe karty są zgodne, żadna zmiana nie przepadła, usunięty plan nie wrócił', () => {
-  const t0 = clock.t; clock.t = Date.now(); let seed = +(process.env.SEED || 20261114);
+/* Ziarna testu 32: domyślnie stałe ziarno i 71271 (przebieg 42 – stały przypadek regresji A6f); SEED=n – jedno ziarno; SEEDS=40 – ziarna k*7919, k = 1..40 (ręczny przebieg). */
+const ZIARNA = process.env.SEEDS ? Array.from({length:+process.env.SEEDS}, (_, k) => (k + 1) * 7919) : process.env.SEED ? [+process.env.SEED] : [20261114, 71271];
+for (const ZIARNO of ZIARNA)
+test('32. losowy test zbieżności (ziarno ' + ZIARNO + '): dwie zakładki i drugie urządzenie edytują, usuwają i dodają ponownie te same plany, odświeżają karty; po uspokojeniu baza, pamięć kart, zapisany stan i nowe karty są zgodne, żadna zmiana nie przepadła, usunięty plan nie wrócił', () => {
+  const t0 = clock.t; clock.t = Date.now(); let seed = ZIARNO;
   const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }, pick = a => a[Math.floor(rnd() * a.length)];
   const POOL = ['P1', 'P2', 'P3', 'P4'], PRZEBIEGI = 300;
   try {
@@ -1045,6 +1060,132 @@ test('33. app.html: ścieżka noop w flushFire (dokument już v3, karta bez miga
   assert.ok(noop.includes('zBusy.free(fid); return;'), 'noop zwalnia zajętość i kończy');
   assert.ok(!noop.includes('flushFire()') && !noop.includes("zLay = 'v3'"), 'noop nie ustawia zLay i nie wysyła od razu');
   assert.ok(ff.indexOf("zLay = 'v3'") > ff.indexOf('if (r.noop){'), 'zLay = v3 dopiero po udanej migracji');
+});
+
+/* ======================= A6f: zapis kolejki transakcją (ZP.txPlan, ZP.afterTx) ======================= */
+const polaP = (sv, n0, id) => sv.zapisy.slice(n0).filter(z => z.fields && z.fields.some(f => f.endsWith('.' + id))).length;   // ile zapisów od n0 dotknęło pozycji id
+test('34a. edycja STARSZA niż pm.<id> w bazie nie jest zapisywana, wpis schodzi z kolejki, migawka daje wersję z bazy', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'telefon (wcześniej)'; byId(S, 'P2').name = 'telefon P2'; }); const uTel = tel.z.q.p.P1; tick(50);
+  lap.edit(S => { byId(S, 'P1').name = 'laptop (później)'; }); lap.wyslij(); tick();
+  const r = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now);
+  assert.equal(r.kind, 'v3'); assert.ok(!r.fields.includes('pm.P1') && r.fields.includes('pm.P2'), 'tylko P2 idzie do bazy');
+  assert.equal(r.lost.p.P1, uTel, 'P1 przegrywa z bazą'); assert.ok(r.notes.some(x => x.t === 'remote-later' && x.id === 'P1'));
+  const n0 = sv.zapisy.length; tel.wyslij();
+  assert.equal(polaP(sv, n0, 'P1'), 0); assert.equal(sv.doc.pm.P1.name, 'laptop (później)'); assert.equal(sv.doc.pm.P2.name, 'telefon P2');
+  assert.equal(tel.z.q.p.P1, undefined, 'wpis zszedł z kolejki'); assert.ok(!(tel.z.kn.p.P1 >= uTel) || tel.z.kn.p.P1 === sv.doc.pm.P1.u, 'nieudana zmiana nie staje się znanym czasem');
+  tel.odbierz(); assert.equal(byId(tel.S, 'P1').name, 'laptop (później)', 'migawka wyrównuje widok');
+  // warunek z kroku 4 sam (bez scalania): ten sam znacznik, inna treść – rozstrzyga porównanie treści jak w merge
+  const d = sv.get(), z = ZP.newZ(); z.kn.v3 = true; z.q.p.P1 = d.pm.P1.u; const S1 = {plans:[{...plan('P1', 'aaa')}], custom:[], settings:{}};
+  assert.equal(ZP.txPlan(d, S1, z, clock.t).lost.p.P1, d.pm.P1.u, 'przy równym u wygrywa treść większa w porównaniu (jak later w merge)');
+});
+test('34b. edycja STARSZA niż nagrobek (także o równym czasie) nie wskrzesza planu', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { byId(S, 'P2').name = 'edycja przed usunięciem'; }); tick(50);
+  lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();
+  const n0 = sv.zapisy.length; tel.wyslij();
+  assert.equal(polaP(sv, n0, 'P2'), 0, 'pm.P2 nie idzie do bazy'); assert.equal(sv.doc.pm.P2, undefined); assert.equal(tel.z.q.p.P2, undefined);
+  uspokoj(tel, lap); for (const d of [tel, lap]) assert.deepEqual(ids(d.S), ['P1']);
+  // równy czas: merge (tomb > pend) tego nie łapie, warunek „pt >= u” tak
+  const d = sv.get(), z = ZP.newZ(); z.kn.v3 = true; z.q.p.P2 = d.pt.P2;
+  const r = ZP.txPlan(d, {plans:[plan('P1', 'Plan A'), plan('P2', 'wskrzeszony?')], custom:[], settings:{}}, z, clock.t);
+  assert.ok(!(r.fields || []).includes('pm.P2'), 'wpis o czasie równym nagrobkowi nie jest zapisywany'); assert.equal(r.lost.p.P2, d.pt.P2);
+});
+test('34c. usunięcie STARSZE niż edycja w bazie nie usuwa planu (restored); usunięcie NOWSZE usuwa', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { S.custom = []; }); const ts = tel.z.q.cd.C1; tick(50);
+  lap.edit(S => { S.custom[0].name = 'Moje – edycja później'; }); lap.wyslij(); tick();
+  const r = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now);
+  assert.equal(r.lost.cd.C1, ts); assert.ok(r.notes.some(x => x.t === 'restored' && x.id === 'C1'));
+  const n0 = sv.zapisy.length; tel.wyslij(); assert.equal(polaP(sv, n0, 'C1'), 0); assert.equal(sv.doc.cm.C1.name, 'Moje – edycja później'); assert.equal(sv.doc.ct.C1, undefined);
+  uspokoj(tel, lap); for (const d of [tel, lap]) assert.deepEqual(d.S.custom.map(c => c.name), ['Moje – edycja później']);
+  // warunek z kroku 4 sam: usunięcie z czasem mniejszym niż u w bazie, choć scalanie by go przepuściło (wpis pod nowszym nagrobkiem) – nic nie idzie
+  const d = sv.get(); d.pm.P2.u = 500; d.pt = {P2:900}; const z = ZP.newZ(); z.kn.v3 = true; z.q.pd.P2 = 300;
+  const r2 = ZP.txPlan(d, {plans:[plan('P1', 'Plan A')], custom:[], settings:{}}, z, clock.t);
+  assert.ok(!(r2.fields || []).includes('pm.P2') && !(r2.fields || []).includes('pt.P2'), 'starsze usunięcie nie kasuje wpisu i nie zmienia nagrobka'); assert.equal(r2.lost.pd.P2, 300);
+  // usunięcie nowsze niż edycja: idzie (pm skasowane, nagrobek zapisany)
+  const z2 = ZP.newZ(); z2.kn.v3 = true; z2.q.pd.P2 = 1000; const r3 = ZP.txPlan(d, {plans:[plan('P1', 'Plan A')], custom:[], settings:{}}, z2, clock.t);
+  assert.ok(r3.fields.includes('pm.P2') && r3.fields.includes('pt.P2')); assert.equal(r3.data.pt.P2, 1000);
+});
+test('34d. STARSZY nagrobek nie nadpisuje nowszego (pt w bazie bez zmian)', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); const tsTel = tel.z.q.pd.P2; tick(50);
+  lap.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); lap.wyslij(); tick();
+  const tomb = sv.doc.pt.P2; assert.ok(tomb > tsTel);
+  const r = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now);
+  assert.ok(!(r.fields || []).includes('pt.P2') && !(r.fields || []).includes('pm.P2'), 'nic do zapisania dla P2'); assert.equal(r.sent.pd.P2, tsTel, 'usunięcie uznane (w bazie już jest, z nowszym czasem)');
+  tel.wyslij(); assert.equal(sv.doc.pt.P2, tomb, 'nagrobek z bazy bez zmian'); assert.equal(tel.z.q.pd.P2, undefined);
+  tel.odbierz(); assert.equal(tel.z.kn.pt.P2, tomb, 'znany nagrobek = nowszy');
+  // nagrobek nowszy niż w bazie idzie; wpis pod nim (spóźniony) jest kasowany
+  const d = sv.get(); d.pm.P1.u = 10; d.pt.P1 = 20; const z = ZP.newZ(); z.kn.v3 = true; z.q.pd.P1 = 30;
+  const r2 = ZP.txPlan(d, {plans:[plan('P2x', 'x')], custom:[], settings:{}}, z, clock.t); assert.equal(r2.data.pt.P1, 30); assert.ok(r2.fields.includes('pm.P1'));
+});
+test('34e. ponowienie transakcji: wynik zależy tylko od dokumentu z ostatniego wywołania, S i z nietknięte', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'telefon'; byId(S, 'P2').name = 'telefon P2'; S.settings.restSet = 30; }); tick(50);
+  const d1 = sv.get(), S0 = cl(tel.S), z0 = cl(tel.z);
+  const r1 = ZP.txPlan(d1, tel.S, tel.z, tel.now);
+  assert.deepEqual(tel.S, S0); assert.deepEqual(tel.z, z0, 'txPlan nie zmienia z (SDK może ją wywołać kilka razy)');
+  assert.ok(r1.fields.includes('pm.P1'));
+  lap.edit(S => { byId(S, 'P1').name = 'laptop później'; }); lap.wyslij(); tick();                // dokument zmienia się przed zatwierdzeniem → SDK powtarza funkcję
+  const d2 = sv.get(), r2 = ZP.txPlan(d2, tel.S, tel.z, tel.now), r2b = ZP.txPlan(cl(d2), cl(tel.S), cl(tel.z), tel.now);
+  assert.deepEqual(r2, r2b, 'deterministyczna: ten sam dokument i stan = ten sam wynik'); assert.deepEqual(tel.z, z0); assert.deepEqual(tel.S, S0);
+  assert.ok(!r2.fields.includes('pm.P1') && r2.fields.includes('pm.P2') && r2.fields.includes('settings.restSet'), 'drugie wywołanie widzi nowszy P1');
+  sv.merge(r2.data, r2.fields); ZP.afterTx(tel.z, r2, tel.now);
+  assert.equal(sv.doc.pm.P1.name, 'laptop później'); assert.equal(sv.doc.pm.P2.name, 'telefon P2'); assert.equal(sv.doc.settings.restSet, 30); assert.ok(ZP.emptyQ({...tel.z.q, m:0}));
+});
+test('34f. bez sieci: nic nie trafia do bazy, kolejka przeżywa zamknięcie karty, po powrocie sieci wysyła się raz i nie nadpisuje nowszej zmiany z innego urządzenia', () => {
+  const {sv, tel, lap} = konto();
+  tel.online = false; tick(); const n0 = sv.zapisy.length;
+  tel.edit(S => { byId(S, 'P1').name = 'telefon offline (wcześniej)'; byId(S, 'P2').name = 'telefon offline P2'; });
+  assert.equal(tel.wyslij(), false); assert.equal(sv.zapisy.length, n0, 'bez sieci żadnego zapisu (także odłożonego)');
+  const tekst = JSON.stringify({z:tel.z, S:tel.S}); tick(50);                                     // karta zamknięta: w localStorage kolejka i stan
+  lap.edit(S => { byId(S, 'P1').name = 'laptop (później)'; }); lap.wyslij(); tick();
+  const nowy = new Urz('tel2', sv, JSON.parse(tekst).S); nowy.z = ZP.fixZ(JSON.parse(tekst).z); nowy.last = ZP.snap(nowy.S);
+  const n1 = sv.zapisy.length; nowy.wyslij();                                                      // ponowne otwarcie z siecią (przed migawką)
+  assert.equal(polaP(sv, n1, 'P2'), 1, 'P2 wysłane raz'); assert.equal(polaP(sv, n1, 'P1'), 0, 'starsze P1 nie idzie');
+  assert.equal(sv.doc.pm.P1.name, 'laptop (później)'); assert.equal(sv.doc.pm.P2.name, 'telefon offline P2');
+  uspokoj(nowy, lap); assert.equal(polaP(sv, n1, 'P2'), 1, 'bez powtórek');
+  for (const d of [nowy, lap]){ assert.equal(byId(d.S, 'P1').name, 'laptop (później)'); assert.equal(byId(d.S, 'P2').name, 'telefon offline P2'); }
+});
+test('34g. zmiana zrobiona W TRAKCIE transakcji (między txPlan a afterTx) nie ginie i wysyła się w kolejnej', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'v1'; S.plans = S.plans.filter(p => p.id !== 'P2'); });
+  const r = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now);
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'v2'; S.plans.push(plan('P2', 'P2 wraca')); });     // użytkownik zmienia dalej, zanim przyjdzie odpowiedź
+  sv.merge(r.data, r.fields); ZP.afterTx(tel.z, r, tel.now);
+  assert.ok(tel.z.q.p.P1 > 0 && tel.z.q.p.P2 > 0, 'nowsze wpisy zostają w kolejce'); assert.equal(sv.doc.pm.P1.name, 'v1');
+  tel.wyslij(); assert.equal(sv.doc.pm.P1.name, 'v2'); assert.equal(sv.doc.pm.P2.name, 'P2 wraca'); assert.ok(ZP.emptyQ({...tel.z.q, m:0}));
+  // to samo dla wpisu PRZEGRANEGO: zmieniony w trakcie zostaje (afterTx zdejmuje tylko ten sam znacznik)
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'stara'; }); tick(50); lap.odbierz(); lap.edit(S => { byId(S, 'P1').name = 'laptop'; }); lap.wyslij(); tick();
+  const r2 = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now); assert.ok(r2.lost.p.P1 > 0);
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'telefon najnowsza'; });
+  ZP.afterTx(tel.z, r2, tel.now); assert.ok(tel.z.q.p.P1 > r2.lost.p.P1, 'nowsza zmiana nie schodzi razem z przegraną');
+  uspokoj(tel, lap); for (const d of [tel, lap]) assert.equal(byId(d.S, 'P1').name, 'telefon najnowsza');
+});
+test('34h. transakcja zatwierdzona, odpowiedź zgubiona: ponowienie nic nie psuje (idempotentne)', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'raz'; S.plans = S.plans.filter(p => p.id !== 'P2'); S.custom.push({id:'C2', name:'nowe', custom:true}); });
+  const z0 = cl(tel.z.q), r = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now); sv.merge(r.data, r.fields);   // serwer zatwierdził…
+  const po = sv.get(), n0 = sv.zapisy.length;                                                       // …ale odpowiedź nie dotarła: kolejka bez zmian, ponowienie
+  assert.deepEqual(tel.z.q, z0);
+  const r2 = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now);
+  assert.equal(r2.kind, 'none', 'nic nowego do zapisania'); assert.ok(r2.sent.p.P1 && r2.sent.pd.P2 && r2.sent.c.C2, 'te same wpisy uznane za wysłane');
+  ZP.afterTx(tel.z, r2, tel.now); assert.equal(sv.zapisy.length, n0); assert.deepEqual(sv.get(), po, 'dokument bez zmian');
+  assert.ok(ZP.emptyQ({...tel.z.q, m:0}), 'kolejka pusta'); assert.equal(tel.z.kn.p.P1, z0.p.P1, 'znany czas = wysłany');
+  uspokoj(tel, lap); for (const d of [tel, lap]){ assert.equal(byId(d.S, 'P1').name, 'raz'); assert.deepEqual(ids(d.S), ['P1']); assert.ok(d.S.custom.some(c => c.id === 'C2')); }
+});
+test('34i. transakcja na dokumencie starego układu albo bez dokumentu = migracja/naprawa w tej samej transakcji; nieznany kształt = hold', () => {
+  const S0 = {plans:[plan('P1', 'a')], custom:[], settings:{restSet:90}}, z = ZP.newZ(); z.q.p.P1 = 5;
+  assert.equal(ZP.txPlan(null, S0, z, 100).kind, 'full'); assert.equal(ZP.txPlan({v:2, plans:[], custom:[], settings:{}}, S0, z, 100, normOld).kind, 'full');
+  assert.equal(ZP.txPlan({settings:{}}, S0, z, 100).kind, 'hold');
+  assert.throws(() => ZP.migrate(S0, z, {v:3, full:1, pm:{}, cm:{}}, 100), /txPlan/, 'migracja nie ma już ścieżki noop');
+  const zf = ZP.newZ(); zf.q.f = 7; zf.kn.v3 = true;                                                     // znacznik naprawy, a dokument jest już v3: schodzi bez zapisu
+  const r = ZP.txPlan({v:3, full:1, pm:{P1:{...plan('P1', 'a'), u:1}}, po:['P1'], pos:1, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{restSet:90}}, S0, zf, 100);
+  assert.equal(r.kind, 'none'); assert.equal(r.lost.f, 7); ZP.afterTx(zf, r, 100); assert.equal(zf.q.f, 0);
+  const zs = ZP.newZ(); zs.q.s.zniknelo = 5;                                                             // wpis ustawienia bez wartości w stanie: schodzi (nie zapętla wysyłki)
+  const rs = ZP.txPlan({v:3, full:1, pm:{}, po:[], pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{}}, S0, zs, 100); assert.equal(rs.kind, 'none'); assert.equal(rs.lost.s.zniknelo, 5);
+  assert.ok(ZP.onlyMirror({...ZP.emptyQueue(), m:3}) && !ZP.onlyMirror({...ZP.emptyQueue(), m:3, po:1}) && !ZP.onlyMirror(ZP.emptyQueue()));
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
