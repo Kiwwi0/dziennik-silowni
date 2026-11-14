@@ -125,7 +125,6 @@ const ZP = (() => {
   function rememberTombs(kn, doc, now){
     for (const K of KINDS){
       const t = {}; if (isObj(doc && doc[K.t])) for (const [id, ts] of Object.entries(doc[K.t])) if (num(ts) && now - num(ts) <= TOMB_TTL) t[id] = num(ts);
-      for (const [id, ts] of Object.entries((kn[K.t]) || {})) if (num(ts) && now - num(ts) <= TOMB_TTL && num(ts) > (t[id] ?? 0)) t[id] = num(ts);   // A6f: nowszy znany nagrobek zostaje, choć w bazie nadpisał go starszy (zapis nagrobka jest bez warunku)
       kn[K.t] = t;
     }
     return kn;
@@ -152,7 +151,7 @@ const ZP = (() => {
       const Li = L[K.k], Ri = R[K.k], Rt = R[K.t], E = q[K.k], D = q[K.d], KN = kn[K.k], out = res[K.k];
       const ids = new Set([...Object.keys(Li), ...Object.keys(Ri), ...Object.keys(D), ...Object.keys(E)]);
       for (const id of ids){
-        const l = Li[id], pend = E[id], pdel = D[id], kt = kn[K.t] && kn[K.t][id], tomb = R.mode === 'v3' && kt !== undefined && !(Rt[id] >= kt) ? kt : Rt[id];   // A6f: w v3 najnowszy znany nagrobek (baza albo pamięć urządzenia)
+        const l = Li[id], pend = E[id], pdel = D[id], tomb = Rt[id];
         let r = Ri[id], hid = false;
         if (r && R.mode === 'v3' && tomb !== undefined && tomb > r.u){ r = undefined; hid = true; }   // starsza wersja pod nagrobkiem = usunięte
         if (pdel !== undefined){                                   // lokalnie usunięte, czeka wysyłka
