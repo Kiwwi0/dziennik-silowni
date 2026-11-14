@@ -52,7 +52,7 @@ SZTUCZNY_FIREBASE = r"""() => {
   const cl = v => JSON.parse(JSON.stringify(v));
   const sorted = v => Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.keys(v).sort().reduce((o, k) => (o[k] = sorted(v[k]), o), {}) : v;
   const DEL = {__fdel:true};
-  const sv = window.__sv = {doc:null, sess:{}, st:[], se:[], fail:false, log:[]};
+  const sv = window.__sv = {doc:null, sess:{}, st:[], se:[], fail:false, log:[], delay:5};
   const setPath = (obj, parts, val) => { for (let i = 0; i < parts.length - 1; i++){ if (!obj[parts[i]] || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {}; obj = obj[parts[i]]; } const k = parts[parts.length - 1]; if (val === DEL) delete obj[k]; else obj[k] = cl(val); };
   const snapOf = () => ({exists:() => !!sv.doc, data:() => sorted(cl(sv.doc)), metadata:{fromCache:false, hasPendingWrites:false}});
   Object.assign(FB, {
@@ -69,7 +69,8 @@ SZTUCZNY_FIREBASE = r"""() => {
         } else if (/\/sessions\/[^/]+$/.test(ref.path)) sv.sess[ref.path.split('/').pop()] = cl(data);
         res();
       } catch (e){ rej(e); }
-    }, 5)),
+    }, sv.delay)),
+    writeBatch:() => ({delete(){}, commit:async () => {}}),
     deleteDoc:ref => Promise.resolve().then(() => { if (/\/sessions\//.test(ref.path)) delete sv.sess[ref.path.split('/').pop()]; }),
     getDocs:async () => ({docs:[], empty:true}), getDoc:async () => ({exists:() => false}),
     runTransaction:(db, fn) => new Promise(async (res, rej) => {
@@ -519,6 +520,77 @@ def scenariusz(r):
         assert w['zapisana'] == ['P2'], f"kolejka nie zapisała się w pamięci przeglądarki: {w['zapisana']}"
         assert w['poOtwarciu'] == {'serwer':'po zamknięciu', 'lokalnie':'po zamknięciu'}, f"zmiana z zamkniętej karty nie trafiła do bazy: {w['poOtwarciu']}"
     r.krok('zapis: scalanie planów, kolejka, nieudany zapis treningu, stara karta (sztuczny Firebase)', zapis_scalanie)
+
+    # ---- A6c: dwie karty, konto zamknięte w trakcie wysyłki, usunięcie konta, dokument nieznanego kształtu, rozmiar (sztuczny Firebase) ----
+    def zapis_a6c():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.evaluate(SZTUCZNY_FIREBASE)
+        w = page.evaluate(r"""async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          const P = (id, name, note) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:note || '', sets:[{reps:8, kg:40}]}]});
+          const v3 = (plans, extra) => ({v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:plans.map(p => p.id), pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[], ...(extra || {})});
+          const kq = id => Object.keys((LS.get(ZP.zKey(id), {q:{p:{}}}).q || {p:{}}).p).sort();
+          const kst = id => (LS.get(ZP.stateKey(id), {plans:[]}).plans || []).map(p => p.name);
+          // ===== dwie karty tej samej przeglądarki (A = ta strona, B = druga karta, ten sam kod ZP.store co w persist) =====
+          store.mode = 'fire'; FOLDER = {id:'t2', name:'Dwie'};
+          sv.doc = v3([P('P1', 'Plan A'), P('P2', 'Plan B')]);
+          LS.set('dz.f.t2.state', {v:2, plans:[P('P1', 'Plan A'), P('P2', 'Plan B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t2.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80);
+          const B = {S:LS.get(ZP.stateKey('t2'), null), z:ZP.fixZ(LS.get(ZP.zKey('t2'), null))}; B.last = ZP.snap(B.S);   // druga karta otwarta na tym samym stanie
+          sv.fail = true;                                                                                                  // zapisy do bazy nie idą: wpisy zostają w kolejce
+          B.S.plans.find(p => p.id === 'P2').name = 'B: edycja P2'; B.last = ZP.diff(B.last, B.S, B.z.q, Date.now() + 5, B.z.kn); ZP.store(LS, 't2', B.z, B.z, B.S);
+          S.plans.find(p => p.id === 'P1').name = 'A: edycja P1'; persist();   // A zapisuje OSTATNIA: nie może nadpisać stanu drugiej karty
+          out.poZapisach = {kolejka:kq('t2'), stan:kst('t2')};
+          sv.emit(); await sleep(80);                                                                                       // ścieżka odczytu z bazy (handler w openFolder) u karty A
+          out.poOdczycie = {kolejka:kq('t2'), stan:kst('t2')};
+          sv.fail = false; clearTimeout(zRetryT); zRetryN = 0; zLay = 'old'; zBusy.free('t2'); flushFire(); await sleep(300);   // ścieżka noop (dokument już v3) i zwykły zapis karty A
+          out.poNoop = {kolejka:kq('t2'), stan:kst('t2'), serwer:[sv.doc.pm.P1.name, sv.doc.pm.P2.name]};
+          openFolder(FOLDER); sv.emit(); await sleep(700); sv.emit(); await sleep(80);                                     // odświeżenie strony: kolejka i stan z localStorage
+          out.poOdswiezeniu = {kolejka:kq('t2'), serwer:[sv.doc.pm.P1.name, sv.doc.pm.P2.name], lokalnie:S.plans.map(p => p.name)};
+          // ===== konto zamknięte i otwarte od nowa w trakcie wysyłki: stare Z nie nadpisuje zapisanej kolejki nowego (Z === z) =====
+          sv.delay = 250; S.plans.find(p => p.id === 'P1').name = 'A: druga edycja'; persist(); clearTimeout(store.t);
+          zBusy.free('t2'); flushFire(); await sleep(40);
+          openFolder(FOLDER); sv.emit();                                                                                   // nowe Z, wysyłka starego jeszcze trwa
+          await sleep(310);                                                                                                // stara wysyłka skończona, nowa jeszcze w drodze
+          out.staleW = kq('t2');
+          await sleep(500); out.staleKoniec = kq('t2'); sv.delay = 5;
+          // ===== dokument nieznanego kształtu (bez plans i pm): plany lokalne zostają, komunikat, po kolejnym odczycie migracja rusza =====
+          FOLDER = {id:'t4', name:'Nieznany'}; sv.doc = {settings:{restSet:45}};
+          LS.set('dz.f.t4.state', {v:2, plans:[P('P1', 'lokalny A'), P('P2', 'lokalny B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t4.zq');
+          openFolder(FOLDER); S.plans[0].name = 'zmiana czeka'; persist(); sv.emit(); await sleep(80);
+          out.holdPlany = S.plans.map(p => p.name); out.holdToast = document.querySelector('#toast').textContent; out.holdKolejka = kq('t4');
+          await sleep(900); out.holdSerwer = JSON.stringify(sv.doc);
+          sv.doc = {v:2, plans:[P('P1', 'lokalny A'), P('P2', 'lokalny B')], custom:[], settings:{...DEF_SETTINGS}}; sv.emit(); await sleep(1300); sv.emit(); await sleep(80);
+          out.holdPo = {v:sv.doc.v, p1:sv.doc.pm && sv.doc.pm.P1.name, p2:sv.doc.pm && sv.doc.pm.P2.name, plany:S.plans.map(p => p.name)};
+          // ===== rozmiar przy zwykłym zapisie: dokument blisko limitu ostrzega =====
+          FOLDER = {id:'t5', name:'Duże'}; sv.doc = v3([P('P1', 'duży', 'x'.repeat(951000)), P('P2', 'mały')]);
+          LS.set('dz.f.t5.state', {v:2, plans:[P('P1', 'duży', 'x'.repeat(951000)), P('P2', 'mały')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t5.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80);
+          const toasty = [], toastOrg = toast; toast = m => { toasty.push(m); toastOrg(m); };                              // toasty zasłaniają się nawzajem: zbieramy wszystkie
+          S.plans.find(p => p.id === 'P2').name = 'mały zmieniony'; persist(); await sleep(900);
+          toast = toastOrg; out.rozmiarToast = toasty.join(' | ');
+          // ===== usunięcie konta czyści jego kolejkę i listę niewysłanych treningów, cudze klucze zostają =====
+          for (const id of ['t3', 't6']){ LS.set('dz.f.' + id + '.zq', {q:{p:{P1:5}}}); LS.set('dz.f.' + id + '.unsent', ['T1']); LS.set('dz.f.' + id + '.state', {plans:[]}); }
+          FOLDER = {id:'t3', name:'Trzy'}; openFolder(FOLDER);
+          await ACT.folderDeleteGo({id:'t3', name:'Trzy'});
+          const has = k => localStorage.getItem(k) !== null;
+          out.usuniete = {zq:has('dz.f.t3.zq'), unsent:has('dz.f.t3.unsent'), state:has('dz.f.t3.state'), cudzeZq:has('dz.f.t6.zq'), cudzeUnsent:has('dz.f.t6.unsent')};
+          return out;
+        }""")
+        assert w['poZapisach'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"zapisy dwóch kart (kolejka i stan): {w['poZapisach']}"
+        assert w['poOdczycie'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"odczyt z bazy u karty A nadpisał kolejkę albo stan drugiej karty: {w['poOdczycie']}"
+        assert w['poNoop']['kolejka'] == ['P2'] and w['poNoop']['stan'] == ['A: edycja P1', 'B: edycja P2'] and w['poNoop']['serwer'] == ['A: edycja P1', 'Plan B'], f"ścieżka noop i wysyłka karty A (wpis drugiej karty zostaje w kolejce i w stanie): {w['poNoop']}"
+        assert w['poOdswiezeniu']['serwer'] == ['A: edycja P1', 'B: edycja P2'] and w['poOdswiezeniu']['lokalnie'] == ['A: edycja P1', 'B: edycja P2'] and w['poOdswiezeniu']['kolejka'] == [], f"po odświeżeniu zmiana drugiej karty ma trafić do bazy: {w['poOdswiezeniu']}"
+        assert 'P1' in w['staleW'], f"stare Z (konto otwarte od nowa w trakcie wysyłki) zdjęło wpis z zapisanej kolejki nowego Z: {w['staleW']}"
+        assert w['staleKoniec'] == [], f"po wysyłce nowego Z kolejka ma być pusta: {w['staleKoniec']}"
+        assert w['holdPlany'] == ['zmiana czeka', 'lokalny B'], f"plany lokalne zniknęły z widoku przy nieznanym kształcie dokumentu: {w['holdPlany']}"
+        assert 'nieznany układ' in w['holdToast'], f"brak komunikatu o wstrzymanej migracji: {w['holdToast']}"
+        assert w['holdKolejka'] == ['P1'] and json.loads(w['holdSerwer']) == {'settings':{'restSet':45}}, f"dokument nieznanego kształtu ma zostać nietknięty, zmiana w kolejce: {w['holdKolejka']} {w['holdSerwer']}"
+        assert w['holdPo']['v'] == 3 and w['holdPo']['p1'] == 'zmiana czeka' and w['holdPo']['plany'] == ['zmiana czeka', 'lokalny B'], f"po kolejnym odczycie migracja ma ruszyć: {w['holdPo']}"
+        assert 'limitu rozmiaru' in w['rozmiarToast'], f"brak ostrzeżenia o rozmiarze przy zwykłym zapisie: {w['rozmiarToast']}"
+        assert w['usuniete'] == {'zq':False, 'unsent':False, 'state':False, 'cudzeZq':True, 'cudzeUnsent':True}, f"usunięcie konta: {w['usuniete']}"
+    r.krok('zapis: dwie karty, konto zamknięte w trakcie wysyłki, nieznany kształt dokumentu, rozmiar, usunięcie konta (sztuczny Firebase)', zapis_a6c)
 
     def kopia_przed_i_po():
         page.goto(BASE + '/', wait_until='load')
