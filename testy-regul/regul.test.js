@@ -371,3 +371,46 @@ describe('foods/{ean}/fix/{key} (grupy poprawek)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Znane dziury (E1-01, E1-02, E1-03). Poniższe testy opisują OBECNE zachowanie reguł i dziś są zielone,
+// choć to błędy. Po naprawie w zleceniu A3 każdy z nich ma zostać odwrócony (assertSucceeds <-> assertFails).
+// ---------------------------------------------------------------------------------------------
+const anonimowe = (uid) => testEnv.authenticatedContext(uid, { firebase: { sign_in_provider: 'anonymous' } }).firestore();
+
+describe('znane dziury, do odwrócenia po zleceniu A3', () => {
+  it('E1-01 [znany błąd do naprawy]: brak limitu prób PIN-u – 20 błędnych skrótów odrzuconych po kolei, ale nic nie blokuje kolejnej próby', async () => {
+    await seed((db) => seedFolder(db, FID, { czlonekUid: null }));
+    const db = jako('zgadywacz');
+    const wpis = doc(db, 'folders', FID, 'members', 'zgadywacz');
+    for (let i = 0; i < 20; i++) {
+      const zly = i.toString(16).padStart(64, '0');           // 20 różnych, błędnych skrótów
+      await assertFails(setDoc(wpis, { hash: zly, at: i }));  // zwykły zły skrót jest nadal odrzucany…
+    }
+    // …ale po 20 próbach reguły niczego nie zablokowały: próba z dobrym skrótem przechodzi (brak limitu prób).
+    await assertSucceeds(setDoc(wpis, { hash: HASH, at: 21 }));
+  });
+
+  it('E1-02 [znany błąd do naprawy]: sekret konta bez PIN-u może utworzyć dowolne zalogowane urządzenie i przejąć konto', async () => {
+    await seed((db) => seedFolder(db, FID, { pin: false, czlonekUid: null }));
+    const wlasny = 'c'.repeat(64);
+    await assertSucceeds(setDoc(doc(obcy(), 'folders', FID, 'secret', 'pin'), { hash: wlasny }));
+    // z własnym skrótem obcy zostaje członkiem i czyta dane konta
+    await assertSucceeds(setDoc(doc(obcy(), 'folders', FID, 'members', UID_OBCY), { hash: wlasny, at: 1 }));
+    await seed((db) => setDoc(doc(db, 'folders', FID, 'data', 'state'), { x: 1 }));
+    await assertSucceeds(getDoc(doc(obcy(), 'folders', FID, 'data', 'state')));
+  });
+
+  it('E1-02 [znany błąd do naprawy]: członek usuwa secret/pin, a nowe urządzenie zakłada go znowu własnym skrótem', async () => {
+    await seed((db) => seedFolder(db));
+    await assertSucceeds(deleteDoc(doc(czlonek(), 'folders', FID, 'secret', 'pin')));
+    const wlasny = 'd'.repeat(64);
+    await assertSucceeds(setDoc(doc(obcy(), 'folders', FID, 'secret', 'pin'), { hash: wlasny }));
+    await assertSucceeds(setDoc(doc(obcy(), 'folders', FID, 'members', UID_OBCY), { hash: wlasny, at: 1 }));
+  });
+
+  it('E1-03 [znany błąd do naprawy]: produkt we wspólnej bazie (foods) utworzy każde anonimowe zalogowane urządzenie', async () => {
+    await assertSucceeds(setDoc(doc(anonimowe('anon1'), 'foods', EAN), produkt({ src: 'user' })));
+    await assertSucceeds(setDoc(doc(anonimowe('anon2'), 'foods', '12345678'), produkt({ n: 'Cokolwiek', src: 'user' })));
+  });
+});
