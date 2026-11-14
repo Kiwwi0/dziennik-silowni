@@ -137,7 +137,7 @@ do utrzymania). **Czerwono → zostaje**, z testem, który ją pilnuje, i zdanie
 
 ## 9. Kolejność pracy (osobne commity na `a6f-wip`)
 1. Ten plan.
-2. `zapis.js`: `txPlan`, `afterTx`, warunki z kroku 4 + testy 33a–33h + przestawienie `Urz.wyslij` (najpierw testy Node).
+2. `zapis.js`: `txPlan`, `afterTx`, warunki z kroku 4 + testy 34a–34h + przestawienie `Urz.wyslij` (najpierw testy Node).
 3. `app.html`: `flushFire` jedną transakcją, bez `noop`; test 33 (statyczny).
 4. Łatki: wyłączanie po kolei według pkt 6, usunięcie zbędnych (osobny commit na każdą).
 5. Test 32 na 40 ziarnach, test dymny (sztuczny `runTransaction`), `build_web`, `web/`.
