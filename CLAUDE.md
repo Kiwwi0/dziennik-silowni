@@ -19,7 +19,15 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 - `firebase-config.json`, `firestore.rules` – baza Firebase (plany i treningi każdej osoby w osobnym folderze).
   Każdy folder ma 4-cyfrowy PIN: logowanie anonimowe Firebase, skrót PIN-u w `folders/{id}/secret/pin` (nieczytelny),
   dostęp urządzenia = `folders/{id}/members/{uid}` (reguły porównują skrót). W app.html: `pinHash`, `requestFolder`, `askPin`,
-  `SHEETS.pin`, ACT `pinGo`. Reguły wdrażają się dopiero po zatwierdzeniu: workflow „Reguły bazy Firebase” (`rules.yml`, `firebase.json`)
+  `SHEETS.pin` (tryby `enter`, `new`, `set`, `change`, `del`, `nopin`, `gone`), ACT `pinGo`, `pinChange`, `pinSetOwn`.
+  Bramka prób PIN-u (zlecenie A3, plan w `zrodla/plany/A3-pin-i-dostep.md`): `folders/{id}/secret/gate` (liczniki i czasy okien, bez skrótów;
+  5 prób / 15 min i 10 / dobę, stałe `GATE_15`, `GATE_DAY` – zmieniać razem z regułami) i żeton `folders/{id}/tries/{uid}` (skrót + czas serwera,
+  ważny 15 min). Próba = transakcja `pinTry`; wejście na konto = `pinCheck` (próba + zapis `members`); stan okien liczy `gateState`.
+  Generacja dostępu `gen` (w `folders/{id}` i `members/{uid}`, brak = 0): zmiana PIN-u (ACT `pinChange`) podnosi ją o 1 i wylogowuje inne urządzenia
+  (`watchFolders` porównuje `gen` z `accGen`). Aplikacja działa ze starymi i nowymi regułami: odrzucony odczyt bramki = tryb „stare reguły”.
+  Reset zapomnianego PIN-u (tylko konsola Firebase): policz skrót `SHA-256("dziennik-silowni:" + id + ":" + PIN)` (przepis w komentarzu bloku
+  „PIN folderu” w app.html), wpisz go w `secret/pin` → `hash`; gdy PIN mógł wyciec, zwiększ `gen` w folderze o 1; gdy konto jest zablokowane
+  limitem, usuń dokument `secret/gate`. Reguły wdrażają się dopiero po zatwierdzeniu: workflow „Reguły bazy Firebase” (`rules.yml`, `firebase.json`)
   rusza po pushu zmian w `firestore.rules`, ale zadanie czeka na zatwierdzenie przez Kamila w środowisku GitHuba „produkcja”
   (Review deployments). Sekret `FIREBASE_SERVICE_ACCOUNT` jest sekretem tego środowiska, a jego klucz należy do osobnego konta
   usługi z samą rolą Firebase Rules Admin (nie do firebase-adminsdk-fbsvc). Nie wgrywaj reguł inaczej niż przez ten workflow.

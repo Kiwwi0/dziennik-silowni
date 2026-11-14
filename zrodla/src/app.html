@@ -814,7 +814,7 @@ let ACTIVE = LS.get('dz.active', null);
 if (ACTIVE && Array.isArray(ACTIVE.ex)) ACTIVE.ex.forEach(x => { x.sets = clampSets(x.sets); });
 const ui = {tab:'trening', planId:null, openItem:null, exQ:'', exGroup:'', exEquip:'', hist:'treningi', progEx:null, progRange:'all', wtRange:'30', showWorkout:false, wMenu:null};
 const sheets = [];
-const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, uid:null, ref:null, col:null, dirty:false, writing:false, t:null, foldersReady:false, fireError:false};
+const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, uid:null, ref:null, col:null, dirty:false, writing:false, t:null, foldersReady:false, pinBusy:false, fireError:false};
 
 const getEx = id => EXMAP.get(id) || S.custom.find(c => c.id === id) || {id, name:'Usunięte ćwiczenie', group:'', equipment:'', mode:'reps', primary:[], secondary:[], steps:[], tips:[], missing:true};
 const hasImg = id => EXMAP.has(id);
@@ -956,6 +956,9 @@ function watchFolders(){
     if (FOLDER){
       const f = FOLDERS.find(x => x.id === FOLDER.id);
       if (f && f.name !== FOLDER.name){ FOLDER = {id:f.id, name:f.name}; LS.set('dz.folder', FOLDER); }
+      // PIN zmieniony na innym urządzeniu (inna generacja dostępu): wyloguj i poproś o nowy PIN. Własna zmiana PIN-u (pinBusy) nie wylogowuje.
+      const ag = f ? accGen(f.id) : null;
+      if (f && !store.pinBusy && !store.creating && ag !== null && ag !== (f.gen || 0)){ const nf = {id:f.id, name:f.name}; closeFolder(); LS.del(accKey(nf.id)); render(); askPin(nf, false, {changed:true}); return; }
       if (!f && !snap.metadata.fromCache && !snap.metadata.hasPendingWrites && !store.creating){ closeFolder(); toast('To konto zostało usunięte.'); }
     }
     render();
@@ -988,7 +991,8 @@ function openFolder(f){
     if (first && topSheet() && topSheet().type === 'shareImp') renderSheet();
   }, err => {
     if (err && err.code === 'permission-denied' && FOLDER && FOLDER.id === fid){
-      LS.del(accKey(fid)); const f = FOLDER; closeFolder(); render(); requestFolder(f, true);
+      const ag = accGen(fid), lf = FOLDERS.find(x => x.id === fid), changed = ag !== null && !!lf && ag !== (lf.gen || 0);
+      LS.del(accKey(fid)); const f = FOLDER; closeFolder(); render(); askPin(f, false, {changed});
     } else toast('Nie udało się wczytać planów z bazy.');
   });
   unsubSess = FB.onSnapshot(FB.query(FB.collection(FB.db, 'folders', fid, 'sessions'), FB.orderBy('date', 'desc'), FB.limit(1000)), snap => {
@@ -1084,29 +1088,119 @@ function openShareImport(code){
 /* ---------- PIN folderu ----------
    folders/{id}.pin = true, gdy folder ma PIN; skrót PIN-u w folders/{id}/secret/pin (nikt go nie odczyta).
    Urządzenie dostaje dostęp, zapisując folders/{id}/members/{uid} z tym samym skrótem – reguły bazy porównują go z sekretem.
-   Reset (zapomniany PIN): w konsoli Firebase usuń dokument secret/pin i pole pin w folderze – wtedy można ustawić nowy. */
+   Bramka prób: folders/{id}/secret/gate (liczniki i czasy okien, bez skrótów). Każda próba PIN-u to transakcja pinTry: zwiększa bramkę
+   i zapisuje „żeton” folders/{id}/tries/{uid} (skrót + czas serwera). Wpis members przechodzi tylko ze świeżym (≤ 15 min) żetonem
+   o tym samym skrócie (pinCheck). Limit: 5 prób w 15 min i 10 w ciągu doby (stałe okna liczone po stronie bazy).
+   Generacja dostępu: folders/{id}.gen i members/{uid}.gen (brak = 0). Zmiana PIN-u (ACT.pinChange) podnosi gen o 1
+   i wylogowuje wszystkie inne urządzenia. GATE_* zmieniać razem z regułami (firestore.rules, funkcje gate*).
+   Tryb „stare reguły”: gdy odczyt bramki zostanie odrzucony, aplikacja działa jak przed A3 (sam zapis wpisu members).
+   Reset zapomnianego PIN-u (tylko konsola Firebase, konsola omija reguły):
+    1) w konsoli przeglądarki policz skrót nowego PIN-u:
+       crypto.subtle.digest('SHA-256', new TextEncoder().encode('dziennik-silowni:ID_KONTA:1234')).then(b => console.log([...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('')))
+    2) wpisz wynik w folders/{id}/secret/pin → pole hash;
+    3) jeśli PIN mógł wyciec – zwiększ pole gen w folders/{id} o 1 (typ number; brak pola = 0, więc wpisz 1) – to wyloguje wszystkie urządzenia;
+    4) jeśli konto jest zablokowane limitem – usuń dokument folders/{id}/secret/gate. */
+const GATE_15 = 5, GATE_DAY = 10, GATE_15_MS = 15 * 60e3, GATE_DAY_MS = 864e5;   // zmieniać razem z regułami
 const accKey = fid => `dz.acc.${fid}`;
+// Generacja dostępu zapisana na tym urządzeniu: null = brak dostępu; stara wartość true = generacja 0.
+const accGen = fid => { const v = LS.get(accKey(fid), false); return v === true ? 0 : (typeof v === 'number' && v > 0 ? v : null); };
+const accVal = g => g > 0 ? g : true;
+const gateRef = fid => FB.doc(FB.db, 'folders', fid, 'secret', 'gate');
+const tryRef = fid => FB.doc(FB.db, 'folders', fid, 'tries', FB.uid);
 async function pinHash(fid, pin){
   const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`dziennik-silowni:${fid}:${pin}`));
   return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
 }
+// Minuty do końca okna, które blokuje próby (0 = można próbować). Liczniki dotyczą okien, które trwają.
+function gateWait(n15, w15, nd, wd, now){
+  let wait = 0, blocked = false;
+  if (nd >= GATE_DAY){ blocked = true; wait = wd + GATE_DAY_MS - now; }
+  if (n15 >= GATE_15){ blocked = true; wait = Math.max(wait, w15 + GATE_15_MS - now); }
+  return blocked ? Math.max(1, Math.ceil(wait / 60000)) : 0;
+}
+// g = {n15, w15, nd, wd} (czasy w ms) albo null (brak bramki). flip = {w15, wd}: odwraca decyzję „okno wygasło” (różnica zegarów na granicy).
+function gateState(g, now, flip){
+  const fresh15 = !g || (now > g.w15 + GATE_15_MS) !== !!(flip && flip.w15);
+  const freshDay = !g || (now > g.wd + GATE_DAY_MS) !== !!(flip && flip.wd);
+  const n15 = fresh15 ? 0 : g.n15, nd = freshDay ? 0 : g.nd;
+  return {fresh15, freshDay, n15, nd, waitMin: g ? gateWait(n15, g.w15, nd, g.wd, now) : 0, left: Math.max(0, Math.min(GATE_15 - n15, GATE_DAY - nd))};
+}
+function waitText(min){
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return `${h} godz.` + (m ? ` ${m} min` : '');
+}
+/* Jedna próba PIN-u: zwiększa bramkę i zapisuje żeton (transakcja, więc dwa urządzenia naraz nie przeskoczą limitu).
+   → {ok, gen, left, waitMin} | {limit: minuty} | {legacy} (stare reguły) | {nopin} | {gone} | {net} */
+async function pinTry(fid, hash){
+  const gR = gateRef(fid), tR = tryRef(fid), fR = FB.doc(FB.db, 'folders', fid);
+  const run = async flip => {
+    const ctx = {read:false, hadGate:false, flip:null};
+    try {
+      return await withTimeout(FB.runTransaction(FB.db, async tx => {
+        ctx.read = false;
+        const gs = await tx.get(gR), fs = await tx.get(fR);
+        ctx.read = true;
+        if (!fs.exists()) return {gone:true};
+        const gen = fs.data().gen || 0, gd = gs.exists() ? gs.data() : null, now = Date.now();
+        const raw = gd ? {n15:gd.n15, w15:gd.w15.toMillis(), nd:gd.nd, wd:gd.wd.toMillis()} : null;
+        ctx.hadGate = !!gd;
+        if (raw) ctx.flip = {w15:Math.abs(now - (raw.w15 + GATE_15_MS)) < 12e4, wd:Math.abs(now - (raw.wd + GATE_DAY_MS)) < 12e4};
+        const st = gateState(raw, now, flip);
+        if (st.waitMin) return {limit:st.waitMin};
+        tx.set(gR, {n15:st.n15 + 1, w15:st.fresh15 ? FB.serverTimestamp() : gd.w15, nd:st.nd + 1, wd:st.freshDay ? FB.serverTimestamp() : gd.wd, at:FB.serverTimestamp()});
+        tx.set(tR, {hash, at:FB.serverTimestamp()});
+        const n15 = st.n15 + 1, nd = st.nd + 1;   // stan po tej próbie (okna, które zaczęły się teraz, mają początek = now)
+        return {ok:true, gen, left:Math.max(0, Math.min(GATE_15 - n15, GATE_DAY - nd)), waitMin:gateWait(n15, st.fresh15 ? now : raw.w15, nd, st.freshDay ? now : raw.wd, now)};
+      }));
+    } catch (e){ return {fail:(e && e.code) || 'err', ctx}; }
+  };
+  let r = await run(null);
+  if (r.fail === 'permission-denied' && !r.ctx.read) return {legacy:true};
+  if (r.fail === 'permission-denied'){
+    // Zapis odrzucony mimo udanego odczytu: brak sekretu (tworzenie bramki) albo różnica zegarów na granicy okna – jedno ponowienie.
+    if (!r.ctx.hadGate) return {nopin:true};
+    const fl = r.ctx.flip;
+    if (fl && (fl.w15 || fl.wd)){ r = await run(fl); if (!r.fail) return r; }
+    return r.fail === 'permission-denied' ? {limit:1} : {net:true};
+  }
+  return r.fail ? {net:true} : r;
+}
+/* Próba + wejście na konto (wpis members). → {ok, gen} | {bad, left, waitMin} | {limit} | {nopin} | {gone} | {net} | {legacy, ok|bad} */
+async function pinCheck(fid, hash){
+  const t = await pinTry(fid, hash);
+  const mRef = FB.doc(FB.db, 'folders', fid, 'members', FB.uid);
+  if (t.legacy){
+    try { await withTimeout(FB.setDoc(mRef, {hash, at:Date.now()})); return {legacy:true, ok:true, gen:0}; }
+    catch (e){ return e && e.code === 'permission-denied' ? {legacy:true, bad:true} : {net:true}; }
+  }
+  if (!t.ok) return t;
+  try { await withTimeout(FB.setDoc(mRef, {hash, at:Date.now(), ...(t.gen ? {gen:t.gen} : {})})); return {ok:true, gen:t.gen}; }
+  catch (e){ return e && e.code === 'permission-denied' ? {bad:true, left:t.left, waitMin:t.waitMin} : {net:true}; }
+}
 function pinMode(s){
   if (s.del) return 'del';
+  if (s.change) return 'change';
   if (s.isNew) return 'new';
+  if (s.setOwn) return 'set';
   const f = FOLDERS.find(x => x.id === s.id);
-  if (f) return f.pin ? 'enter' : 'set';
-  return store.foldersReady ? 'set' : 'wait';
+  if (f) return f.pin ? 'enter' : 'nopin';
+  return store.foldersReady ? 'gone' : 'wait';
 }
-function askPin(f, isNew=false){
-  sheets.length = 0; openSheet({type:'pin', id:f.id, name:f.name, isNew, err:'', busy:false});
+function askPin(f, isNew=false, opt={}){
+  sheets.length = 0; openSheet({type:'pin', id:f.id, name:f.name, isNew, changed:!!opt.changed, err:'', busy:false});
   setTimeout(() => $('#pin1')?.focus(), 80);
 }
 async function requestFolder(f, skipCheck=false){
-  if (!skipCheck && LS.get(accKey(f.id), false)){ openFolder(f); return; }
+  const lf = FOLDERS.find(x => x.id === f.id) || f, gen = lf.gen || 0, ag = accGen(f.id);
+  if (!skipCheck && ag !== null && ag === gen){ openFolder(f); return; }
   if (!skipCheck && FB.uid){
     try {
       const m = await FB.getDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid));
-      if (m.exists()){ LS.set(accKey(f.id), true); openFolder(f); return; }
+      if (m.exists()){
+        if ((m.data().gen || 0) === gen){ LS.set(accKey(f.id), accVal(gen)); openFolder(f); return; }
+        askPin(f, false, {changed:true}); return;   // PIN zmieniony na innym urządzeniu
+      }
     } catch {}
   }
   askPin(f);
@@ -1135,7 +1229,8 @@ async function initStore(){
     try { await initFirebase(); }
     catch { store.fireError = true; render(); return; }
     watchFolders();
-    if (FOLDER){ const f = FOLDER; if (LS.get(accKey(f.id), false)) openFolder(f); else { closeFolder(); render(); requestFolder(f); } }
+    // Folder z poprzedniej sesji: lista kont (z generacją) dopiero się wczytuje – otwieramy od razu, a watchFolders sprawdzi generację.
+    if (FOLDER){ const f = FOLDER; if (accGen(f.id) !== null) openFolder(f); else { closeFolder(); render(); requestFolder(f); } }
     return;
   }
   let db = null, user = null;
@@ -2536,24 +2631,33 @@ const SHEETS = {
     let h = sheetHead('Kto ćwiczy?') + `<section class="plan">${FOLDERS.map(f => { const cur = FOLDER && f.id === FOLDER.id; return `<button class="dayrow plan-link" data-act="folderOpen" data-id="${esc(f.id)}"><div><div class="dn">${esc(f.name)}</div>${cur ? '<div class="dm">otwarty teraz</div>' : ''}</div>${cur ? svg('check','i s') : svg('chev','i s chev')}</button>`; }).join('')}</section>` + newFolderField();
     if (FOLDER) h += `<h3 class="h3">Konto „${esc(FOLDER.name)}”</h3>
       <div class="field"><label class="lbl" for="rnfolder">Zmień nazwę</label><div class="row" style="flex-wrap:nowrap"><input class="input" id="rnfolder" maxlength="40" value="${esc(FOLDER.name)}" autocomplete="off"><button class="btn" data-act="folderRename">Zapisz</button></div></div>
+      ${(cf => !cf ? '' : cf.pin
+        ? `<div class="row"><button class="btn sm" data-act="pinChange">${svg('edit','i s')}Zmień PIN i wyloguj inne urządzenia</button></div>`
+        : `<p class="note" style="margin:0">To konto nie ma PIN-u. Z PIN-em tylko ktoś, kto go zna, otworzy je na nowym telefonie lub w nowej przeglądarce.</p><div class="row"><button class="btn sm" data-act="pinSetOwn">Ustaw PIN</button></div>`)(FOLDERS.find(x => x.id === FOLDER.id))}
       <div class="row"><button class="btn danger sm" data-act="folderDelete">${svg('trash','i s')}Usuń to konto</button></div>`;
     return h;
   },
   pin(s){
     const m = pinMode(s); s.shown = m;
-    if (m === 'wait') return sheetHead(s.name) + '<div class="card muted">Sprawdzam konto…</div>';
-    if (m === 'del') return sheetHead('Potwierdź PIN-em') + `<p style="margin:0">Wpisz PIN konta „${esc(s.name)}”, żeby je <b>na zawsze usunąć</b> razem z planami i historią treningów.</p>`
-      + `<div class="field"><label class="lbl" for="pin1">PIN</label><input class="input" id="pin1" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.4em;font-size:1.3em;max-width:9em"></div>`
-      + (s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : '')
-      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn danger fill" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : 'Usuń konto'}</button></div>`;
-    const txt = m === 'enter' ? `Podaj 4-cyfrowy PIN do konta „${esc(s.name)}”. Na tym urządzeniu wystarczy zrobić to raz.`
-      : m === 'new' ? `Ustaw 4-cyfrowy PIN do nowego konta „${esc(s.name)}”. Bez niego nikt inny nie zobaczy ani nie usunie planów i treningów.`
-      : `Konto „${esc(s.name)}” nie ma jeszcze PIN-u. Ustaw 4 cyfry – od teraz otworzy go tylko ktoś, kto zna PIN. Plany i treningi zostają bez zmian.`;
     const inp = (id, lbl) => `<div class="field"><label class="lbl" for="${id}">${lbl}</label><input class="input" id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.4em;font-size:1.3em;max-width:9em"></div>`;
+    const err = s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : '';
+    if (m === 'wait') return sheetHead(s.name) + '<div class="card muted">Sprawdzam konto…</div>';
+    if (m === 'nopin') return sheetHead('Konto bez PIN-u') + `<p style="margin:0">Konto „${esc(s.name)}” nie ma jeszcze PIN-u. Ustawić go może urządzenie, na którym to konto jest już otwarte, albo właściciel aplikacji.</p>`
+      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Zamknij</button></div>`;
+    if (m === 'gone') return sheetHead(s.name) + '<p style="margin:0">Tego konta już nie ma.</p>'
+      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Zamknij</button></div>`;
+    if (m === 'del') return sheetHead('Potwierdź PIN-em') + `<p style="margin:0">Wpisz PIN konta „${esc(s.name)}”, żeby je <b>na zawsze usunąć</b> razem z planami i historią treningów.</p>`
+      + inp('pin1', 'PIN') + err
+      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn danger fill" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : 'Usuń konto'}</button></div>`;
+    if (m === 'change') return sheetHead('Zmień PIN') + `<p style="margin:0">Podaj obecny PIN i nowy. Pozostałe urządzenia zostaną wylogowane z konta „${esc(s.name)}” i będą musiały podać nowy PIN.</p>`
+      + inp('pin0', 'Obecny PIN') + inp('pin1', 'Nowy PIN') + inp('pin2', 'Powtórz nowy PIN') + err
+      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn primary" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : 'Zmień PIN'}</button></div>`;
+    const txt = m === 'enter' ? (s.changed ? `PIN do konta „${esc(s.name)}” został zmieniony na innym urządzeniu. Podaj nowy PIN.` : `Podaj 4-cyfrowy PIN do konta „${esc(s.name)}”. Na tym urządzeniu wystarczy zrobić to raz.`)
+      : m === 'new' ? `Ustaw 4-cyfrowy PIN do nowego konta „${esc(s.name)}”. Bez niego nikt inny nie zobaczy ani nie usunie planów i treningów.`
+      : `Konto „${esc(s.name)}” nie ma PIN-u. Ustaw 4 cyfry – od teraz nowe telefony i przeglądarki otworzą je tylko po podaniu PIN-u.`;
     return sheetHead(m === 'enter' ? 'Podaj PIN' : 'Ustaw PIN') + `<p style="margin:0">${txt}</p>`
-      + inp('pin1', m === 'enter' ? 'PIN' : 'Nowy PIN') + (m === 'enter' ? '' : inp('pin2', 'Powtórz PIN'))
-      + (s.err ? `<p role="alert" style="margin:0;color:var(--bad);font-weight:600">${esc(s.err)}</p>` : '')
-      + (m === 'enter' ? '<p class="note" style="margin:0">Nie pamiętasz PIN-u? Właściciel aplikacji może go wyzerować – dane zostaną.</p>' : '<p class="note" style="margin:0">Zapamiętaj go – przyda się na każdym nowym telefonie lub przeglądarce.</p>')
+      + inp('pin1', m === 'enter' ? 'PIN' : 'Nowy PIN') + (m === 'enter' ? '' : inp('pin2', 'Powtórz PIN')) + err
+      + (m === 'enter' ? `<p class="note" style="margin:0">Ze względów bezpieczeństwa możesz spróbować ${GATE_15} razy w ciągu 15 minut i ${GATE_DAY} razy w ciągu doby.</p><p class="note" style="margin:0">Nie pamiętasz PIN-u? Właściciel aplikacji może ustawić nowy – dane zostaną.</p>` : '<p class="note" style="margin:0">Zapamiętaj go – przyda się na każdym nowym telefonie lub przeglądarce.</p>')
       + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn primary" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : m === 'enter' ? 'Otwórz' : 'Ustaw PIN'}</button></div>`;
   },
   confirm(s){
@@ -2872,38 +2976,84 @@ const ACT = {
   },
   async pinGo(){
     const s = topSheet(); if (!s || s.type !== 'pin' || s.busy) return;
-    const m = pinMode(s); if (m === 'wait') return;
-    const a = ($('#pin1')?.value || '').trim(), b = ($('#pin2')?.value || '').trim();
-    const fail = msg => { s.busy = false; s.err = msg; renderSheet(); setTimeout(() => $('#pin1')?.focus(), 50); };
-    if (!/^\d{4}$/.test(a)) return fail('PIN to dokładnie 4 cyfry.');
-    if (m !== 'enter' && m !== 'del' && a !== b) return fail('PIN-y się różnią. Wpisz ten sam dwa razy.');
+    const m = pinMode(s); if (m === 'wait' || m === 'nopin' || m === 'gone') return;
+    const a0 = ($('#pin0')?.value || '').trim(), a = ($('#pin1')?.value || '').trim(), b = ($('#pin2')?.value || '').trim();
+    const focusId = m === 'change' ? '#pin0' : '#pin1';
+    const fail = msg => { s.busy = false; s.err = msg; renderSheet(); setTimeout(() => $(focusId)?.focus(), 50); };
+    const NET = 'Nie udało się połączyć z bazą. Sprawdź internet i spróbuj ponownie.';
+    // Komunikat po nieudanej próbie przez bramkę (pinCheck); cur = zła „obecny PIN” przy zmianie.
+    const pinFail = (r, cur) => r.limit ? `Za dużo prób. Spróbuj za ${waitText(r.limit)}.`
+      : r.nopin ? 'Nie udało się sprawdzić PIN-u. Poproś właściciela aplikacji o sprawdzenie tego konta.'
+      : r.gone ? 'Tego konta już nie ma.'
+      : r.net ? NET
+      : r.legacy ? 'Zły PIN. Spróbuj jeszcze raz.'
+      : r.left > 0 ? `${cur ? 'Zły obecny PIN' : 'Zły PIN'}. Pozostało prób: ${r.left}.`
+      : `${cur ? 'Zły obecny PIN' : 'Zły PIN'}. Następna próba za ${waitText(r.waitMin || 1)}.`;
+    if (m === 'change'){
+      if (!/^\d{4}$/.test(a0) || !/^\d{4}$/.test(a) || !/^\d{4}$/.test(b)) return fail('PIN to dokładnie 4 cyfry.');
+      if (a === a0) return fail('Nowy PIN musi różnić się od obecnego.');
+      if (a !== b) return fail('PIN-y się różnią. Wpisz ten sam dwa razy.');
+    } else {
+      if (!/^\d{4}$/.test(a)) return fail('PIN to dokładnie 4 cyfry.');
+      if (m !== 'enter' && m !== 'del' && a !== b) return fail('PIN-y się różnią. Wpisz ten sam dwa razy.');
+    }
     if (!FB.uid) return fail('Brak połączenia z bazą. Sprawdź internet i spróbuj ponownie.');
-    if (m !== 'new' && m !== 'del' && activeBlocksSwitch()) return;
+    if (m === 'enter' && activeBlocksSwitch()) return;
     s.busy = true; s.err = ''; renderSheet();
     const hash = await pinHash(s.id, a), now = Date.now();
     const fRef = FB.doc(FB.db, 'folders', s.id), mRef = FB.doc(FB.db, 'folders', s.id, 'members', FB.uid), pRef = FB.doc(FB.db, 'folders', s.id, 'secret', 'pin');
-    try {
-      // Przy usuwaniu baza sama sprawdza PIN: wpis urządzenia przejdzie tylko z prawidłowym skrótem.
-      if (m === 'enter' || m === 'del') await withTimeout(FB.setDoc(mRef, {hash, at:now}));
-      else {
+    const f = {id:s.id, name:s.name};
+    let gen = 0;
+    if (m === 'enter' || m === 'del'){
+      // Próba przez bramkę (limit prób), potem wpis urządzenia – baza sama porównuje skrót z sekretem.
+      const r = await pinCheck(s.id, hash);
+      if (!r.ok) return fail(pinFail(r));
+      if (m === 'del'){ ACT.folderDeleteGo(FOLDER && FOLDER.id === s.id ? FOLDER : f); return; }
+      gen = r.gen || 0;
+    } else if (m === 'change'){
+      store.pinBusy = true;
+      try {
+        const r = await pinCheck(s.id, await pinHash(s.id, a0));
+        if (r.legacy) return fail('Zmiana PIN-u zadziała po aktualizacji bazy. Spróbuj później.');
+        if (!r.ok) return fail(pinFail(r, true));
+        const g = r.gen || 0, bt = FB.writeBatch(FB.db);
+        bt.update(fRef, {gen:g + 1, updatedAt:now}); bt.update(pRef, {hash}); bt.set(mRef, {hash, at:now, gen:g + 1});
+        await withTimeout(bt.commit());
+        LS.set(accKey(s.id), g + 1);
+      } catch (e){
+        return fail(e && e.code === 'permission-denied' ? 'Nie udało się zmienić PIN-u. Odśwież stronę i spróbuj ponownie.' : NET);
+      } finally { store.pinBusy = false; }
+      sheets.length = 0; renderSheet(); toast('PIN zmieniony. Pozostałe urządzenia muszą podać nowy PIN.');
+      return;
+    } else {
+      try {
         const bt = FB.writeBatch(FB.db);
         if (m === 'new'){ store.creating = true; bt.set(fRef, {name:s.name, createdAt:now, updatedAt:now, pin:true}); }
-        else bt.update(fRef, {pin:true, updatedAt:now});
-        bt.set(pRef, {hash}); bt.set(mRef, {hash, at:now});
+        else { gen = (FOLDERS.find(x => x.id === s.id) || {}).gen || 0; bt.update(fRef, {pin:true, updatedAt:now}); }
+        bt.set(pRef, {hash}); bt.set(mRef, {hash, at:now, ...(gen ? {gen} : {})});
         await withTimeout(bt.commit());
+      } catch (e){
+        store.creating = false;
+        if (e && e.code === 'permission-denied') return fail(m === 'set' ? 'Nie udało się ustawić PIN-u. Odśwież stronę i spróbuj ponownie.' : 'Nie udało się utworzyć konta.');
+        return fail(NET);
       }
-    } catch (e){
       store.creating = false;
-      if (e && e.code === 'permission-denied') return fail(m === 'enter' || m === 'del' ? 'Zły PIN. Spróbuj jeszcze raz.' : m === 'set' ? 'Ktoś przed chwilą ustawił PIN do tego konta. Wpisz go.' : 'Nie udało się utworzyć konta.');
-      return fail('Nie udało się połączyć z bazą. Sprawdź internet i spróbuj ponownie.');
     }
-    store.creating = false;
-    if (m === 'del'){ const f = FOLDER && FOLDER.id === s.id ? FOLDER : {id:s.id, name:s.name}; ACT.folderDeleteGo(f); return; }
-    LS.set(accKey(s.id), true);
-    const f = {id:s.id, name:s.name};
+    LS.set(accKey(s.id), accVal(gen));
+    if (m === 'set'){ sheets.length = 0; renderSheet(); toast('PIN ustawiony. Konto jest chronione.'); return; }
     if (m === 'new' && !FOLDERS.find(x => x.id === f.id)) FOLDERS = [...FOLDERS, {...f, pin:true}];
     sheets.length = 0; renderSheet(); openFolder(f); if (location.hash !== '#trening') location.hash = 'trening'; scrollTo(0, 0);
     toast(m === 'enter' ? `Otwarto konto „${f.name}”.` : 'PIN ustawiony. Konto jest chronione.');
+  },
+  pinChange(){
+    if (!FOLDER) return;
+    openSheet({type:'pin', id:FOLDER.id, name:FOLDER.name, change:true, err:'', busy:false});
+    setTimeout(() => $('#pin0')?.focus(), 80);
+  },
+  pinSetOwn(){
+    if (!FOLDER) return;
+    openSheet({type:'pin', id:FOLDER.id, name:FOLDER.name, setOwn:true, err:'', busy:false});
+    setTimeout(() => $('#pin1')?.focus(), 80);
   },
   folderRename(){
     const name = ($('#rnfolder').value || '').trim(); if (!name || !FOLDER) return;
@@ -2930,9 +3080,14 @@ const ACT = {
         try { const ds = await FB.getDocs(FB.collection(FB.db, 'folders', f.id, 'diet')); await Promise.all(ds.docs.map(d => FB.deleteDoc(d.ref))); } catch {}
         await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'data', 'diet')).catch(() => {});
         await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'data', 'state'));
-        await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id));
-        await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'secret', 'pin')).catch(() => {});
-        if (FB.uid) await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid)).catch(() => {});
+        // Folder, sekret PIN-u i bramka znikają w jednym zapisie (reguły: usunięcie konta wymaga świeżego żetonu z poprawnym PIN-em).
+        const bt = FB.writeBatch(FB.db);
+        bt.delete(FB.doc(FB.db, 'folders', f.id)); bt.delete(FB.doc(FB.db, 'folders', f.id, 'secret', 'pin')); bt.delete(FB.doc(FB.db, 'folders', f.id, 'secret', 'gate'));
+        await bt.commit();
+        if (FB.uid){
+          await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid)).catch(() => {});
+          await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'tries', FB.uid)).catch(() => {});
+        }
         LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`); LS.del(`dz.f.${f.id}.diet`); LS.del(`dz.f.${f.id}.dietDays`);
         toast('Usunięto konto.');
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
@@ -3361,7 +3516,7 @@ document.addEventListener('focusout', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && topSheet()) closeSheet();
   if (e.key === 'Enter' && e.target && e.target.id === 'newfolder'){ e.preventDefault(); ACT.folderCreate(); }
-  if (e.key === 'Enter' && e.target && (e.target.id === 'pin1' || e.target.id === 'pin2')){ e.preventDefault(); if (e.target.id === 'pin1' && $('#pin2')) $('#pin2').focus(); else ACT.pinGo(); }
+  if (e.key === 'Enter' && e.target && (e.target.id === 'pin0' || e.target.id === 'pin1' || e.target.id === 'pin2')){ e.preventDefault(); const nx = {pin0:'#pin1', pin1:'#pin2'}[e.target.id]; if (nx && $(nx)) $(nx).focus(); else ACT.pinGo(); }
   if (e.key === 'Enter' && e.target && e.target.id === 'rnfolder'){ e.preventDefault(); ACT.folderRename(); }
   if (e.key === 'Enter' && e.target && e.target.id === 'scan-ean'){ e.preventDefault(); ACT.scanGo(); }
   if (e.key === 'Enter' && e.target && e.target.id === 'shcode'){ e.preventDefault(); ACT.shareFind(); }
