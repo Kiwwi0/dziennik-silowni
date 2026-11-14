@@ -64,7 +64,8 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
   Zapis w bazie (tryb „fire”, zlecenie A6, plan w `zrodla/plany/A6-zapis-planow-i-treningow.md`): `data/state` w układzie v3 (mapy `pm`/`cm` po id z czasem `u`, kolejność `po`/`co`,
   nagrobki `pt`/`ct`, znacznik `full`, lustro `plans`/`custom`/`settings` w starym układzie dla starych kart). `persist()` porównuje stan z poprzednim i wpisuje zmiany do kolejki
   (`Z.q`, localStorage `dz.f.<konto>.zq`); `flushFire()` wysyła tylko zmienione pozycje (`mergeFields`), a migrację i naprawę po starej karcie robi transakcją; nasłuch w `openFolder` scala
-  (`ZP.merge`, zrodla/src/zapis.js). Kolejkę (`.zq`) i stan (`.state`) konta wolno zapisywać do localStorage tylko przez `ZP.store` / `ZP.settle` (łączą się z zapisem drugiej karty; test 31 pilnuje, że nie ma osobnych ścieżek).
+  (`ZP.merge`, zrodla/src/zapis.js). Kolejkę (`.zq`) i stan (`.state`) konta wolno zapisywać do localStorage tylko przez `ZP.store` / `ZP.settle` (łączą się z zapisem drugiej karty). Pilnują tego dwa testy: test 31 (statyczny, w `test_zapis.js`) szuka w `app.html` bezpośrednich `LS.set` z `lsKey('state')`, `ZP.stateKey`, `ZP.zKey` i `zKey`, także przez zmienną (nie zobaczy klucza zbudowanego inaczej),
+  a krok dymny „zapis: dwie karty…” łapie w czasie działania każdy zapis klucza `.zq`/`.state` poza `ZP.store` / `ZP.settle`.
   Treningi: lista niewysłanych `dz.f.<konto>.unsent` (`sessMark`/`sessUnmark`/`sessSend`/`sessResend`, `ZP.mergeSessions`).
 - Widoki: `render()` → `vHome`, `vPlans`, `vExercises`, `vHistory`; trening to nakładka `renderWorkout()`.
 - Arkusze od dołu: `SHEETS[typ]`, otwieranie `openSheet({type, ...})`, odświeżenie `renderSheet()`.

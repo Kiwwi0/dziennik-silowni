@@ -142,10 +142,18 @@ z planu pola nie zostają w bazie; zwykłe `merge:true` scalałoby zagnieżdżon
   układ albo brak dokumentu) zmiany czekają w kolejce, aż zrobi się migrację (pkt 5).
 - **Zapis do localStorage jedną funkcją (A6c):** kolejka (`.zq`) i stan (`.state`) są zapisywane wyłącznie przez `ZP.store` / `ZP.settle` → `ZP.saveAll`
   (zapis planów, odczyt z bazy, koniec wysyłki, ścieżka noop, koniec transakcji lustra). Kolejka łączy się z zapisaną przez drugą kartę tej samej przeglądarki
-  (`saveZ`/`mergeQ`: suma wpisów, przy tym samym id większy znacznik), a stan z zapisanym stanem (`mergeState`: pozycje, które drugą kartę mają w kolejce
+  (`saveZ`/`mergeQ`: suma wpisów, przy tym samym id większy znacznik), a stan z zapisanym stanem (`mergeState`: pozycje, które druga karta ma w kolejce
   z innym znacznikiem, usunięcia, kolejność i ustawienia drugiej karty zostają). Wpisy, które karta sama zdjęła przy scalaniu z bazą, schodzą też z zapisanej kolejki
   (`ZP.dropped`). Stare `Z` (konto zamknięte albo otwarte od nowa w trakcie wysyłki) nie dotyka localStorage (`zCur(fid)`). Pamięć karty (`S`, `Z`) zostaje bez zmian –
   cudzych wpisów karta nie wysyła, dopiero odświeżona karta czyta je z localStorage.
+- **Stan po cudzej wysyłce (A6d):** `mergeState(stored, S, q, mq, kn, mkn)` dostaje też znane czasy tej karty (`z.kn`) i scalone (`mkn`, wynik `saveZ`, który `saveAll` przekazuje dalej).
+  Sytuacja: druga karta (B) wysłała zmianę P2 i jej wpis zszedł z kolejki (`settle`), a ta karta (A) zapisuje zmianę P1, zanim dostanie migawkę. W scalonej kolejce nie ma już P2, więc
+  samo porównanie wpisów nie widzi nowszej wersji, a zapisany stan wracał do starej treści P2 – karta otwarta później (offline) edytowałaby i wysyłała starą treść z nowszym znacznikiem.
+  Teraz, gdy `mkn.p[id] > kn.p[id]` (`mkn.c` dla własnych ćwiczeń), a ta karta nie ma własnego wpisu (zmiany ani usunięcia) dla `id`, pozycja idzie z zapisanego stanu. Tak samo nagrobki:
+  nagrobek `mkn.pt[id]` (`mkn.ct`), którego ta karta nie zna, usuwa pozycję ze stanu (usunięty plan nie wraca), chyba że znany czas pozycji jest od niego nowszy; `afterSend` zapisuje w `kn.pt`/`kn.ct`
+  nagrobek wysłanego usunięcia (jest już w bazie), żeby objąć też okno przed odczytem z bazy. Własne wpisy tej karty mają pierwszeństwo (rozstrzyga je `merge` z bazą).
+  **Skutek uboczny, zamierzony:** karta, która w pamięci nadal ma wpis kolejki (otwarta, zanim druga go wysłała), po cudzej wysyłce przy kolejnym zapisie dopisuje go z powrotem do zapisanej
+  kolejki (`saveZ` łączy kolejki sumą) – ta pozycja zostanie wysłana jeszcze raz. Zapis jest idempotentny (ta sama treść, ten sam `u`), więc to tylko dodatkowy zapis, nie utrata ani cofnięcie danych.
 
 ## 5. Migracja ze starego układu (jednorazowa, przy pierwszym zapisie)
 
@@ -257,12 +265,12 @@ do `test.yml`. Sztuczny „serwer” (mapa dokumentów, `mergeFields`, `deleteFi
     których nie widać z Node (`folderDeleteGo` → `ZP.accountKeys`, `done` → `ZP.settle` z `zCur(fid)`, ścieżki noop/lustro/odczyt przez `ZP.store`, brak osobnych zapisów
     `.zq`/`.state`, obsługa dokumentu nieznanego kształtu).
 
-**Test dymny (`testy/dymny/dymny.py`)** – musi zostać zielony; drugi krok A6c „zapis: dwie karty, konto zamknięte w trakcie wysyłki, nieznany kształt dokumentu, rozmiar,
-usunięcie konta” (ten sam sztuczny Firebase, druga karta symulowana przez `ZP.store` na wspólnym localStorage) sprawdza te ścieżki na prawdziwym kodzie strony;
-nowy krok „zapis: scalanie planów i niewysłane treningi”
-(w stronie testowej, bez Firebase: sztuczny `FB` wstawiony w `page.evaluate`: kolejka, odczyt, nieudany zapis treningu, import
-kopii) w Chromium i WebKit. **Eksport i import kopii przed i po zmianie:** ten sam stan (`S`, `SESS`) eksportowany starym
-(z `main`) i nowym kodem daje identyczny JSON; import kopii z `main` w nowym kodzie przywraca identyczny stan.
+**Test dymny (`testy/dymny/dymny.py`)** – musi zostać zielony (Chromium i WebKit; WebKit zwykle tylko w Actions).
+- Krok pierwotny „zapis: scalanie planów, kolejka, nieudany zapis treningu, stara karta (sztuczny Firebase)”: sztuczny `FB` wstawiony w `page.evaluate` (kolejka, odczyt, nieudany zapis treningu, stara karta).
+- Krok A6c „zapis: dwie karty, konto zamknięte w trakcie wysyłki, nieznany kształt dokumentu, rozmiar, usunięcie konta (sztuczny Firebase)” (ten sam sztuczny Firebase, druga karta symulowana przez `ZP.store`
+  na wspólnym localStorage) sprawdza te ścieżki na prawdziwym kodzie strony. Od A6d ma też **strażnika**: `LS.set` jest owinięty, a zapis klucza pasującego do `/^dz\.f\..+\.(zq|state)$/` poza wywołaniem
+  `ZP.store` / `ZP.settle` (owiniętych flagą) trafia na listę naruszeń, którą krok sprawdza na końcu (sprawdza też, że sam strażnik wykrywa zapis próbny).
+- **Eksport i import kopii przed i po zmianie** (krok „kopia zapasowa”): ten sam stan (`S`, `SESS`) eksportowany starym (z `main`) i nowym kodem daje identyczny JSON; import kopii z `main` w nowym kodzie przywraca identyczny stan.
 
 **Czego nie da się sprawdzić bez prawdziwego Firebase** (i bez dwóch prawdziwych kart w prawdziwej przeglądarce): zachowanie `mergeFields`+`deleteField`, transakcji i odpowiedzi
 z pamięci podręcznej (`fromCache`, `hasPendingWrites`) na prawdziwym SDK; praca w trybie samolotowym na telefonie; zgodność z
@@ -311,3 +319,13 @@ Poniżej wszystko, co kod robi inaczej niż pierwotny plan (pkt 1–10 są popra
    **Niezrobione celowo:** zerowanie `zBusy` w `openFolder` – od A6b-6b zajętość jest osobna dla konta właśnie po to, żeby ponownie otwarte konto nie wysyłało drugi raz równolegle ze starą wysyłką; reset przy otwarciu
    zdjąłby tę ochronę, a spóźniony `done` starej wysyłki zwolniłby flagę nowej. Wysyłka zawsze się kończy (sukces albo `zFailed`), więc flaga nie zostaje na stałe.
 
+### A6d (poprawki po przeglądzie A6c)
+1. **`ZP.mergeState` nie cofa stanu po wysyłce drugiej karty.** `saveAll` przekazuje scalone `kn` (wynik `saveZ`) i `z.kn` tej karty; pozycja z nowszym znanym czasem bez własnego wpisu tej karty idzie z zapisanego stanu,
+   nagrobki `kn.pt`/`kn.ct` usuwają pozycję ze stanu; `afterSend` zapisuje nagrobek wysłanego usunięcia w `kn.pt`/`kn.ct` (pkt 4). Testy 26d (wysłana zmiana P2, zapis P1, karta otwarta później), 26d-2 (własny wpis ma pierwszeństwo,
+   wpis wraca do zapisanej kolejki), 26d-3 (usunięcie wysłane przez drugą kartę: oba warianty nagrobka, edycja usuniętego planu zostaje). Bez przekazania `kn` do `mergeState` czerwone są 26d i 26d-3.
+2. **Kolejność planów i ustawienie na drugiej karcie.** Test 26d-4: karta B odwraca kolejność i zmienia ustawienie, karta A zapisuje tuż po niej; podmiana `mq[K.o] > q[K.o] ? B[K.o] : A[K.o]` na `A[K.o]` albo wyłączenie
+   `out.s[k] = B.s[k]` robi ten test czerwonym (wcześniej żaden test tego nie wykrywał).
+3. **Strażnik zapisu `.zq` / `.state`.** Test 31 (statyczny) obejmuje `LS.set` z `lsKey('state')`, `ZP.stateKey`, `ZP.zKey`, `zKey`, także przez zmienną (`const k2 = lsKey('state'); LS.set(k2, S)`); jedyny dozwolony bezpośredni
+   zapis stanu to `persist` w trybach local i cloud. Statyczny test nie zobaczy klucza zbudowanego inaczej, więc krok dymny A6c łapie to w czasie działania (opis w pkt 9). Zdanie o teście 31 w `CLAUDE.md` poprawione.
+4. **`ZP.accountKeys` zawiera `stateKey`** (`.zq`, `.unsent`, `.state`); `folderDeleteGo` nie kasuje już `.state` na sztywno, tylko przez `ZP.accountKeys`. Testy 24 i 31, krok dymny (usunięcie konta).
+5. **Ten plik:** literówka w pkt 4, porządek w akapicie o teście dymnym (pkt 9: najpierw krok pierwotny, potem A6c i strażnik), opis poprawki 1 i skutku ubocznego (ponowna, idempotentna wysyłka) w pkt 4, ta sekcja.
