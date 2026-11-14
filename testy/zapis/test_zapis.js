@@ -789,6 +789,39 @@ test('26e-3. nagrobek nieznany tej karcie, ale znany czas planu nowszy od niego 
   const C = karta('C', ls, 'X'); assert.deepEqual(nazwy(C.S), ['A zmienia P1', 'Przywrócony przez B'], 'nowa karta ma plan');
   } finally { clock.t = t0; }
 });
+test('26e-4. nowy plan drugiej karty: w kolejce zostaje w stanie; wysłany, a niewidziany przez tę kartę – nie jest usuwany i wraca z migawką (koszt poprawki A6e-1)', () => {
+  const t0 = clock.t; clock.t = Date.now();
+  try {
+  const v3 = pm => ({v:3, full:1, pm, po:Object.keys(pm), pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{restSet:90, sound:true}});
+  { const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');                    // jeszcze w kolejce B: przenosi go pętla po scalonej kolejce
+    B.edit(S => { S.plans.push(plan('P3', 'Nowy B')); }); A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });
+    assert.deepEqual(ids(ls.get(ZP.stateKey('X'), null)), ['P1', 'P2', 'P3'], 'niewysłany plan drugiej karty zostaje w stanie');
+    assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.p.P3 > 0, 'i w kolejce'); }
+  const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+  B.edit(S => { S.plans.push(plan('P3', 'Nowy B')); }); wyslano(B, 'P3');                          // wysłany: jest w bazie, wpis zszedł z kolejki
+  A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });                                          // A go nie widziała: w stanie chwilowo go nie ma (wraca z migawką)
+  const C = karta('C', ls, 'X'); C.edit(S => { byId(S, 'P2').name = 'C zmienia P2'; });           // nowa karta otwarta w tej przerwie zapisuje coś innego
+  assert.equal(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.pd.P3, undefined, 'brak P3 w stanie NIE staje się usunięciem w kolejce');
+  const doc = v3({P1:{...plan('P1', 'A zmienia P1'), u:1}, P2:{...plan('P2', 'Plan B'), u:1}, P3:{...plan('P3', 'Nowy B'), u:clock.t}});
+  migawkaV3(C, doc); assert.ok(ids(C.S).includes('P3'), 'nowa karta ma P3 po migawce'); assert.equal(byId(C.S, 'P2').name, 'C zmienia P2', 'jej zmiana zostaje');
+  migawkaV3(A, doc); assert.deepEqual(ids(ls.get(ZP.stateKey('X'), null)).sort(), ['P1', 'P2', 'P3'], 'po migawce P3 wraca do zapisanego stanu');
+  } finally { clock.t = t0; }
+});
+test('26e-5. własne ćwiczenie usunięte na INNYM urządzeniu (migawka v3), jedna karta: zapisany stan go nie przywraca, nowa karta go nie ma (A6e-1 dla custom)', () => {
+  const t0 = clock.t; clock.t = Date.now();
+  try {
+  const ls = wspolnyLS(), A = karta('A', ls, 'X');
+  A.edit(S => { S.custom.push({id:'C1', name:'Moje', custom:true}); });
+  ZP.settle(ls, 'X', A.z, A.z, {p:{}, pd:{}, c:{C1:A.z.q.c.C1}, cd:{}, s:{}, po:0, co:0, f:0, m:0}, undefined, clock.t, A.S);   // wysłane: znany czas C1 zapisany
+  assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).kn.c.C1 > 0, 'znany czas C1 zapisany');
+  const doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:1}, P2:{...plan('P2', 'Plan B'), u:1}}, po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{C1:tick()}, settings:{restSet:90, sound:true}};
+  const notes = migawkaV3(A, doc);
+  assert.ok(notes.some(x => x.t === 'deleted-remote' && x.kind === 'c' && x.id === 'C1'), 'scalenie widzi usunięcie ćwiczenia');
+  A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });
+  assert.deepEqual(ls.get(ZP.stateKey('X'), null).custom, [], 'zapisany stan nie przywraca usuniętego ćwiczenia');
+  const C = karta('C', ls, 'X'); assert.deepEqual(C.S.custom, [], 'nowa karta go nie ma'); assert.equal(C.z.q.c.C1, undefined);
+  } finally { clock.t = t0; }
+});
 
 test('27. nagrobek w remoteOld: urządzenie, które NIGDY nie widziało planu, nie wskrzesza go po zapisie starej karty (chroni nagrobek, nie historia wersji)', () => {
   const sv = new Serwer();

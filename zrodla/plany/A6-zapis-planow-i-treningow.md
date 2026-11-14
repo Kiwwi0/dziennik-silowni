@@ -342,3 +342,6 @@ Poniżej wszystko, co kod robi inaczej niż pierwotny plan (pkt 1–10 są popra
 3. **Pokrycie warunku `!((mk[id] ?? -1) > ts)`.** Test 26e-3: druga karta usuwa plan, przywraca go i wysyła (znany czas nowszy od nagrobka, brak wpisu w kolejce); zapis karty, która nie zna ani nagrobka,
    ani przywrócenia, zostawia plan w wersji drugiej karty.
 4. **Mutacje sprawdzone:** bez poprawki 1 czerwony jest 26e (oba warianty osobno), bez poprawki 2 – 26e-2, bez warunku z pkt 3 – 26e-3; pozostałe testy zielone przy każdej mutacji.
+5. **Po przeglądzie A6e (ten sam czat):** test 26e-4 pilnuje kosztu poprawki 1 – nowy plan drugiej karty w kolejce zostaje w stanie; wysłany, a niewidziany przez tę kartę chwilowo znika ze `.state`,
+   ale nie staje się usunięciem w kolejce (także na nowej karcie otwartej w tej przerwie) i wraca z migawką (czerwony po wyłączeniu pętli po `mq`). Test 26e-5 – to samo co 26e dla własnych ćwiczeń
+   (`kn.c`, `ct`; czerwony bez poprawki 1).
