@@ -208,7 +208,7 @@ Emulator pilnuje tych limitów, więc testy z pkt 5 wychwycą przekroczenie.
 | Logowanie (`members` set po żetonie) | 1 | getAfter folder, getAfter pin, get tries → **3** |
 | Nowe konto (batch) | folder create, pin create, members create | 1 + 2 + 4 → **7** |
 | Ustawienie PIN-u przez członka (batch) | folder update (pin→true), pin create, members set | 2 + 4 + 8 → **≤ 14** |
-| Zmiana PIN-u (batch) | folder update (gen+1), pin update, members set | 3 + 4 + 8 → **≤ 15** |
+| Zmiana PIN-u (batch) | folder update (gen+1), pin update, members set | najgorsze liczenie (każde wywołanie osobno) → **19 z 20** (poprzednio błędnie podano ≤ 15) |
 | Usunięcie konta (batch) | folder delete, pin delete, gate delete | 5 + 3 + 3 → **11** |
 | Każdy odczyt/zapis `data`, `diet`, `sessions`, `shares` | 1 | `isMember` = **2** (dziś 1) |
 
@@ -443,8 +443,12 @@ Wycofanie:
   wersję reguł w konsoli Firebase (Firestore → Reguły → historia), a potem i tak zrobić revert w repozytorium, żeby się zgadzało.
 - Skutki wycofania: dokumenty `secret/gate` i `tries/*` zostają (niegroźne). Konta, na których zmieniono PIN, mają `gen` > 0 –
   stare `validFolder` nie zna tego pola, więc zmiana nazwy takiego konta przestanie działać, a urządzenia wylogowane zmianą PIN-u
-  **odzyskają dostęp** (stare `isMember` sprawdza tylko istnienie wpisu). Po wycofaniu warto usunąć pole `gen` w konsoli
-  i wpisy `members` urządzeń, które miały być wylogowane.
+  **odzyskają dostęp** (stare `isMember` sprawdza tylko istnienie wpisu). **OBOWIĄZKOWE** kroki po wycofaniu, w tej kolejności:
+  1. wycofanie reguł (revert + zatwierdzenie wdrożenia);
+  2. usunięcie pola `gen` w dokumentach `folders/{id}` tych kont, które je mają (konsola Firebase);
+  3. dopiero potem usunięcie wpisów `members` urządzeń, które miały być wylogowane.
+  Bez kroku 2 nowa aplikacja po cofnięciu reguł sama próbuje wejść bez pola `gen` (tryb zgodności w `pinCheck`: jedna próba bez `gen`),
+  ale konto z `gen` > 0 nadal ma niespójne dane (zmiana nazwy nie przejdzie).
 - **Aplikacja:** cofać tylko po wycofaniu reguł (stara aplikacja z nowymi regułami – patrz wyżej). Zwykle niepotrzebne.
 
 ---

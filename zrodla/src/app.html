@@ -958,7 +958,10 @@ function watchFolders(){
       if (f && f.name !== FOLDER.name){ FOLDER = {id:f.id, name:f.name}; LS.set('dz.folder', FOLDER); }
       // PIN zmieniony na innym urządzeniu (inna generacja dostępu): wyloguj i poproś o nowy PIN. Własna zmiana PIN-u (pinBusy) nie wylogowuje.
       const ag = f ? accGen(f.id) : null;
-      if (f && !store.pinBusy && !store.creating && ag !== null && ag !== (f.gen || 0)){ const nf = {id:f.id, name:f.name}; closeFolder(); LS.del(accKey(nf.id)); render(); askPin(nf, false, {changed:true}); return; }
+      // Wylogowanie tylko, gdy generacja z bazy jest wyższa od zapisanej albo migawka pochodzi z serwera (starsza kopia z pamięci podręcznej nie wylogowuje).
+      const fg = f ? (f.gen || 0) : 0;
+      if (f && ag !== null && fg > ag && LS.get(`dz.pinPend.${f.id}`, 0) === fg){ LS.set(accKey(f.id), accVal(fg)); LS.del(`dz.pinPend.${f.id}`); }   // własna zmiana PIN-u, która doszła po przerwie
+      else if (f && !store.pinBusy && !store.creating && ag !== null && (fg > ag || (!snap.metadata.fromCache && ag !== fg))){ const nf = {id:f.id, name:f.name}; closeFolder(); LS.del(accKey(nf.id)); render(); askPin(nf, false, {changed:true}); return; }
       if (!f && !snap.metadata.fromCache && !snap.metadata.hasPendingWrites && !store.creating){ closeFolder(); toast('To konto zostało usunięte.'); }
     }
     render();
@@ -1135,18 +1138,21 @@ function waitText(min){
 async function pinTry(fid, hash){
   const gR = gateRef(fid), tR = tryRef(fid), fR = FB.doc(FB.db, 'folders', fid);
   const run = async flip => {
-    const ctx = {read:false, hadGate:false, flip:null};
+    const ctx = {read:false, hadGate:false, flip:null, fresh:false};
     try {
       return await withTimeout(FB.runTransaction(FB.db, async tx => {
         ctx.read = false;
         const gs = await tx.get(gR), fs = await tx.get(fR);
         ctx.read = true;
         if (!fs.exists()) return {gone:true};
-        const gen = fs.data().gen || 0, gd = gs.exists() ? gs.data() : null, now = Date.now();
+        const gen = fs.data().gen || 0, gd = gs.exists() ? gs.data() : null;
+        // Zegar telefonu nie może wskazywać czasu sprzed ostatniego zapisu serwera (gate.at) – wtedy bierzemy ten czas (korekta zegara cofniętego).
+        const lastAt = gd && gd.at && gd.at.toMillis ? gd.at.toMillis() : 0, now = Math.max(Date.now(), lastAt);
         const raw = gd ? {n15:gd.n15, w15:gd.w15.toMillis(), nd:gd.nd, wd:gd.wd.toMillis()} : null;
         ctx.hadGate = !!gd;
         if (raw) ctx.flip = {w15:Math.abs(now - (raw.w15 + GATE_15_MS)) < 12e4, wd:Math.abs(now - (raw.wd + GATE_DAY_MS)) < 12e4};
         const st = gateState(raw, now, flip);
+        ctx.fresh = !!raw && (st.fresh15 || st.freshDay);   // aplikacja uznała, że okno wygasło – jeśli baza odrzuci zapis, to różnica zegarów
         if (st.waitMin) return {limit:st.waitMin};
         tx.set(gR, {n15:st.n15 + 1, w15:st.fresh15 ? FB.serverTimestamp() : gd.w15, nd:st.nd + 1, wd:st.freshDay ? FB.serverTimestamp() : gd.wd, at:FB.serverTimestamp()});
         tx.set(tR, {hash, at:FB.serverTimestamp()});
@@ -1162,11 +1168,13 @@ async function pinTry(fid, hash){
     if (!r.ctx.hadGate) return {nopin:true};
     const fl = r.ctx.flip;
     if (fl && (fl.w15 || fl.wd)){ r = await run(fl); if (!r.fail) return r; }
-    return r.fail === 'permission-denied' ? {limit:1} : {net:true};
+    // Aplikacja uważała okno za wygasłe, a baza nie: zegar telefonu różni się od serwera o więcej niż ok. 2 min (nie prawdziwy limit).
+    if (r.fail === 'permission-denied') return r.ctx.fresh ? {clock:true} : {limit:1};
+    return {net:true};
   }
   return r.fail ? {net:true} : r;
 }
-/* Próba + wejście na konto (wpis members). → {ok, gen} | {bad, left, waitMin} | {limit} | {nopin} | {gone} | {net} | {legacy, ok|bad} */
+/* Próba + wejście na konto (wpis members). → {ok, gen, compat?} | {bad, left, waitMin} | {limit} | {clock} | {nopin} | {gone} | {net} | {legacy, ok|bad} */
 async function pinCheck(fid, hash){
   const t = await pinTry(fid, hash);
   const mRef = FB.doc(FB.db, 'folders', fid, 'members', FB.uid);
@@ -1176,7 +1184,15 @@ async function pinCheck(fid, hash){
   }
   if (!t.ok) return t;
   try { await withTimeout(FB.setDoc(mRef, {hash, at:Date.now(), ...(t.gen ? {gen:t.gen} : {})})); return {ok:true, gen:t.gen}; }
-  catch (e){ return e && e.code === 'permission-denied' ? {bad:true, left:t.left, waitMin:t.waitMin} : {net:true}; }
+  catch (e){
+    if (!(e && e.code === 'permission-denied')) return {net:true};
+    // Konto ze zmienionym PIN-em (gen > 0) po wycofaniu reguł: stare isMember nie zna pola gen i odrzuca wpis. Jedna próba bez gen (tryb zgodności).
+    if (t.gen){
+      try { await withTimeout(FB.setDoc(mRef, {hash, at:Date.now()})); return {ok:true, gen:t.gen, compat:true}; }
+      catch (e2){ if (!(e2 && e2.code === 'permission-denied')) return {net:true}; }
+    }
+    return {bad:true, left:t.left, waitMin:t.waitMin};
+  }
 }
 function pinMode(s){
   if (s.del) return 'del';
@@ -2651,7 +2667,8 @@ const SHEETS = {
       + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn danger fill" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : 'Usuń konto'}</button></div>`;
     if (m === 'change') return sheetHead('Zmień PIN') + `<p style="margin:0">Podaj obecny PIN i nowy. Pozostałe urządzenia zostaną wylogowane z konta „${esc(s.name)}” i będą musiały podać nowy PIN.</p>`
       + inp('pin0', 'Obecny PIN') + inp('pin1', 'Nowy PIN') + inp('pin2', 'Powtórz nowy PIN') + err
-      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn primary" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Sprawdzam…' : 'Zmień PIN'}</button></div>`;
+      + (s.wait ? `<p class="note" role="status" style="margin:0">Baza jeszcze nie potwierdziła zmiany (brak połączenia?). PIN nie jest zmieniony, dopóki nie wróci internet – zostaw tę stronę otwartą. Do tego czasu obowiązuje stary PIN.</p>` : '')
+      + `<div class="sheet-f"><button class="btn" data-act="closeSheet">Anuluj</button><button class="btn primary" data-act="pinGo" ${s.busy ? 'disabled' : ''}>${s.busy ? (s.wait ? 'Czekam na bazę…' : 'Sprawdzam…') : 'Zmień PIN'}</button></div>`;
     const txt = m === 'enter' ? (s.changed ? `PIN do konta „${esc(s.name)}” został zmieniony na innym urządzeniu. Podaj nowy PIN.` : `Podaj 4-cyfrowy PIN do konta „${esc(s.name)}”. Na tym urządzeniu wystarczy zrobić to raz.`)
       : m === 'new' ? `Ustaw 4-cyfrowy PIN do nowego konta „${esc(s.name)}”. Bez niego nikt inny nie zobaczy ani nie usunie planów i treningów.`
       : `Konto „${esc(s.name)}” nie ma PIN-u. Ustaw 4 cyfry – od teraz nowe telefony i przeglądarki otworzą je tylko po podaniu PIN-u.`;
@@ -2983,7 +3000,8 @@ const ACT = {
     const NET = 'Nie udało się połączyć z bazą. Sprawdź internet i spróbuj ponownie.';
     // Komunikat po nieudanej próbie przez bramkę (pinCheck); cur = zła „obecny PIN” przy zmianie.
     const pinFail = (r, cur) => r.limit ? `Za dużo prób. Spróbuj za ${waitText(r.limit)}.`
-      : r.nopin ? 'Nie udało się sprawdzić PIN-u. Poproś właściciela aplikacji o sprawdzenie tego konta.'
+      : r.clock ? 'Sprawdź datę i godzinę w telefonie (ustaw automatyczną) i spróbuj ponownie.'
+      : r.nopin ? (m === 'del' ? 'To konto nie ma PIN-u. Najpierw kliknij „Ustaw PIN” w ustawieniach konta, potem je usuń.' : 'Nie udało się sprawdzić PIN-u. Poproś właściciela aplikacji o sprawdzenie tego konta.')
       : r.gone ? 'Tego konta już nie ma.'
       : r.net ? NET
       : r.legacy ? 'Zły PIN. Spróbuj jeszcze raz.'
@@ -2998,6 +3016,7 @@ const ACT = {
       if (m !== 'enter' && m !== 'del' && a !== b) return fail('PIN-y się różnią. Wpisz ten sam dwa razy.');
     }
     if (!FB.uid) return fail('Brak połączenia z bazą. Sprawdź internet i spróbuj ponownie.');
+    if (m === 'change' && navigator.onLine === false) return fail('Brak internetu. PIN można zmienić tylko z połączeniem – spróbuj, gdy będzie sieć.');
     if (m === 'enter' && activeBlocksSwitch()) return;
     s.busy = true; s.err = ''; renderSheet();
     const hash = await pinHash(s.id, a), now = Date.now();
@@ -3012,17 +3031,35 @@ const ACT = {
       gen = r.gen || 0;
     } else if (m === 'change'){
       store.pinBusy = true;
+      let keepBusy = false;
       try {
         const r = await pinCheck(s.id, await pinHash(s.id, a0));
         if (r.legacy) return fail('Zmiana PIN-u zadziała po aktualizacji bazy. Spróbuj później.');
         if (!r.ok) return fail(pinFail(r, true));
         const g = r.gen || 0, bt = FB.writeBatch(FB.db);
         bt.update(fRef, {gen:g + 1, updatedAt:now}); bt.update(pRef, {hash}); bt.set(mRef, {hash, at:now, gen:g + 1});
-        await withTimeout(bt.commit());
-        LS.set(accKey(s.id), g + 1);
+        const pendKey = `dz.pinPend.${s.id}`, cp = bt.commit();
+        LS.set(pendKey, g + 1);   // zapis może dojść później z kolejki offline – watchFolders nie wyloguje wtedy własnego urządzenia
+        let confirmed = true;
+        try { await withTimeout(cp, 8000); } catch (e){ if (e && e.code === 'timeout') confirmed = false; else { LS.del(pendKey); throw e; } }
+        if (!confirmed){
+          // Brak odpowiedzi bazy: zapis czeka w kolejce. Nie mówimy „nie udało się” – pokazujemy, że zmiana nie jest jeszcze zatwierdzona, i czekamy dalej.
+          keepBusy = true; s.wait = true; s.err = ''; renderSheet();
+          cp.then(() => {
+            LS.set(accKey(s.id), g + 1); LS.del(pendKey); store.pinBusy = false;
+            if (topSheet() === s){ sheets.length = 0; renderSheet(); }
+            toast('PIN zmieniony. Pozostałe urządzenia muszą podać nowy PIN.');
+          }, e2 => {
+            LS.del(pendKey); store.pinBusy = false; s.wait = false;
+            const msg = e2 && e2.code === 'permission-denied' ? 'Nie udało się zmienić PIN-u. Odśwież stronę i spróbuj ponownie.' : NET;
+            if (topSheet() === s) fail(msg); else toast(msg);
+          });
+          return;
+        }
+        LS.set(accKey(s.id), g + 1); LS.del(pendKey);
       } catch (e){
         return fail(e && e.code === 'permission-denied' ? 'Nie udało się zmienić PIN-u. Odśwież stronę i spróbuj ponownie.' : NET);
-      } finally { store.pinBusy = false; }
+      } finally { if (!keepBusy) store.pinBusy = false; }
       sheets.length = 0; renderSheet(); toast('PIN zmieniony. Pozostałe urządzenia muszą podać nowy PIN.');
       return;
     } else {
@@ -3062,7 +3099,11 @@ const ACT = {
   },
   folderDelete(){
     if (ACTIVE){ toast('Najpierw zakończ albo odrzuć trening w toku.'); return; }
-    const f = FOLDER;
+    const f = FOLDER, cur = FOLDERS.find(x => x.id === f.id);
+    if (FIRE && cur && !cur.pin){
+      confirmBox('Najpierw ustaw PIN', `Konto „${f.name}” nie ma PIN-u, a usunięcie konta wymaga potwierdzenia PIN-em. Ustaw PIN, a potem usuń konto.`, 'Ustaw PIN', () => ACT.pinSetOwn(), false);
+      return;
+    }
     confirmBox(`Usunąć konto „${f.name}”?`, 'Znikną wszystkie plany i cała historia treningów tej osoby, na wszystkich urządzeniach. Tej operacji nie można cofnąć. W następnym kroku potwierdzisz to PIN-em.', 'Dalej', () => {
       openSheet({type:'pin', id:f.id, name:f.name, del:true, err:'', busy:false});
       setTimeout(() => $('#pin1')?.focus(), 80);
