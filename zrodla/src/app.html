@@ -3248,8 +3248,8 @@ const ACT = {
           await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'members', FB.uid)).catch(() => {});
           await FB.deleteDoc(FB.doc(FB.db, 'folders', f.id, 'tries', FB.uid)).catch(() => {});
         }
-        LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.state`); LS.del(`dz.f.${f.id}.sessions`); LS.del(`dz.f.${f.id}.diet`); LS.del(`dz.f.${f.id}.dietDays`);
-        ZP.accountKeys(f.id).forEach(k => LS.del(k));   // kolejka zapisu (.zq) i lista niewysłanych treningów (.unsent) usuniętego konta
+        LS.del(accKey(f.id)); LS.del(`dz.f.${f.id}.sessions`); LS.del(`dz.f.${f.id}.diet`); LS.del(`dz.f.${f.id}.dietDays`);
+        ZP.accountKeys(f.id).forEach(k => LS.del(k));   // kolejka zapisu (.zq), lista niewysłanych treningów (.unsent) i stan (.state) usuniętego konta
         toast('Usunięto konto.');
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
   },

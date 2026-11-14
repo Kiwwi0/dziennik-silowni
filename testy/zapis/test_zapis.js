@@ -575,10 +575,10 @@ test('24. usunięcie konta kasuje też kolejkę zapisu (.zq) i listę niewysłan
   const ls = wspolnyLS(); ls.del = k => { delete ls.mem[k]; };                 // jak LS.del w aplikacji
   assert.equal(ZP.zKey('A'), 'dz.f.A.zq'); assert.equal(ZP.sessKey('A'), 'dz.f.A.unsent');
   for (const f of ['A', 'B']){ ls.set(ZP.zKey(f), {q:{p:{P1:5}}}); ls.set(ZP.sessKey(f), ['T1']); ls.set('dz.f.' + f + '.state', {}); }
-  assert.deepEqual(ZP.accountKeys('A').sort(), ['dz.f.A.unsent', 'dz.f.A.zq']);
+  assert.deepEqual(ZP.accountKeys('A').sort(), ['dz.f.A.state', 'dz.f.A.unsent', 'dz.f.A.zq'], 'accountKeys zawiera też stateKey (A6d)');
   ZP.accountKeys('A').forEach(k => ls.del(k));
-  assert.ok(!('dz.f.A.zq' in ls.mem) && !('dz.f.A.unsent' in ls.mem), 'klucze usuniętego konta zniknęły');
-  assert.ok('dz.f.B.zq' in ls.mem && 'dz.f.B.unsent' in ls.mem && 'dz.f.A.state' in ls.mem, 'cudze i inne klucze nietknięte (te kasuje osobno istniejący kod)');
+  assert.ok(!('dz.f.A.zq' in ls.mem) && !('dz.f.A.unsent' in ls.mem) && !('dz.f.A.state' in ls.mem), 'klucze usuniętego konta zniknęły (razem ze stanem)');
+  assert.ok('dz.f.B.zq' in ls.mem && 'dz.f.B.unsent' in ls.mem && 'dz.f.B.state' in ls.mem, 'klucze cudzego konta nietknięte');
 });
 
 test('25. migracja wstrzymana, gdy dokument nie ma ani tablicy plans, ani pm (nie nadpisujemy dokumentu nieznanego kształtu)', () => {
@@ -662,6 +662,70 @@ test('26c. stare Z (konto zamknięte i otwarte od nowa) nie dotyka localStorage:
   assert.equal(o, null); assert.equal(JSON.stringify(ls.mem), przed, 'settle starego Z zdejmuje wpis tylko z jego własnej kolejki'); assert.deepEqual(A.z.q.p, {});
 });
 
+/* Koniec udanej wysyłki drugiej karty, tak jak w `done` w flushFire: ZP.settle zdejmuje wpis z jej kolejki i zapisuje kolejkę oraz stan. */
+function wyslano(k, ...idy){
+  const sent = {p:{}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0};
+  for (const id of idy){ if (k.z.q.p[id] !== undefined) sent.p[id] = k.z.q.p[id]; if (k.z.q.pd[id] !== undefined) sent.pd[id] = k.z.q.pd[id]; }
+  return ZP.settle(k.ls, k.fid, k.z, k.z, sent, undefined, clock.t, k.S);
+}
+test('26d. druga karta WYSŁAŁA zmianę (wpis zszedł z kolejki), pierwsza zapisuje inny plan zanim dostanie migawkę: w stanie zostaje nowa wersja, nowa karta nie wyśle starej treści (A6d-1)', () => {
+  const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+  B.edit(S => { byId(S, 'P2').name = 'B zmienia P2'; });
+  wyslano(B, 'P2');                                                                              // B wysłała P2 i zdjęła wpis; znany czas P2 zostaje
+  assert.deepEqual(Object.keys(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.p), [], 'wpis P2 zszedł z zapisanej kolejki');
+  A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });                                          // A nie zna jeszcze zmiany B (brak migawki)
+  const st = ls.get(ZP.stateKey('X'), null), q = ZP.fixZ(ls.get(ZP.zKey('X'), null)).q;
+  assert.deepEqual(nazwy(st), ['A zmienia P1', 'B zmienia P2'], 'zapisany stan ma nową wersję P2 (B), nie starą z pamięci karty A');
+  assert.deepEqual(Object.keys(q.p), ['P1'], 'w kolejce tylko wpis karty A');
+  assert.equal(nazwy(A.S)[1], 'Plan B', 'pamięć karty A zostaje bez zmian (cudzych wpisów karta nie wysyła)');
+  const C = karta('C', ls, 'X');                                                                  // otwarta później (offline), z localStorage
+  assert.deepEqual(nazwy(C.S), ['A zmienia P1', 'B zmienia P2']);
+  C.edit(S => { byId(S, 'P2').items[0].sets[0].kg = 25; });
+  assert.equal(byId(C.S, 'P2').name, 'B zmienia P2', 'edycja P2 na nowej karcie wychodzi z wersji B, nie ze starej treści');
+  assert.deepEqual(nazwy(ls.get(ZP.stateKey('X'), null)), ['A zmienia P1', 'B zmienia P2']);
+  // bez poprawki: stan miał „Plan B”, a wpis P2 z nowszym znacznikiem wysłałby starą treść – tu pilnuje tego pierwsza asercja
+  const bez = ZP.mergeState({plans:[plan('P1', 'Plan A'), plan('P2', 'B zmienia P2')], custom:[], settings:{}}, {plans:[plan('P1', 'A'), plan('P2', 'Plan B')], custom:[], settings:{}}, ZP.emptyQueue(), ZP.emptyQueue());
+  assert.equal(bez.plans[1].name, 'Plan B', 'bez znanych czasów (stary sposób wywołania) funkcja działa jak wcześniej');
+});
+test('26d-2. własna zmiana tej karty ma pierwszeństwo: wpis w jej kolejce nie jest zastępowany starszą wersją z zapisanego stanu', () => {
+  const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+  B.edit(S => { byId(S, 'P2').name = 'B zmienia P2'; }); wyslano(B, 'P2');
+  A.edit(S => { byId(S, 'P2').name = 'A zmienia P2'; });                                         // A ma własny, późniejszy wpis P2
+  assert.deepEqual(nazwy(ls.get(ZP.stateKey('X'), null)), ['Plan A', 'A zmienia P2'], 'stan trzyma własny wpis karty A (scalenie z bazą rozstrzygnie, kto jest późniejszy)');
+  assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.p.P2 > 0, 'wpis P2 karty A wraca do zapisanej kolejki (ponowna wysyłka jest idempotentna)');
+});
+test('26d-3. usunięcie wysłane przez drugą kartę: plan nie wraca do zapisanego stanu po zapisie pierwszej karty; własna edycja tego planu zostaje', () => {
+  const t0 = clock.t; clock.t = Date.now();                                                       // nagrobki wygasają po 60 dniach liczonych od Date.now() w saveZ: zegar testu musi być prawdziwy
+  try {
+  for (const wariant of ['nagrobek z afterSend', 'nagrobek po odczycie z bazy']){
+    const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+    B.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); wyslano(B, 'P2');
+    if (wariant !== 'nagrobek z afterSend'){                                                     // B dostaje własny zapis z bazy: nagrobek jest już w znanych czasach także z odczytu
+      B.z.kn.pt = {}; const doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:1}}, po:['P1'], pos:0, cm:{}, co:[], cos:0, pt:{P2:B.z.q.pd.P2 || clock.t}, ct:{}, settings:{}};
+      ZP.rememberTombs(B.z.kn, doc, clock.t); ZP.store(ls, 'X', B.z, B.z, B.S);
+    }
+    assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).kn.pt.P2 > 0, wariant + ': nagrobek w zapisanych znanych czasach');
+    A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });
+    assert.deepEqual(ids(ls.get(ZP.stateKey('X'), null)), ['P1'], wariant + ': usunięty plan nie wraca do stanu');
+    const C = karta('C', ls, 'X'); assert.deepEqual(ids(C.S), ['P1'], wariant + ': nowa karta nie ma usuniętego planu');
+  }
+  const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+  B.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); wyslano(B, 'P2');
+  A.edit(S => { byId(S, 'P2').name = 'A edytuje usunięty'; });                                    // A edytuje plan, który B usunęła: własny wpis, rozstrzyga scalenie z bazą
+  assert.deepEqual(nazwy(ls.get(ZP.stateKey('X'), null)), ['Plan A', 'A edytuje usunięty']);
+  } finally { clock.t = t0; }
+});
+test('26d-4. zmiana kolejności planów i ustawienia na drugiej karcie (jeszcze nie wysłane) zostają w zapisanym stanie po zapisie pierwszej', () => {
+  const ls = wspolnyLS(), A = karta('A', ls, 'X'), B = karta('B', ls, 'X');
+  B.edit(S => { S.plans.reverse(); S.settings.sound = false; });
+  A.edit(S => { byId(S, 'P1').name = 'A zmienia P1'; });                                          // A zapisuje ostatnia: nie cofa ani kolejności, ani ustawienia
+  const st = ls.get(ZP.stateKey('X'), null);
+  assert.deepEqual(ids(st), ['P2', 'P1'], 'kolejność planów z drugiej karty zostaje (mq[po] > q[po])');
+  assert.equal(st.settings.sound, false, 'ustawienie z drugiej karty zostaje (mq.s ≠ q.s)');
+  assert.equal(byId(st, 'P1').name, 'A zmienia P1', 'zmiana karty A też');
+  const C = karta('C', ls, 'X'); assert.deepEqual(ids(C.S), ['P2', 'P1']); assert.equal(C.S.settings.sound, false);
+});
+
 test('27. nagrobek w remoteOld: urządzenie, które NIGDY nie widziało planu, nie wskrzesza go po zapisie starej karty (chroni nagrobek, nie historia wersji)', () => {
   const sv = new Serwer();
   sv.doc = {v:3, full:1, pm:{P1:{...plan('P1', 'Plan A'), u:0}, P2:{...plan('P2', 'Plan B'), u:0}}, po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{P3:clock.t}, ct:{}, settings:{restSet:90, sound:true}};
@@ -735,7 +799,15 @@ test('31. app.html: usunięcie konta (folderDeleteGo) kasuje klucze z ZP.account
   assert.ok(open.includes('ZP.store(LS, fid, Z, Z, S, ZP.dropped(qBefore, Z.q))'), 'handler odczytu z bazy zapisuje przez ZP.store i zdejmuje z zapisanej kolejki to, co sam usunął');
   assert.ok(persist.slice(0, persist.indexOf('LS.set(k, S)')).includes('ZP.store(LS, FOLDER.id, Z, Z, S)'), 'persist w trybie fire zapisuje przez ZP.store, a bezpośredni LS.set stanu jest dopiero po nim (tryby local i cloud)');
   assert.ok(persist.indexOf('LS.set(k, S)') > persist.indexOf('return;'), 'bezpośredni zapis stanu nie dotyczy trybu fire');
-  assert.ok(!/zSaveFor|ZP\.saveZ\(|ZP\.saveAll\(|LS\.set\(zKey\(|LS\.set\(lsKey\('state'\)/.test(APP), 'żadnych osobnych ścieżek zapisu kolejki i stanu w app.html');
+  // Wyrażenie jest statyczne, więc nie widzi wszystkiego (np. klucza zbudowanego z kawałków tekstu) – drugą połową jest strażnik w kroku dymnym A6c (wykonanie: LS.set na kluczu .zq/.state poza ZP.store/ZP.settle).
+  // Jedyny dozwolony bezpośredni zapis stanu: persist w trybach local i cloud (tryb fire wychodzi wcześniej przez ZP.store).
+  const dozwolony = "const k = lsKey('state'); if (k) LS.set(k, S);";
+  assert.equal(APP.split(dozwolony).length - 1, 1, 'dokładnie jeden bezpośredni zapis stanu: w persist (tryby local i cloud)');
+  const bez = APP.replace(dozwolony, ''), klucz = String.raw`(?:lsKey\('state'\)|(?:ZP\.)?(?:stateKey|zKey)\([^)]*\))`, zapis = String.raw`(?:LS\.set|localStorage\.setItem)\(\s*`;
+  assert.ok(!/zSaveFor|ZP\.saveZ\(|ZP\.saveAll\(/.test(bez), 'żadnych osobnych ścieżek zapisu kolejki i stanu w app.html (saveZ/saveAll tylko przez ZP.store / ZP.settle)');
+  assert.ok(!new RegExp(zapis + klucz).test(bez), 'żadnego LS.set na kluczu stanu (.state) ani kolejki (.zq) wprost (lsKey(\'state\'), ZP.stateKey, ZP.zKey, zKey)');
+  for (const m of bez.matchAll(new RegExp(String.raw`(?:const|let|var)\s+(\w+)\s*=\s*` + klucz, 'g')))   // klucz zapisany w zmiennej, a zapis przez zmienną
+    assert.ok(!new RegExp(zapis + m[1] + String.raw`\s*,`).test(bez), 'zapis przez zmienną ' + m[1] + ' z kluczem stanu/kolejki poza ZP.store / ZP.settle');
   assert.ok(open.includes('ZP.holdDoc(doc)') && open.includes('ZP.remoteHold()') && open.includes('zHoldToast()'), 'odczyt nieznanego kształtu: bez scalania z pustym dokumentem, z komunikatem');
   assert.ok(ciało(APP, 'function flushFire(){').includes('zHoldToast()'), 'wstrzymana migracja w transakcji też pokazuje komunikat');
 });
