@@ -1,0 +1,4 @@
+# Zależności testu dymnego (testy/dymny/dymny.py) i budowania strony (zrodla/build_web.py).
+# Pillow przypięty, bo build_web zapisuje ikony PNG, a test w Actions porównuje web/ bajt po bajcie ze źródłami.
+playwright==1.63.0
+pillow==12.3.0

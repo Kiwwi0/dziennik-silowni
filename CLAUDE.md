@@ -8,7 +8,7 @@ Na starcie dołącz repozytorium od razu z prawem zapisu (add_repo z `access: "p
 wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wdrożyć zmian.
 
 ## Repozytorium
-- `web/` – gotowa strona (GitHub Pages). Wdraża się sama po pushu do `main` (zmiany w `web/**`), ok. 1 min.
+- `web/` – gotowa strona (GitHub Pages). Wdraża się sama po pushu do `main` i zielonym teście (`test.yml`), ok. 2–3 min.
   Nie edytuj `web/index.html` ręcznie – zawsze buduj ze źródeł.
 - `zrodla/` – źródła strony: `src/app.html` (cała aplikacja: CSS + JS, ok. 200 KB), `src/*.js`, `content/`,
   `dist/exercises.json` (baza ćwiczeń), skrypty budujące.
@@ -43,12 +43,13 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 ## Budowanie, test, wdrożenie (z katalogu repozytorium)
 - Strona: `python3 -I zrodla/build_web.py .` → `web/` (wstawia bazę ćwiczeń, Firebase, manekina 3D, wersję service workera).
 - Wersja testowa: `python3 -I zrodla/build.py` → `zrodla/dist/index.html` (bez Firebase i bez 3D; dane w localStorage).
-- Test w Playwright (Chrome jest zainstalowany): `chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])`,
-  strona podana przez `page.route` (szkielet `<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">
-  <style>[hidden]{display:none!important}</style></head><body>` – ta reguła jest w prawdziwej stronie (build_web), bez niej ukryta warstwa arkuszy zasłania przyciski) + zawartość `dist/index.html`), viewport 390×844, `color_scheme` light i dark. Sprawdzaj: brak `pageerror`,
-  brak przewijania w bok (`document.documentElement.scrollWidth > innerWidth`), zrzut ekranu. Dane testowe: `S.plans = samplePlans()`
-  albo `templatePlans(TEMPLATES.find(t => t.id === 'fbw2'))`, potem `render()`. iPhone: `p.devices['iPhone 11 Pro']` bez `default_browser_type`.
-- Wdrożenie: build_web → commit → push `main`. Strona żywa nie jest osiągalna z sesji (proxy), testuj lokalnie.
+- Test: `python3 testy/dymny/dymny.py --silniki chromium` (lokalnie Chrome z `/usr/bin/google-chrome`; WebKit zwykle tylko w Actions) zamiast własnych skryptów,
+  a zasada brzmi: nowy błąd = nowy krok w tym teście (błąd aplikacji, którego nie naprawiasz od razu, wpisz do `ZNANE_BLEDY` z numerem).
+- Szkielet strony, z którego korzysta test (jak w prawdziwej stronie z build_web): `<!doctype html><html lang="pl"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1"><style>[hidden]{display:none!important}</style></head><body>` + zawartość `zrodla/dist/index.html`
+  (podana przez `page.route`); reguła `[hidden]` jest konieczna, bo bez niej ukryta warstwa arkuszy zasłania przyciski. Dane testowe: `S.plans = templatePlans(TEMPLATES.find(t => t.id === 'fbw2'))`, potem `render()`.
+- Automat `test.yml` (push i pull request): build + build_web + `git diff --exit-code web/` + test dymny w Chromium i WebKit (iPhone 11 Pro i 390×844, jasny i ciemny).
+- Wdrożenie: build_web → commit → push `main`; `pages.yml` wdraża po zielonym `test.yml` (czerwony test wstrzymuje wdrożenie). Strona żywa nie jest osiągalna z sesji (proxy), testuj lokalnie.
 
 ## Jak zbudowany jest `zrodla/src/app.html`
 - Stan: `S = {plans, custom, settings}` (osobny dla każdej osoby), `SESS` (zapisane treningi), `ACTIVE` (trwający trening,
@@ -91,4 +92,4 @@ Duże zadania: plan pisze Opus (do pliku w repo), buduje Sonnet w nowym czacie, 
 (czyta tylko `git diff` / zmiany z commita). Gdy zadanie lepiej zrobić w nowym czacie, powiedz to Kamilowi wprost
 i podaj gotowe zdanie do wklejenia oraz model do wybrania (Sonnet / Opus).
 
-Po każdej zmianie: build_web, test (jasny i ciemny, 390 px), commit, push, krótkie podsumowanie dla Kamila po polsku.
+Po każdej zmianie: build_web, test dymny, commit, push, krótkie podsumowanie dla Kamila po polsku.

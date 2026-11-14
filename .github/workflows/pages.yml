@@ -1,11 +1,14 @@
 name: Strona siłownia
 
+# Wdrożenie rusza dopiero po zielonym wyniku workflow „Test strony” (test.yml) dla pushu do main
+# (workflow_run: nie trzeba dublować testów ani łączyć obu plików, a czerwony test po prostu nie uruchamia wdrożenia).
+# Wdrażany jest dokładnie ten commit, który przeszedł testy (head_sha). Ręczne uruchomienie (workflow_dispatch) zostaje
+# jak dawniej i omija testy, więc używaj go tylko świadomie.
 on:
-  push:
+  workflow_run:
+    workflows: ['Test strony']
+    types: [completed]
     branches: [main]
-    paths:
-      - 'web/**'
-      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -19,15 +22,20 @@ concurrency:
 
 jobs:
   deploy:
+    # Po workflow_run: tylko po sukcesie testu i tylko dla pushu (nie pull requesta) do main.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # po testach: dokładnie przetestowany commit; ręcznie: bieżący stan gałęzi
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: web
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
