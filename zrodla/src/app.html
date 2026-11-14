@@ -863,11 +863,14 @@ function flushFire(){
   if (!zBusy.take(fid)) return;
   if (ZP.onlyMirror(z.q)){ flushMirror(z, fid, ref); return; }   // zostało tylko odświeżenie lustra starego układu
   const q0 = JSON.stringify(z.q);
+  // migawka stanu i kolejki z chwili wysyłki: funkcja transakcji rusza po await i może być powtórzona (konflikt) – do tego czasu S może należeć do innego konta
+  // (openFolder) albo mieć nowsze zmiany; zapis liczy się spójnie z tej migawki, a ZP.afterTx na żywym z zdejmuje tylko wpisy o tym samym znaczniku
+  const S0 = clone(S), z0 = {q:clone(z.q), kn:clone(z.kn)};
   // Zapis kolejki = JEDNA transakcja (plan A6f): odczyt dokumentu, scalenie z kolejką (ZP.txPlan – zapisuje tylko to, co nowsze niż w bazie),
   // zapis zmienionych pól (mergeFields) albo całego dokumentu (migracja / naprawa po starej karcie). Przy konflikcie SDK powtarza funkcję na świeżym dokumencie.
   FB.runTransaction(FB.db, async tx => {
     const snap = await tx.get(ref);
-    const r = ZP.txPlan(snap.exists() ? snap.data() : null, S, z, Date.now(), d => normalize(d), p => normalize({plans:[p]}).plans[0] || p);
+    const r = ZP.txPlan(snap.exists() ? snap.data() : null, S0, z0, Date.now(), d => normalize(d), p => normalize({plans:[p]}).plans[0] || p);
     if (r.kind === 'v3') tx.set(ref, zUnDel(r.data), {mergeFields:r.fields});
     else if (r.kind === 'full') tx.set(ref, r.doc);
     return r;

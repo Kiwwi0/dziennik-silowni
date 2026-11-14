@@ -653,6 +653,14 @@ def scenariusz(r):
           sv.konflikt = () => { sv.doc.pm.P2 = {...sv.doc.pm.P2, name:'B: konflikt (nowszy)', u:Date.now() + 120000}; };
           await sleep(900); sv.emit(); await sleep(60);
           out.konflikt = {log:sv.log.slice(), p2:sv.doc.pm.P2.name, kolejka:kq(), lokalnie:nazwa('P2')};
+          // 5. konto przełączone W TRAKCIE transakcji, SDK ją powtarza (konflikt): zapis liczy się ze stanu i kolejki z chwili wysyłki, nie ze stanu nowego konta
+          sv.log.length = 0; sv.delay = 150; const rest7 = S.settings.restSet === 45 ? 50 : 45;
+          S.settings.restSet = rest7; persist(); clearTimeout(store.t); flushFire(); await sleep(20);
+          sv.konflikt = () => { sv.doc.pm.P1 = {...sv.doc.pm.P1, u:sv.doc.pm.P1.u + 1}; };          // wymusza ponowienie funkcji transakcji
+          LS.set('dz.f.t8.state', {v:2, plans:[P('X1', 'inne konto')], custom:[], settings:{...DEF_SETTINGS, restSet:15}}); LS.del('dz.f.t8.zq');
+          FOLDER = {id:'t8', name:'Inne'}; openFolder(FOLDER);                                          // nowe konto: inne S i Z (bez migawki)
+          await sleep(500); sv.delay = 5;
+          out.przelaczenie = {log:sv.log.slice(), rest:sv.doc.settings.restSet, oczekiwane:rest7, planyT8wBazie:Object.keys(sv.doc.pm).filter(id => id === 'X1')};
           toast = toastOrg; delete navigator.onLine;
           out.setDoc = sv.log.filter(x => x === 'SETDOC').length;
           return out;
@@ -669,6 +677,8 @@ def scenariusz(r):
         assert s_['toast'] and s_['lokalnie'] == 'inne urządzenie: nowsza', f'komunikat i wersja z bazy po migawce: {s_}'
         k = w['konflikt']
         assert 'tx-retry' in k['log'] and k['p2'] == 'B: konflikt (nowszy)' and k['kolejka'] == [] and k['lokalnie'] == 'B: konflikt (nowszy)', f'konflikt w transakcji: {k}'
+        pk = w['przelaczenie']
+        assert 'tx-retry' in pk['log'] and pk['rest'] == pk['oczekiwane'] and pk['planyT8wBazie'] == [], f'ponowiona transakcja po przełączeniu konta zapisała stan innego konta: {pk}'
         assert w['setDoc'] == 0, f"zapis data/state przez setDoc: {w['setDoc']}"
     r.krok('zapis: transakcja (tylko nowsze niż w bazie), bez sieci nic, konflikt (sztuczny Firebase, A6f)', zapis_a6f)
 

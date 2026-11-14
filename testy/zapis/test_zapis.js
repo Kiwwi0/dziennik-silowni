@@ -1062,6 +1062,8 @@ test('33. app.html: flushFire zapisuje data/state TYLKO w transakcji (tx.set po 
   assert.ok(tr >= 0 && tr < get && get < plan && plan < set1 && plan < set2, 'kolejność: runTransaction → tx.get → ZP.txPlan → tx.set (mergeFields albo cały dokument)');
   assert.ok(ff.indexOf("navigator.onLine === false) return;") >= 0 && ff.indexOf("navigator.onLine === false) return;") < tr, 'bez sieci wyjście przed transakcją (kolejka czeka w localStorage)');
   assert.ok(ff.indexOf('syncShares()') > ff.indexOf('.then(r => {'), 'syncShares dopiero po zatwierdzeniu');
+  assert.ok(/ZP\.txPlan\([^;]*, S0, z0, /.test(ff) && ff.indexOf('const S0 = clone(S), z0 = {q:clone(z.q), kn:clone(z.kn)}') >= 0 && ff.indexOf('const S0') < tr,
+    'txPlan liczy z migawki S0/z0 zrobionej przed transakcją (nie z globalnego S – po przełączeniu konta albo przy ponowieniu byłby to stan innego konta)');
 });
 
 /* ======================= A6f: zapis kolejki transakcją (ZP.txPlan, ZP.afterTx) ======================= */
@@ -1075,7 +1077,7 @@ test('34a. edycja STARSZA niż pm.<id> w bazie nie jest zapisywana, wpis schodzi
   assert.equal(r.lost.p.P1, uTel, 'P1 przegrywa z bazą'); assert.ok(r.notes.some(x => x.t === 'remote-later' && x.id === 'P1'));
   const n0 = sv.zapisy.length; tel.wyslij();
   assert.equal(polaP(sv, n0, 'P1'), 0); assert.equal(sv.doc.pm.P1.name, 'laptop (później)'); assert.equal(sv.doc.pm.P2.name, 'telefon P2');
-  assert.equal(tel.z.q.p.P1, undefined, 'wpis zszedł z kolejki'); assert.ok(!(tel.z.kn.p.P1 >= uTel) || tel.z.kn.p.P1 === sv.doc.pm.P1.u, 'nieudana zmiana nie staje się znanym czasem');
+  assert.equal(tel.z.q.p.P1, undefined, 'wpis zszedł z kolejki'); assert.ok(!(tel.z.kn.p.P1 >= uTel), 'przegrana zmiana nie staje się znanym czasem');
   tel.odbierz(); assert.equal(byId(tel.S, 'P1').name, 'laptop (później)', 'migawka wyrównuje widok');
   // warunek z kroku 4 sam (bez scalania): ten sam znacznik, inna treść – rozstrzyga porównanie treści jak w merge
   const d = sv.get(), z = ZP.newZ(); z.kn.v3 = true; z.q.p.P1 = d.pm.P1.u; const S1 = {plans:[{...plan('P1', 'aaa')}], custom:[], settings:{}};
@@ -1176,6 +1178,17 @@ test('34h. transakcja zatwierdzona, odpowiedź zgubiona: ponowienie nic nie psuj
   ZP.afterTx(tel.z, r2, tel.now); assert.equal(sv.zapisy.length, n0); assert.deepEqual(sv.get(), po, 'dokument bez zmian');
   assert.ok(ZP.emptyQ({...tel.z.q, m:0}), 'kolejka pusta'); assert.equal(tel.z.kn.p.P1, z0.p.P1, 'znany czas = wysłany');
   uspokoj(tel, lap); for (const d of [tel, lap]){ assert.equal(byId(d.S, 'P1').name, 'raz'); assert.deepEqual(ids(d.S), ['P1']); assert.ok(d.S.custom.some(c => c.id === 'C2')); }
+});
+test('34j. migawka z WŁASNYM zapisem przychodzi przed odpowiedzią transakcji (zapis transakcji nie ma lokalnego „pending”): bez ponownej wysyłki, bez utraty', () => {
+  const {sv, tel, lap} = konto();
+  tick(); tel.edit(S => { byId(S, 'P1').name = 'nowa'; S.plans = S.plans.filter(p => p.id !== 'P2'); S.settings.restSet = 33; });
+  const r = ZP.txPlan(sv.get(), tel.S, tel.z, tel.now); sv.merge(r.data, r.fields);   // serwer zatwierdził
+  tel.odbierz();                                                                      // nasłuch dostaje dokument przed .then(r)
+  assert.equal(byId(tel.S, 'P1').name, 'nowa'); assert.deepEqual(ids(tel.S), ['P1']); assert.equal(tel.S.settings.restSet, 33);
+  ZP.afterTx(tel.z, r, tel.now);                                                      // dopiero teraz odpowiedź
+  assert.ok(ZP.emptyQ({...tel.z.q, m:0}), 'kolejka pusta'); const n0 = sv.zapisy.length;
+  uspokoj(tel, lap); assert.ok(!sv.zapisy.slice(n0).some(z => z.fields && z.fields.some(f => /^(pm|pt|settings)\./.test(f))), 'bez ponownej wysyłki pozycji');
+  for (const d of [tel, lap]){ assert.equal(byId(d.S, 'P1').name, 'nowa'); assert.deepEqual(ids(d.S), ['P1']); assert.equal(d.S.settings.restSet, 33); }
 });
 test('34i. transakcja na dokumencie starego układu albo bez dokumentu = migracja/naprawa w tej samej transakcji; nieznany kształt = hold', () => {
   const S0 = {plans:[plan('P1', 'a')], custom:[], settings:{restSet:90}}, z = ZP.newZ(); z.q.p.P1 = 5;
