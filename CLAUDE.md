@@ -52,8 +52,11 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 - Szkielet strony, z którego korzysta test (jak w prawdziwej stronie z build_web): `<!doctype html><html lang="pl"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><style>[hidden]{display:none!important}</style></head><body>` + zawartość `zrodla/dist/index.html`
   (podana przez `page.route`); reguła `[hidden]` jest konieczna, bo bez niej ukryta warstwa arkuszy zasłania przyciski. Dane testowe: `S.plans = templatePlans(TEMPLATES.find(t => t.id === 'fbw2'))`, potem `render()`.
-- Automat `test.yml` (push i pull request): build + build_web + `git diff --exit-code web/` + test dymny w Chromium i WebKit (iPhone 11 Pro i 390×844, jasny i ciemny).
-- Wdrożenie: build_web → commit → push `main`; `pages.yml` wdraża po zielonym `test.yml` (czerwony test wstrzymuje wdrożenie). Strona żywa nie jest osiągalna z sesji (proxy), testuj lokalnie.
+- Automat `test.yml` (push i pull request): build + build_web + `git diff --exit-code web/` (bez PNG) + test dymny w Chromium i WebKit (iPhone 11 Pro i 390×844, jasny i ciemny)
+  oraz w Chromium dodatkowo prawdziwa strona `web/index.html` (kończy na wyborze konta, bo Firebase jest odcięty).
+  Ikony PNG w `web/` porównuje po pikselach, nie po bajtach, `testy/porownaj_png.py` (bajty PNG zależą od wersji zlib; brakująca ikona to błąd).
+- Wdrożenie: build_web → commit → push `main`; `pages.yml` wdraża po zielonym `test.yml` (czerwony test wstrzymuje wdrożenie).
+  Ręczne wdrożenie (workflow_dispatch w Actions, tylko z `main`) omija test – używaj go świadomie. `pages.yml` pomija commit, który nie jest już końcówką `main`. Strona żywa nie jest osiągalna z sesji (proxy), testuj lokalnie.
 
 ## Jak zbudowany jest `zrodla/src/app.html`
 - Stan: `S = {plans, custom, settings}` (osobny dla każdej osoby), `SESS` (zapisane treningi), `ACTIVE` (trwający trening,

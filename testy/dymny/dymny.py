@@ -6,9 +6,11 @@ Opcje:  --silniki chromium,webkit   --zrzuty KATALOG   --chrome ŚCIEŻKA   --wy
 
 Co robi: buduje wersję testową (`python3 -I zrodla/build.py` → zrodla/dist/index.html), podaje ją stronie przez page.route
 (szkielet z regułą [hidden], jak w prawdziwej stronie), a potem w każdej konfiguracji (silnik × urządzenie × motyw)
-przechodzi scenariusz: dane z planu fbw2, wszystkie zakładki, krótki trening od „Start” do zapisu, wpis w Diecie.
-Po każdym kroku sprawdza: brak błędów strony (pageerror), brak przewijania w bok, brak „NaN” i „undefined” na ekranie,
-brak prób połączenia z Firebase. Zrzuty ekranu idą do katalogu zrzuty/ (artefakt w Actions).
+przechodzi scenariusz: dane z planu fbw2, wszystkie zakładki, dwa treningi od „Start” do zapisu (z odświeżeniem strony
+i sprawdzeniem trwałości), wpis i cele w Diecie. Dodatkowa konfiguracja ładuje prawdziwą stronę web/index.html.
+Po każdym kroku sprawdza: brak błędów strony (pageerror), brak przewijania w bok (względem szerokości okna z viewport_size),
+brak „NaN” i „undefined” na ekranie i w polach input/textarea, brak prób połączenia z Firebase (w konfiguracji web/ tylko
+zliczane); na końcu jeszcze raz strażnicy po krótkim odczekaniu (późny pageerror). Zrzuty ekranu idą do katalogu zrzuty/ (artefakt w Actions).
 
 Kroki „zapis: …” (A6) podstawiają sztuczny Firebase (zapis scalający, kolejka, nieudany zapis treningu, stara karta); krok „kopia zapasowa”
 porównuje eksport i import z plikiem testy/zapis/kopia_przed.json (eksport wykonany kodem z `main` @ e82b8c6 na stanie z kopia_stan.json).
@@ -18,6 +20,7 @@ Nowy błąd = nowy krok w tym teście. Błąd samej aplikacji, którego nie napr
 """
 import argparse
 import json
+import mimetypes
 import os
 import re
 import subprocess
@@ -125,8 +128,8 @@ def zbuduj():
 class Przebieg:
     """Jedna konfiguracja: silnik · urządzenie · motyw. Każdy krok sprawdza strażników i robi zrzut."""
 
-    def __init__(self, page, nazwa, strona_html, dzien_zrzutow, motyw):
-        self.page, self.nazwa, self.motyw = page, nazwa, motyw
+    def __init__(self, page, nazwa, strona_html, dzien_zrzutow, motyw, web=False):
+        self.page, self.nazwa, self.motyw, self.web = page, nazwa, motyw, web   # web: strona z web/ (z Firebase, które w teście jest odcięte)
         self.zrzuty = dzien_zrzutow
         self.zrzuty.mkdir(parents=True, exist_ok=True)
         self.n = 0
@@ -140,7 +143,15 @@ class Przebieg:
 
     def _trasa(self, route, html):
         url = route.request.url
-        if url.rstrip('/') == BASE:
+        if self.web and url.startswith(BASE + '/'):
+            sciezka = url[len(BASE) + 1:].split('?')[0].split('#')[0] or 'index.html'
+            plik = (REPO / 'web' / sciezka).resolve()
+            if plik.is_file() and REPO / 'web' in plik.parents:
+                typ = mimetypes.guess_type(plik.name)[0] or 'application/octet-stream'
+                route.fulfill(status=200, content_type=typ, body=plik.read_bytes())
+            else:
+                route.fulfill(status=404, body='')
+        elif url.rstrip('/') == BASE:
             route.fulfill(status=200, content_type='text/html; charset=utf-8', body=html)
         elif url.startswith(BASE + '/'):
             route.fulfill(status=404, body='')
@@ -163,17 +174,23 @@ class Przebieg:
         out = []
         if self.bledy_strony:
             out.append(('pageerror', 'błąd strony: ' + ' | '.join(self.bledy_strony[:3])))
-        if self.firebase:
+        if self.firebase and not self.web:   # prawdziwa strona próbuje wczytać Firebase; tu tylko to liczymy (wypisuje uruchom_silnik)
             out.append(('firebase', 'próba połączenia z Firebase: ' + ', '.join(self.firebase[:3])))
-        w = self.page.evaluate('''() => {
+        szer = self.page.viewport_size['width']   # przy is_mobile=True innerWidth rozszerza się do treści, więc porównujemy z oknem
+        w = self.page.evaluate('''(vw) => {
             const wid = (el) => el && !el.hidden && el.getClientRects().length > 0;
             const over = [];
-            if (document.documentElement.scrollWidth > innerWidth) over.push('strona ' + document.documentElement.scrollWidth + ' > ' + innerWidth);
+            if (document.documentElement.scrollWidth > vw) over.push('strona ' + document.documentElement.scrollWidth + ' > ' + vw);
             for (const id of ['workout', 'sheet']) { const el = document.getElementById(id); if (wid(el) && el.scrollWidth > el.clientWidth) over.push('#' + id + ' ' + el.scrollWidth + ' > ' + el.clientWidth); }
-            return {over, text: document.body.innerText};
-        }''')
+            const pola = [...document.querySelectorAll('input, textarea')].map(el => (el.id || el.name || el.tagName) + '=' + el.value).join('\\n');
+            return {over, text: document.body.innerText, pola};
+        }''', szer)
         if w['over']:
             out.append(('przewijanie', 'przewijanie w bok: ' + '; '.join(w['over'])))
+        m = NAPIS_ZLY.search(w['pola'])
+        if m:
+            i = m.start()
+            out.append(('napis', f'w polu formularza jest „{m.group(0)}”: …{w["pola"][max(0, i - 40):i + 40]!r}…'))
         m = NAPIS_ZLY.search(w['text'])
         if m:
             i = m.start()
@@ -213,11 +230,41 @@ class Przebieg:
         print(f'    ok  {nazwa} ({time.time() - t:.1f} s)')
 
 
+def bez_spacji(t):
+    return re.sub(r'\s+', '', t)
+
+
+def scenariusz_web(r):
+    """Prawdziwa strona (web/index.html) wymaga Firebase, którego test nie ma (sieć odcięta), więc kończy na wyborze konta:
+    sprawdzamy, że się uruchamia (brak pageerror, brak przewijania, brak NaN/undefined), prosi o konto i próbuje wczytać Firebase."""
+    page = r.page
+
+    def start():
+        page.goto(BASE + '/', wait_until='load')
+        expect(page.locator('body')).to_contain_text('Wybierz swoje konto')
+        expect(page.locator('body')).to_contain_text('Nie udało się połączyć z bazą')
+        assert any('firebase-app.js' in u for u in r.firebase), 'web/index.html nie próbował wczytać Firebase (zła strona w teście?)'
+    r.krok('web/: start strony (wybór konta, Firebase odcięty)', start, 'web-start')
+
+    def pozno():
+        page.wait_for_timeout(1500)
+    r.krok('web/: koniec, odczekanie i ponowna kontrola strażników', pozno, 'web-koniec')
+
+
 def scenariusz(r):
+    if r.web:
+        return scenariusz_web(r)
     page = r.page
     ukryte = lambda sel: expect(page.locator(sel)).to_be_hidden()
     widoczne = lambda sel: expect(page.locator(sel).first).to_be_visible()
     zakladka = lambda id_: (r.klik(f'#tabbar a[href="#{id_}"]'), expect(page.locator(f'#tabbar a[href="#{id_}"]')).to_have_attribute('aria-current', 'page'))
+
+    def plan_testowy(widok_start=True):
+        # ciężar 20 kg w każdej serii, żeby objętość treningu była niezerowa (szablon ma kg = null)
+        n = page.evaluate("() => { S.plans = templatePlans(TEMPLATES.find(t => t.id === 'fbw2')); S.plans.forEach(d => d.items.forEach(i => i.sets.forEach(q => { q.kg = 20; }))); render(); return S.plans.length; }")
+        assert n == 2, f'plan fbw2 ma {n} dni zamiast 2'
+        if widok_start:   # po odświeżeniu otwarta jest zakładka Historia, więc przycisków „Start” tam nie ma
+            expect(page.locator('[data-act="startPlan"]')).to_have_count(2)
 
     def start():
         page.goto(BASE + '/', wait_until='load')
@@ -226,12 +273,7 @@ def scenariusz(r):
         ciemny = page.evaluate("matchMedia('(prefers-color-scheme: dark)').matches")
         assert ciemny == (r.motyw == 'dark'), f'motyw nie zastosowany (ciemny={ciemny})'
     r.krok('start strony', start, 'start')
-
-    def dane():
-        n = page.evaluate("() => { S.plans = templatePlans(TEMPLATES.find(t => t.id === 'fbw2')); render(); return S.plans.length; }")
-        assert n == 2, f'plan fbw2 ma {n} dni zamiast 2'
-        expect(page.locator('[data-act="startPlan"]')).to_have_count(2)
-    r.krok('dane testowe (plan fbw2)', dane, 'trening-plany')
+    r.krok('dane testowe (plan fbw2)', plan_testowy, 'trening-plany')
 
     def plany():
         zakladka('plany')
@@ -258,52 +300,68 @@ def scenariusz(r):
         widoczne('.dt-sum')
     r.krok('zakładka Dieta (bez wpisów)', dieta_pusta, 'dieta-pusta')
 
-    def trening_start():
-        zakladka('trening')
-        r.klik('[data-act="startPlan"]')
-        expect(page.locator('#workout')).to_be_visible()
-        expect(page.locator('#workout .wex').first).to_be_visible()
-    r.krok('trening: Start', trening_start, 'trening-start')
+    # ---- trening (wykonywany dwa razy: dzień A planu) ----
+    def trening(nr):
+        def start_():
+            zakladka('trening')
+            r.klik('[data-act="startPlan"]')
+            expect(page.locator('#workout')).to_be_visible()
+            expect(page.locator('#workout .wex').first).to_be_visible()
+        r.krok(f'trening {nr}: Start', start_, f'trening{nr}-start')
 
-    def serie():
-        for i in range(4):
-            r.klik('#workout .chk[data-act="toggleSet"][aria-pressed="false"]')
-            expect(page.locator('#workout .chk[data-act="toggleSet"][aria-pressed="true"]')).to_have_count(i + 1)
-    r.krok('trening: odhaczenie 4 serii', serie, 'trening-serie')
+        def serie():
+            for i in range(4):
+                r.klik('#workout .chk[data-act="toggleSet"][aria-pressed="false"]')
+                expect(page.locator('#workout .chk[data-act="toggleSet"][aria-pressed="true"]')).to_have_count(i + 1)
+        r.krok(f'trening {nr}: odhaczenie 4 serii', serie, f'trening{nr}-serie')
 
-    def zakoncz():
-        r.klik('#workout [data-act="finishOpen"]')
-        expect(page.locator('#sheet [data-act="finishSave"]')).to_be_enabled()
-    r.krok('trening: Zakończ', zakoncz, 'trening-zakonczenie')
+        def zakoncz():
+            r.klik('#workout [data-act="finishOpen"]')
+            expect(page.locator('#sheet [data-act="finishSave"]')).to_be_enabled()
+        r.krok(f'trening {nr}: Zakończ', zakoncz, f'trening{nr}-zakonczenie')
 
-    def zapis():
-        r.klik('#sheet [data-act="finishSave"]')
-        page.wait_for_function('SESS.length === 1 && !ACTIVE')
-        ukryte('#workout')
-        widoczne('#sheet .tiles')
-    r.krok('trening: zapis', zapis, 'trening-podsumowanie')
+        def zapis():
+            r.klik('#sheet [data-act="finishSave"]')
+            page.wait_for_function(f'SESS.length === {nr} && !ACTIVE')
+            ukryte('#workout')
+            widoczne('#sheet .tiles')
+        r.krok(f'trening {nr}: zapis', zapis, f'trening{nr}-podsumowanie')
 
-    def zamknij_podsumowanie():
-        r.klik('#sheet [data-act="closeSheet"]')
-        ukryte('#sheet-wrap')
-        expect(page.locator('#view')).to_contain_text('Ostatnio')
-    r.krok('trening: powrót na ekran główny', zamknij_podsumowanie, 'trening-po-zapisie')
+        def zamknij_podsumowanie():
+            r.klik('#sheet [data-act="closeSheet"]')
+            ukryte('#sheet-wrap')
+            expect(page.locator('#view')).to_contain_text('Ostatnio')
+        r.krok(f'trening {nr}: powrót na ekran główny', zamknij_podsumowanie, f'trening{nr}-po-zapisie')
 
-    def historia():
+    def kafelek(nazwa):
+        return page.locator('#sheet .tile', has=page.locator('.l', has_text=nazwa)).locator('.v')
+
+    def historia_treningi(n):
         zakladka('historia')
-        expect(page.locator('.sess')).to_have_count(1)
+        r.klik('[data-act="hist"][data-v="treningi"]')
+        expect(page.locator('.sess')).to_have_count(n)
         expect(page.locator('.sess').first).to_contain_text('FBW A')
-    r.krok('Historia: Treningi (trening widoczny)', historia, 'historia-treningi')
+
+    def historia(n):
+        def f():
+            historia_treningi(n)
+        return f
 
     def sesja():
         r.klik('.sess')
         widoczne('#sheet .tiles')
         expect(page.locator('#sheet')).to_contain_text('FBW A')
-    r.krok('Historia: szczegóły treningu', sesja, 'historia-trening')
-
+        expect(kafelek('Serie')).to_have_text('4')   # 4 odhaczone serie, nie tylko tytuł „FBW A”
+        assert page.locator('#sheet .set-list span').count() == 4, 'szczegóły treningu: oczekiwano 4 serii na liście'
+        obj = int(re.sub(r'\D', '', kafelek('Objętość').inner_text().split('kg')[0]) or 0)
+        assert obj == 640, f'szczegóły treningu: objętość {obj} kg zamiast 640 (4 serie × 8 powt. × 20 kg)'
     def zamknij():
         r.klik('#sheet [data-act="closeSheet"]')
         ukryte('#sheet-wrap')
+
+    trening(1)
+    r.krok('Historia: Treningi (trening widoczny)', historia(1), 'historia-treningi')
+    r.krok('Historia: szczegóły treningu (4 serie)', sesja, 'historia-trening')
     r.krok('Historia: zamknięcie szczegółów', zamknij)
 
     for v, nazwa in (('tydzien', 'Tydzień'), ('postepy', 'Postępy')):
@@ -316,6 +374,29 @@ def scenariusz(r):
                 expect(page.locator('#view')).to_contain_text('Wykres pojawi się po drugim treningu')
         r.krok(f'Historia: {nazwa}', widok, 'historia-' + v)
 
+    def odswiez_historia():
+        page.reload(wait_until='load')
+        expect(page.locator('#tabbar a.tab')).to_have_count(5)
+        assert page.evaluate('SESS.length') == 1, 'po odświeżeniu zniknął zapisany trening'
+        historia_treningi(1)
+        r.klik('.sess')
+        expect(kafelek('Serie')).to_have_text('4')
+        zamknij()
+    r.krok('trwałość: po odświeżeniu Historia ma trening (4 serie)', odswiez_historia, 'historia-po-odswiezeniu')
+
+    r.krok('dane testowe po odświeżeniu (plan fbw2)', lambda: plan_testowy(False))
+    trening(2)
+    r.krok('Historia: Treningi (dwa treningi)', historia(2), 'historia-treningi-2')
+
+    def wykres():
+        r.klik('[data-act="hist"][data-v="postepy"]')
+        widoczne('#progex')
+        expect(page.locator('#view')).not_to_contain_text('Wykres pojawi się po drugim treningu')
+        expect(page.locator('#view .chart svg').first).to_be_visible()
+        assert page.locator('#view .chart svg *').count() > 3, 'wykres Postępów jest pusty'
+    r.krok('Historia: Postępy (wykres po drugim treningu)', wykres, 'historia-postepy-wykres')
+
+    # ---- dieta ----
     def dieta_wpis():
         zakladka('dieta')
         r.klik('[data-act="dietAdd"]')
@@ -328,8 +409,39 @@ def scenariusz(r):
         r.klik('#sheet [data-act="dkSave"]')
         ukryte('#sheet-wrap')
         expect(page.locator('.dt-meal').first).to_contain_text('Test dymny')
-        expect(page.locator('.dt-sum')).to_contain_text('350')
+        expect(page.locator('.dt-sum .big')).to_have_text(re.compile(r'^\s*350\s*$'))
+        expect(page.locator('.dt-sum')).to_contain_text(re.compile(r'Białko\s*20\s*g'))
     r.krok('Dieta: szybki wpis', dieta_wpis, 'dieta-po-wpisie')
+
+    def dieta_trwalosc():
+        page.reload(wait_until='load')
+        expect(page.locator('#tabbar a.tab')).to_have_count(5)
+        zakladka('dieta')
+        expect(page.locator('.dt-meal').first).to_contain_text('Test dymny')
+        expect(page.locator('.dt-sum .big')).to_have_text(re.compile(r'^\s*350\s*$'))
+        expect(page.locator('.dt-sum')).to_contain_text(re.compile(r'Białko\s*20\s*g'))
+        zakladka('historia')
+        r.klik('[data-act="hist"][data-v="treningi"]')
+        expect(page.locator('.sess')).to_have_count(2)
+    r.krok('trwałość: po odświeżeniu lista Diety i Historia', dieta_trwalosc, 'dieta-po-odswiezeniu')
+
+    def dieta_cele():
+        zakladka('dieta')
+        r.klik('.dt-sum [data-act="dietGoals"]')
+        r.klik('#dg-k')
+        page.fill('#dg-k', '2000')
+        page.fill('#dg-b', '120')
+        page.fill('#dg-w', '200')
+        page.fill('#dg-t', '70')
+        r.klik('#sheet [data-act="dgSave"]')
+        ukryte('#sheet-wrap')
+        sum_ = bez_spacji(page.locator('.dt-sum').inner_text())
+        assert '350/2000' in sum_, f'cel kcal nie widać w podsumowaniu: {sum_[:80]!r}'
+        assert 'zostało1650' in sum_, f'brak „zostało 1650” w podsumowaniu: {sum_[:120]!r}'
+        assert page.locator('.dt-sum .dt-meter').count() >= 4, 'brak pasków postępu celów'
+        assert page.locator('.dt-sum .dt-meter:not(.sm) i').first.evaluate('e => e.style.width') == '18%', 'pasek kcal: 350/2000 powinno dać 18%'
+        expect(page.locator('.dt-sum .dt-left')).to_contain_text(re.compile(r'zostało\s*100\s*g'))
+    r.krok('Dieta: ustawienie celu (paski, „zostało”)', dieta_cele, 'dieta-cele')
 
     # ---- A6: zapis planów i treningów (sztuczny Firebase) ----
     def zapis_scalanie():
@@ -423,6 +535,11 @@ def scenariusz(r):
         assert wynik['ust'] == przed['state']['settings'] and wynik['tab'] and wynik['bezU'], f'import kopii (ustawienia/tablica): {wynik}'
     r.krok('kopia zapasowa: eksport i import jak przed zmianą (porównanie z main)', kopia_przed_i_po, 'kopia-po-imporcie')
 
+    # ---- na koniec: krótkie odczekanie i jeszcze raz strażnicy (późny pageerror) ----
+    def pozno():
+        page.wait_for_timeout(1500)
+    r.krok('koniec: odczekanie i ponowna kontrola strażników', pozno, 'koniec')
+
 
 def uruchom_silnik(pw, silnik, args, strona_html):
     wyniki = []
@@ -442,23 +559,28 @@ def uruchom_silnik(pw, silnik, args, strona_html):
         print(f'  {silnik}: POMINIĘTO (silnik niedostępny lokalnie: {powod})')
         return [(f'{silnik}', None, 'pominięto')]
     try:
-        for urz, ctx_opcje in urzadzenia(pw).items():
-            for motyw, schemat in MOTYWY.items():
-                nazwa = f'{silnik} · {urz} · {motyw}'
-                print(f'  [{nazwa}]')
-                ctx = browser.new_context(color_scheme=schemat, locale='pl-PL', **ctx_opcje)
-                page = ctx.new_page()
-                katalog = Path(args.zrzuty) / f'{silnik}-{urz.replace(" ", "-")}-{motyw}'
-                r = Przebieg(page, nazwa, strona_html, katalog, schemat)
-                t = time.time()
-                try:
-                    scenariusz(r)
-                    wyniki.append((nazwa, True, f'{time.time() - t:.1f} s' + (f', znane błędy: {len(r.znane)}' if r.znane else '')))
-                except Porazka as e:
-                    print('    BŁĄD ' + str(e))
-                    wyniki.append((nazwa, False, str(e)))
-                finally:
-                    ctx.close()
+        konfiguracje = [(urz, motyw, ctx_opcje, False) for urz, ctx_opcje in urzadzenia(pw).items() for motyw in MOTYWY]
+        if silnik == 'chromium':   # jedna konfiguracja na prawdziwej stronie z web/ (a nie z wersji testowej)
+            konfiguracje.append(('390x844 · web/', 'jasny', urzadzenia(pw)['390x844'], True))
+        for urz, motyw, ctx_opcje, web in konfiguracje:
+            schemat = MOTYWY[motyw]
+            nazwa = f'{silnik} · {urz} · {motyw}'
+            print(f'  [{nazwa}]')
+            ctx = browser.new_context(color_scheme=schemat, locale='pl-PL', **ctx_opcje)
+            page = ctx.new_page()
+            katalog = Path(args.zrzuty) / f'{silnik}-{re.sub(r"[^0-9A-Za-z]+", "-", urz)}-{motyw}'
+            r = Przebieg(page, nazwa, strona_html, katalog, schemat, web)
+            t = time.time()
+            try:
+                scenariusz(r)
+                if web:
+                    print(f'    (web/: próby połączenia z Firebase odcięte: {len(r.firebase)})')
+                wyniki.append((nazwa, True, f'{time.time() - t:.1f} s' + (f', znane błędy: {len(r.znane)}' if r.znane else '')))
+            except Porazka as e:
+                print('    BŁĄD ' + str(e))
+                wyniki.append((nazwa, False, str(e)))
+            finally:
+                ctx.close()
     finally:
         browser.close()
     return wyniki

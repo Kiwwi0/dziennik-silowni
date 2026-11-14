@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.ref }}
+  group: test-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,7 +44,7 @@ jobs:
             exit 1
           fi
           python3 -I testy/porownaj_png.py
-          if [ -n "$(git status --porcelain --untracked-files=all web/ | grep -v '\.png$' || true)" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=all web/ | grep -v '^ M .*\.png$' || true)" ]; then
             git status --porcelain --untracked-files=all web/
             echo "::error::Budowanie utworzyło pliki spoza repozytorium w web/. Zatwierdź je albo usuń ze źródeł."
             exit 1
