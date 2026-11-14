@@ -820,7 +820,8 @@ const store = {mode:FIRE ? 'fire' : 'local', ready:false, slow:false, db:null, u
 /* Silnik zapisu planów (A6, zrodla/src/zapis.js, plan: zrodla/plany/A6-zapis-planow-i-treningow.md): kolejka zmian osobna dla konta w localStorage (`zq`). */
 const zKey = fid => `dz.f.${fid}.zq`;
 let Z = ZP.fixZ(FIRE && FOLDER ? LS.get(zKey(FOLDER.id), null) : null), zLast = ZP.snap(S);
-let zBusy = false, zRetryT = null, zRetryN = 0, zWarned = false, zMirrorAt = 0, zMirrorWarned = false, zLay = 'empty', zTombs = {pt:{}, ct:{}}, zRenderT = null;
+const zBusy = ZP.newBusy();   // zajętość zapisu osobno dla każdego konta
+let zRetryT = null, zRetryN = 0, zWarned = false, zMirrorAt = 0, zMirrorWarned = false, zLay = 'empty', zTombs = {pt:{}, ct:{}}, zRenderT = null;
 const getEx = id => EXMAP.get(id) || S.custom.find(c => c.id === id) || {id, name:'Usunięte ćwiczenie', group:'', equipment:'', mode:'reps', primary:[], secondary:[], steps:[], tips:[], missing:true};
 const hasImg = id => EXMAP.has(id);
 const planById = id => S.plans.find(p => p.id === id);
@@ -848,36 +849,37 @@ function persist(){
 const zStateRef = fid => FB.doc(FB.db, 'folders', fid, 'data', 'state');
 const zSaveFor = (fid, z) => LS.set(zKey(fid), z);
 const zUnDel = v => v && typeof v === 'object' ? (v.__del ? FB.deleteField() : Array.isArray(v) ? v.map(zUnDel) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, zUnDel(x)]))) : v;
-function zFailed(e, quiet){
-  zBusy = false;
+function zFailed(fid, quiet){
+  zBusy.free(fid);
   if (!quiet && !zWarned){ zWarned = true; toast('Nie udało się zapisać zmian w bazie. Spróbuję ponownie.'); }
   clearTimeout(zRetryT); zRetryT = setTimeout(flushFire, ZP.backoff(zRetryN++));
 }
 function flushFire(){
-  if (!fireOn() || zBusy || ZP.emptyQ(Z.q)) return;
+  if (!fireOn() || ZP.emptyQ(Z.q)) return;
   const z = Z, fid = FOLDER.id, ref = zStateRef(fid);
-  zBusy = true;
-  const done = (sent, written) => { ZP.afterSend(z, sent, written); ZP.saveZ(LS, zKey(fid), z, sent); zBusy = false; zRetryN = 0; zWarned = false; if (Z === z && FOLDER && FOLDER.id === fid && !ZP.emptyQ(z.q)) flushFire(); };
+  if (!zBusy.take(fid)) return;
+  // po wysyłce kolejka idzie do localStorage tylko, gdy to nadal bieżące Z (konto mogło zostać otwarte od nowa); kolejny zapis dotyczy bieżącego Z
+  const done = (sent, written) => { ZP.settle(LS, zKey(fid), Z, z, sent, written); zBusy.free(fid); zRetryN = 0; zWarned = false; if (FOLDER && FOLDER.id === fid && !ZP.emptyQ(Z.q)) flushFire(); };
   if (zLay === 'v3'){
     // zwykły zapis: tylko zmienione pozycje (mergeFields zastępuje wskazane pole w całości, reszta dokumentu zostaje)
     const bw = ZP.buildWrite(S, z.q, Date.now(), {tombs:zTombs});
-    if (!bw){ if (z.q.m){ flushMirror(z, fid, ref); return; } zBusy = false; return; }   // zostało tylko odświeżenie lustra starego układu
-    FB.setDoc(zStateRef(fid), zUnDel(bw.data), {mergeFields:bw.fields}).then(() => done(bw.sent), zFailed);
+    if (!bw){ if (z.q.m){ flushMirror(z, fid, ref); return; } zBusy.free(fid); return; }   // zostało tylko odświeżenie lustra starego układu
+    FB.setDoc(zStateRef(fid), zUnDel(bw.data), {mergeFields:bw.fields}).then(() => done(bw.sent), () => zFailed(fid));
     syncShares();
   } else {
     // migracja ze starego układu i naprawa po starej karcie: transakcja (czyta świeży dokument, scala, zapisuje całość); wymaga sieci
-    if (typeof navigator !== 'undefined' && navigator.onLine === false){ zBusy = false; return; }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false){ zBusy.free(fid); return; }
     FB.runTransaction(FB.db, async tx => {
       const snap = await tx.get(ref), r = ZP.migrate(S, z, snap.exists() ? snap.data() : null, Date.now(), d => normalize(d));
       if (!r.noop) tx.set(ref, r.doc);
       return r;
     }).then(r => {
       zLay = 'v3';
-      if (r.noop){ z.q.f = 0; zSaveFor(fid, z); zBusy = false; flushFire(); return; }
+      if (r.noop){ z.q.f = 0; if (Z === z) zSaveFor(fid, z); zBusy.free(fid); flushFire(); return; }
       done(r.sent, r.written); syncShares();
       if (r.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
       if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');
-    }, zFailed);
+    }, () => zFailed(fid));
   }
 }
 /* Lustro starego układu (plans/custom dla starych kart) zapisuje osobna transakcja: czyta dokument i zapisuje lustro tylko, gdy dokument ma `full`
@@ -890,10 +892,10 @@ function flushMirror(z, fid, ref){
     else if (p.action === 'drop') tx.update(ref, {plans:FB.deleteField(), custom:FB.deleteField()});   // za duży dokument: stare lustro znika
     return p;
   }).then(p => {
-    ZP.afterMirror(z, m); ZP.saveZ(LS, zKey(fid), z, {m}); zBusy = false; zRetryN = 0; zWarned = false;
+    ZP.afterMirror(z, m); if (Z === z) ZP.saveZ(LS, zKey(fid), z, {m}); zBusy.free(fid); zRetryN = 0; zWarned = false;
     if (p.tooBig && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
-    if (Z === z && FOLDER && FOLDER.id === fid && !ZP.emptyQ(z.q)) flushFire();
-  }, () => zFailed(null, true));
+    if (FOLDER && FOLDER.id === fid && !ZP.emptyQ(Z.q)) flushFire();
+  }, () => zFailed(fid, true));
 }
 async function flush(){
   if (store.mode === 'fire'){ flushFire(); return; }
@@ -1070,7 +1072,7 @@ function openFolder(f){
   if (unsubState) unsubState(); if (unsubSess) unsubSess();
   FOLDER = {id:f.id, name:f.name}; LS.set('dz.folder', FOLDER);
   S = normalize(LS.get(lsKey('state'), null)); SESS = sortSess(LS.get(lsKey('sessions'), []));
-  Z = ZP.fixZ(LS.get(zKey(f.id), null)); zLast = ZP.snap(S); zLay = 'empty'; zTombs = {pt:{}, ct:{}}; zBusy = false; zRetryN = 0; zWarned = false; zMirrorAt = 0; clearTimeout(zRetryT); clearTimeout(zRenderT);
+  Z = ZP.fixZ(LS.get(zKey(f.id), null)); zLast = ZP.snap(S); zLay = 'empty'; zTombs = {pt:{}, ct:{}}; zRetryN = 0; zWarned = false; zMirrorAt = 0; clearTimeout(zRetryT); clearTimeout(zRenderT);
   store.ready = false; store.dirty = false; ui.planId = null; ui.openItem = null; shareKnown = null; shareSent.clear();
   const fid = f.id;
   dietOpen(fid);

@@ -543,5 +543,21 @@ test('21. limit rozmiaru liczony w bajtach UTF-8 całego dokumentu (pm + lustro 
   const wiel = plan('PW', 'zażółć gęślą jaźń'); assert.equal(ZP.mirrorPatch({v:3, full:1, pm:{PW:{...wiel, u:1}}, po:['PW'], pos:1, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{}, plans:[wiel], custom:[]}).action, 'same');
 });
 
+test('22. zajętość zapisu osobno dla konta; po wysyłce kolejka idzie do localStorage tylko, gdy to nadal bieżące Z', () => {
+  const b = ZP.newBusy();
+  assert.equal(b.take('A'), true); assert.equal(b.take('A'), false, 'to samo konto: drugi zapis czeka'); assert.equal(b.take('B'), true, 'inne konto nie jest zablokowane przez zapis konta A');
+  b.free('A'); assert.equal(b.has('A'), false); assert.equal(b.has('B'), true); b.free('B'); assert.equal(b.take('A'), true);
+  // konto zamknięte i otwarte ponownie w trakcie wysyłki: stare Z kończy wysyłkę, ale nie nadpisuje zapisanej kolejki nowego Z
+  const ls = wspolnyLS(), key = 'dz.f.A.zq', stored = () => ZP.fixZ(ls.get(key, null));
+  const stare = ZP.fixZ(null); stare.q.p.P1 = 100; ZP.saveZ(ls, key, stare);
+  const nowe = ZP.fixZ(ls.get(key, null)); nowe.q.p.P9 = 300; ZP.saveZ(ls, key, nowe);
+  const sent = {p:{P1:100}, pd:{}, c:{}, cd:{}, s:{}, po:0, co:0, f:0, m:0};
+  const przed = ls.mem[key];
+  ZP.settle(ls, key, nowe, stare, sent, undefined, 400);                        // stare Z (nie bieżące) kończy wysyłkę
+  assert.equal(ls.mem[key], przed, 'localStorage nietknięty przez nieaktualne Z'); assert.deepEqual(stare.q.p, {}, 'ale stare Z zdjęło wysłany wpis z własnej kolejki');
+  ZP.settle(ls, key, nowe, nowe, {...sent, p:{P9:300}}, undefined, 500);       // bieżące Z kończy wysyłkę
+  assert.deepEqual(stored().q.p, {P1:100}, 'bieżące Z zapisuje: wysłane P9 zeszło, P1 (wysłane przez stare Z) zostaje do bezpiecznego ponowienia');
+});
+
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
 process.exit(bledy ? 1 : 0);

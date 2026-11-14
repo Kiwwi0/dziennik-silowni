@@ -331,6 +331,17 @@ const ZP = (() => {
     kn.v3 = !!(st.kn.v3 || z.kn.v3); kn.pt = {...st.kn.pt, ...z.kn.pt}; kn.ct = {...st.kn.ct, ...z.kn.ct}; kn.h = z.kn.h || kn.h;
     const out = {q, kn}; ls.set(key, out); return out;
   }
+  /* Zajętość zapisu osobno dla każdego konta: trwająca wysyłka jednego konta nie blokuje drugiego, a ponownie otwarte konto nie wysyła w tym samym czasie drugi raz. */
+  function newBusy(){
+    const set = new Set();
+    return {has:id => set.has(id), take:id => (set.has(id) ? false : (set.add(id), true)), free:id => { set.delete(id); }};
+  }
+  /* Koniec udanej wysyłki: wpisy znikają z kolejki wysyłającego Z; do localStorage trafia ona tylko, gdy to nadal bieżące Z
+     (konto mogło zostać zamknięte i otwarte od nowa – wtedy stare Z nie nadpisuje zapisanej kolejki nowego). */
+  function settle(ls, key, current, z, sent, written, now){
+    afterSend(z, sent, written, now);
+    if (current === z) saveZ(ls, key, z, sent);
+  }
   const BACKOFF = [2000, 5000, 15000, 60000];
   const backoff = n => BACKOFF[Math.min(Math.max(0, n | 0), BACKOFF.length - 1)];
 
@@ -352,7 +363,7 @@ const ZP = (() => {
   }
   const without = (arr, id) => (arr || []).filter(x => x !== id);
 
-  return {DEL, KINDS, TOMB_TTL, DOC_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, split, join, snap, diff, layout,
+  return {DEL, KINDS, TOMB_TTL, DOC_MAX, emptyQueue, emptyKnown, newZ, fixZ, emptyQ, stampQ, mergeQ, saveZ, newBusy, settle, split, join, snap, diff, layout,
     same:(a, b) => J(a) === J(b), remoteV3, remoteOld, rememberTombs, tombInfo, merge, buildWrite, mirrorOf, mirrorPatch, afterMirror, fullDoc, migrate, afterSend, checkMirror, backoff, mergeSessions, without};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = ZP;

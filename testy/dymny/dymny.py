@@ -497,7 +497,7 @@ def scenariusz(r):
           // 6. zamknięcie karty z niewysłaną zmianą: kolejka i stan z pamięci przeglądarki, po ponownym otwarciu zmiana idzie do bazy
           sv.fail = true; S.plans.find(p => p.id === 'P2').name = 'po zamknięciu'; persist(); await sleep(900);
           out.zapisana = Object.keys(LS.get('dz.f.t1.zq', {q:{p:{}}}).q.p);
-          sv.fail = false; clearTimeout(zRetryT); zBusy = false;
+          sv.fail = false; clearTimeout(zRetryT); zBusy.free('t1');
           openFolder(FOLDER); sv.emit(); await sleep(500); sv.emit(); await sleep(60);
           out.poOtwarciu = {serwer:sv.doc.pm.P2.name, lokalnie:S.plans.find(p => p.id === 'P2').name};
           return out;
