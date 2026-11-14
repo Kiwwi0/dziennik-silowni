@@ -155,8 +155,7 @@ const ZP = (() => {
         const l = Li[id], pend = E[id], pdel = D[id], kt = kn[K.t] && kn[K.t][id], tomb = R.mode === 'v3' && kt !== undefined && !(Rt[id] >= kt) ? kt : Rt[id];   // A6f: w v3 najnowszy znany nagrobek (baza albo pamięć urządzenia)
         let r = Ri[id], hid = false;
         if (r && R.mode === 'v3' && tomb !== undefined && tomb > r.u){ r = undefined; hid = true; }   // starsza wersja pod nagrobkiem = usunięte
-        if (pdel !== undefined && l && KN[id] !== undefined && KN[id] > pdel){ delete D[id]; notes.push({t:'stale-delete', kind:K.k, id}); }   // A6f: usunięcie starsze niż znana wersja (np. przejęte z innej karty) jest nieaktualne – pozycja zostaje, dalej jak bez wpisu
-        else if (pdel !== undefined){                              // lokalnie usunięte, czeka wysyłka
+        if (pdel !== undefined){                                   // lokalnie usunięte, czeka wysyłka
           if (r && r.u > pdel){ out[id] = r.item; KN[id] = r.u; delete D[id]; notes.push({t:'restored', kind:K.k, id}); }
           else delete KN[id];
           continue;
@@ -436,7 +435,7 @@ const ZP = (() => {
       for (const [id, u] of Object.entries(mq[K.k])) if (q[K.k][id] !== u && B[K.k][id]) out[K.k][id] = B[K.k][id];
       for (const [id, ts] of Object.entries(mq[K.d])) if (q[K.d][id] !== ts) delete out[K.k][id];
       const mk = mkn[K.k] || {}, ok = kn[K.k] || {}, mt = mkn[K.t] || {}, ot = kn[K.t] || {};
-      for (const [id, ts] of [...Object.entries(q[K.d]), ...Object.entries(mq[K.d])])   // A6f: usunięcie starsze niż znana wersja jest nieaktualne – pozycja zostaje w stanie (merge rozstrzyga je jako stale-delete)
+      for (const [id, ts] of [...Object.entries(q[K.d]), ...Object.entries(mq[K.d])])   // A6f: usunięcie starsze niż znana wersja jest nieaktualne – pozycja zostaje w zapisanym stanie (transakcja i nasłuch rozstrzygają je jako restored)
         if (!(id in out[K.k]) && (mk[id] ?? -1) > ts && B[K.k][id]) out[K.k][id] = B[K.k][id];
       for (const [id, u] of Object.entries(mk))                      // druga karta wysłała nowszą wersję: wpis zszedł z kolejki, ale znany czas został
         if (id in A[K.k] && u > (ok[id] ?? -1) && q[K.k][id] === undefined && q[K.d][id] === undefined && B[K.k][id]) out[K.k][id] = B[K.k][id];   // A6e: tylko pozycje, które ta karta ma (saveZ nie kasuje kn.p – bez tego wracał plan usunięty na innym urządzeniu)
