@@ -871,9 +871,10 @@ function flushFire(){
     if (typeof navigator !== 'undefined' && navigator.onLine === false){ zBusy.free(fid); return; }
     FB.runTransaction(FB.db, async tx => {
       const snap = await tx.get(ref), r = ZP.migrate(S, z, snap.exists() ? snap.data() : null, Date.now(), d => normalize(d));
-      if (!r.noop) tx.set(ref, r.doc);
+      if (!r.noop && !r.hold) tx.set(ref, r.doc);
       return r;
     }).then(r => {
+      if (r.hold){ zBusy.free(fid); return; }   // dokument nieznanego kształtu (bez plans i pm): nie nadpisujemy go, zmiany czekają w kolejce
       zLay = 'v3';
       if (r.noop){ z.q.f = 0; if (Z === z) zSaveFor(fid, z); zBusy.free(fid); flushFire(); return; }
       done(r.sent, r.written); syncShares();

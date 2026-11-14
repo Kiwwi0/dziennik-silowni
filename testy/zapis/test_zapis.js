@@ -68,6 +68,7 @@ class Urz {
     }
     if (!this.online) return false;                                       // migracja = transakcja, wymaga sieci
     const tx = ZP.migrate(this.S, this.z, this.sv.get(), this.now, doc => ({plans:doc.plans || [], custom:doc.custom || [], settings:{...blank().settings, ...(doc.settings || {})}}));
+    if (tx.hold) return false;                                            // dokument nietypowy: migracja wstrzymana, zmiany czekają w kolejce
     if (tx.noop){ this.z.q.f = 0; this.lay = 'v3'; return this.wyslij(); }        // ktoś już naprawił: zwykły zapis
     this.sv.setFull(tx.doc); ZP.afterSend(this.z, tx.sent, tx.written); this.lay = 'v3'; if (tx.repaired) this.repaired++;
     return true;
@@ -577,6 +578,22 @@ test('24. usunięcie konta kasuje też kolejkę zapisu (.zq) i listę niewysłan
   ZP.accountKeys('A').forEach(k => ls.del(k));
   assert.ok(!('dz.f.A.zq' in ls.mem) && !('dz.f.A.unsent' in ls.mem), 'klucze usuniętego konta zniknęły');
   assert.ok('dz.f.B.zq' in ls.mem && 'dz.f.B.unsent' in ls.mem && 'dz.f.A.state' in ls.mem, 'cudze i inne klucze nietknięte (te kasuje osobno istniejący kod)');
+});
+
+test('25. migracja wstrzymana, gdy dokument nie ma ani tablicy plans, ani pm (nie nadpisujemy dokumentu nieznanego kształtu)', () => {
+  const sv = new Serwer(), ust = {restSet:60};
+  sv.doc = {settings:ust};                                                      // dokument istnieje, ale bez planów i bez układu v3 (np. zapis częściowy)
+  const d = new Urz('tel', sv, {plans:[plan('P1', 'lokalny')], custom:[], settings:{restSet:90, sound:true}});
+  d.edit(S => { byId(S, 'P1').name = 'zmiana czeka'; }); d.odbierz();
+  const tx = ZP.migrate(d.S, d.z, sv.get(), clock.t); assert.equal(tx.hold, true); assert.equal(tx.doc, undefined);
+  assert.equal(d.wyslij(), false); assert.equal(sv.zapisy.length, 0, 'nic nie zapisano'); assert.deepEqual(sv.get(), {settings:ust});
+  assert.ok(d.z.q.p.P1 > 0, 'zmiana czeka w kolejce');
+  for (const dok of [{}, {v:2}, {plans:'nie tablica'}, {pm:[]}]) assert.equal(ZP.migrate(d.S, d.z, dok, clock.t).hold, true, JSON.stringify(dok));
+  // dokument ze starym układem (nawet pustą tablicą plans) albo z pm – migracja idzie; brak dokumentu = nowe konto, też idzie
+  for (const dok of [{v:2, plans:[], custom:[], settings:{}}, {pm:{}, settings:{}}]) assert.ok(!ZP.migrate(d.S, d.z, dok, clock.t).hold, JSON.stringify(dok));
+  assert.ok(!ZP.migrate(d.S, d.z, null, clock.t).hold);
+  sv.doc = {settings:ust, plans:[plan('P1', 'lokalny')], custom:[]};              // dokument dostał tablicę plans: migracja rusza
+  assert.equal(d.wyslij(), true); assert.equal(ZP.layout(sv.doc), 'v3'); assert.equal(sv.doc.pm.P1.name, 'zmiana czeka');
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);

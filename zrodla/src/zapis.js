@@ -273,6 +273,8 @@ const ZP = (() => {
   function migrate(S, z, doc, now, normOld){
     const lay = layout(doc);
     if (lay === 'v3') return {layout:'v3', noop:true};              // ktoś już naprawił dokument: dalej zwykły zapis scalający
+    // dokument istnieje, ale nie ma ani tablicy plans (stary układ), ani pm (v3): nieznany kształt – nie nadpisujemy go; zmiany czekają w kolejce
+    if (lay === 'old' && !Array.isArray(doc.plans) && !isObj(doc.pm)) return {layout:'old', hold:true};
     let R;
     if (lay === 'old') R = remoteOld(normOld ? normOld(doc) : S, z.kn.v3, {pt:z.kn.pt, ct:z.kn.ct});
     else R = {mode:'v2', s:{}, p:{}, po:[], pos:0, pt:{}, c:{}, co:[], cos:0, ct:{}};
