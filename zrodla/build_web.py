@@ -136,6 +136,7 @@ for name, size in [('icon-192.png', 192), ('icon-512.png', 512), ('apple-touch-i
 core = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png']
 sw = f'''// Pozwala korzystać z aplikacji bez internetu (np. na siłowni).
 const VERSION = 'dziennik-{version}';
+const NAV_WAIT_MS = 3000;   // tyle czeka otwarcie strony na sieć, gdy jest zapisana kopia
 const CORE = {json.dumps(core)};
 const IMAGES = {json.dumps(['./img/' + f for f in images])};
 
@@ -162,15 +163,24 @@ self.addEventListener('fetch', (event) => {{
   const url = new URL(req.url);
   if (url.origin === self.location.origin) {{
     if (req.mode === 'navigate') {{
-      // Najpierw sieć (żeby dostać nową wersję), bez sieci zapisana kopia.
+      // Wyścig: sieć kontra kopia. Dobra sieć -> od razu nowa wersja. Sieć milczy ponad 3 s albo jej brak -> kopia ./index.html.
+      // Spóźniona odpowiedź sieci i tak trafia do pamięci (w tle), więc następne otwarcie ma już nową wersję.
+      const isHome = /\\/(index\\.html)?$/.test(url.pathname);
+      const net = fetch(req).then((res) => {{
+        if (res.ok && isHome) {{ const copy = res.clone(); caches.open(VERSION).then((cache) => cache.put('./index.html', copy)).catch(() => {{}}); }}
+        return res;
+      }});
+      event.waitUntil(net.catch(() => {{}}));
       event.respondWith((async () => {{
-        try {{
-          const res = await fetch(req);
-          if (res.ok && /\\/(index\\.html)?$/.test(url.pathname)) {{ const cache = await caches.open(VERSION); cache.put('./index.html', res.clone()); }}
-          return res;
-        }} catch (e) {{
-          return (await caches.match('./index.html')) || Response.error();
+        const cached = await caches.match('./index.html');
+        if (!cached) {{
+          try {{ return await net; }} catch (e) {{ return Response.error(); }}
         }}
+        let timer;
+        const slow = new Promise((resolve) => {{ timer = setTimeout(() => resolve(null), NAV_WAIT_MS); }});
+        const res = await Promise.race([net.catch(() => null), slow]);
+        clearTimeout(timer);
+        return res || cached;
       }})());
       return;
     }}

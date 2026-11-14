@@ -17,7 +17,8 @@
 <title>Dziennik siłowni</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Big+Shoulders+Display:wght@700;800&display=swap"></noscript>
 <style>
 /* Układ: aplikacja mobilna w jednej kolumnie (max 680 px) z dolnym paskiem zakładek;
    trening to pełnoekranowa nakładka z przyklejonym paskiem timera przerw. */
@@ -619,6 +620,13 @@ main{padding-block:2px 28px}
 .anim-note i{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--a-hl);vertical-align:-1px;margin-right:4px}
 .thumb.at{background:var(--surface-2)}
 .thumb.at svg{display:block;width:100%;height:100%}
+/* podpowiedź „Dodaj do ekranu początkowego” (iPhone, Safari): w układzie strony pod paskiem tytułu, nic nie zasłania */
+.a2hs .box{display:flex;align-items:flex-start;gap:8px;margin:4px 0 12px;padding:12px 6px 12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink)}
+.a2hs .txt{flex:1;min-width:0;font-size:13.5px;line-height:1.45;color:var(--ink-2)}
+.a2hs .txt strong{display:block;font-size:15px;color:var(--ink);margin-bottom:2px}
+.a2hs .txt p{margin:0 0 6px}
+.a2hs .txt ul{margin:0;padding-left:18px}
+.a2hs .txt li{margin:2px 0}
 /* kolory animacji ćwiczeń */
 :root{
   --a-fig:#2B3138; --a-far:#8A939C; --a-ghost:#9AA3AC; --a-hl:#D7263D; --a-hlf:#EC8E9B;
@@ -667,6 +675,13 @@ main{padding-block:2px 28px}
 
 
 <header class="appbar"><div class="wrap" id="appbar"></div></header>
+<aside class="a2hs" id="a2hs" hidden aria-label="Podpowiedź"><div class="wrap"><div class="box">
+  <div class="txt"><strong>Dodaj aplikację do ekranu początkowego</strong>
+    <p>Safari kasuje dane strony po 7 dniach bez wejścia, jeśli nie ma jej na ekranie początkowym. Z ikony Twoje dane nie znikną po tygodniu przerwy.</p>
+    <p>Jak: dotknij Udostępnij (kwadrat ze strzałką), potem „Do ekranu początkowego”.</p>
+    <ul><li>Z ikony trzeba raz podać PIN.</li><li>Link z kodem planu otwiera się w Safari, nie w ikonie.</li></ul></div>
+  <button class="iconbtn sm plain" data-act="a2hsClose" aria-label="Zamknij podpowiedź"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+</div></div></aside>
 <main id="view"></main>
 <nav class="tabbar" aria-label="Zakładki"><div class="wrap" id="tabbar"></div></nav>
 <div class="wo" id="workout" hidden></div>
@@ -2267,6 +2282,19 @@ function openFolder(f){
   watchActive(fid);
   render();
   if (SHARE_PENDING){ const c = SHARE_PENDING; SHARE_PENDING = null; setTimeout(() => openShareImport(c), 300); }
+  else setTimeout(a2hsMaybe, 800);
+}
+/* Podpowiedź o ekranie początkowym: tylko iPhone, tylko w karcie Safari (nie z ikony), po wejściu na konto, najwyżej raz na 30 dni. */
+const A2HS_DAYS = 30;
+function a2hsMaybe(){
+  try {
+    const box = $('#a2hs'); if (!box || !box.hidden) return;
+    if (!/iPhone/.test(navigator.userAgent)) return;
+    if (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches) return;
+    const last = LS.get('dz.a2hs', 0);
+    if (last && Date.now() - last < A2HS_DAYS * 864e5) return;
+    LS.set('dz.a2hs', Date.now()); box.hidden = false;
+  } catch {}
 }
 /* ---------- udostępnianie planów kodem: shares/{KOD} ----------
    Kod powstaje dopiero po „Udostępnij” i zostaje przy planie (p.share). Dokument trzyma kopię planu i użyte w nim własne
@@ -4191,6 +4219,7 @@ const ACT = {
       } catch { toast('Nie udało się usunąć wszystkiego. Spróbuj ponownie z internetem.'); }
   },
   closeSheet(){ closeSheet(); },
+  a2hsClose(){ $('#a2hs').hidden = true; LS.set('dz.a2hs', Date.now()); },
   confirmOk(){ const s = topSheet(); sheets.pop(); s.run(); renderSheet(); },
   /* plany */
   newPlanOpen(){ openSheet({type:'newPlan'}); },
