@@ -496,6 +496,7 @@ main{padding-block:2px 28px}
 .srow input{min-height:44px;width:100%;text-align:center;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;padding:4px}
 .srow input::placeholder{font-weight:500;font-size:13px;color:var(--muted)}
 .srow.done input{background:var(--good-soft);border-color:transparent}
+.srow input.bad{border-color:var(--bad);background:var(--bad-soft)}
 .chk{height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);display:grid;place-items:center;color:var(--ink-2)}
 .chk[aria-pressed="true"]{background:var(--good);border-color:var(--good);color:var(--good-ink)}
 .chk.run{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -4595,7 +4596,7 @@ const SHEETS = {
     return sheetHead('Zakończ trening') + staleTxt + (s.auto ? `<p class="muted" style="margin:0">Wszystkie serie zrobione. Zapisać trening? Jeśli chcesz jeszcze coś dorobić, zamknij to okno.</p>` : '') + `<div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(sess.dur)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(sess)}</div></div>
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(sess)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${sess.ex.length}</div></div></div>
       ${sessSets(sess) ? '' : '<p class="note">Nie odhaczyłeś żadnej serii, więc nie ma czego zapisać.</p>'}
-      ${linked ? `<label class="toggle"><input type="checkbox" id="fin-upd" ${s.upd ? 'checked' : ''} data-bind="finUpd">Zapisz dzisiejsze ciężary i powtórzenia jako nowe wartości w planie</label>` : ''}
+      ${linked ? `<label class="toggle"><input type="checkbox" id="fin-upd" ${s.upd ? 'checked' : ''} data-bind="finUpd">Zapisz dzisiejsze ciężary i powtórzenia w planie</label>` : ''}
       <div class="sheet-f" style="flex-wrap:wrap"><button class="btn primary" data-act="finishSave" ${sessSets(sess) ? '' : 'disabled'}>Zapisz trening</button><button class="btn danger" data-act="discardAsk">Odrzuć</button></div>`;
   },
   folders(){
@@ -4910,7 +4911,7 @@ function startWorkoutFrom(p){
   const name = p.name || 'Trening';
   ACTIVE = {id:uid(), folder:FOLDER ? FOLDER.id : null, planId:p.id, dayId:p.id, planName:name, dayName:name, startedAt:Date.now(), timer:null,
     ex:p.items.map(it => { const last = lastFor(it.exId); return {key:uid(), itemId:it.id, exId:it.exId, mode:it.mode, ssNext:!!it.ssNext, rest:it.rest ?? S.settings.restSet, restAfter:it.restAfter ?? S.settings.restEx, note:it.note || '',
-      sets:it.sets.map((s, j) => ({tReps:s.reps ?? null, tKg:s.kg ?? null, tSec:s.sec ?? null, reps:s.reps ?? null, sec:s.sec ?? null, kg:s.kg ?? (last && last.sets[j] ? last.sets[j].kg ?? null : null), done:false}))}; })};
+      sets:it.sets.map((s, j) => ({pi:j, tReps:s.reps ?? null, tKg:s.kg ?? null, tSec:s.sec ?? null, reps:s.reps ?? null, sec:s.sec ?? null, kg:s.kg ?? (last && last.sets[j] ? last.sets[j].kg ?? null : null), done:false}))}; })};
   saveActive(); ui.showWorkout = true; ui.wMenu = null; audioUnlock(); requestWake(); render(); renderWorkout();
 }
 function newWorkoutEx(exId){
@@ -4920,7 +4921,7 @@ function newWorkoutEx(exId){
 }
 function buildSession(){
   const ex = ACTIVE.ex.map(x => ({exId:x.exId, name:getEx(x.exId).name, mode:x.mode, ...(x.wnote ? {note:x.wnote} : {}),
-    sets:x.sets.filter(s => s.done).map(s => x.mode === 'time' ? {sec:s.sec ?? 0, kg:s.kg ?? null} : {reps:s.reps ?? 0, kg:s.kg ?? null, ...(s.rir != null ? {rir:s.rir} : {})})})).filter(x => x.sets.length);
+    sets:x.sets.filter(s => s.done).map(s => x.mode === 'time' ? {sec:Math.round(s.sec ?? 0), kg:s.kg || null} : {reps:Math.round(s.reps ?? 0), kg:s.kg || null, ...(s.rir != null ? {rir:s.rir} : {})})})).filter(x => x.sets.length);
   // zawieszony trening: czas liczony do ostatniej serii, a nie do chwili zapisania (np. kilka dni później)
   const end = isStale() ? (ACTIVE.lastSetAt || ACTIVE.startedAt + STALE_MS) : Date.now();
   return {id:ACTIVE.id, date:new Date(ACTIVE.startedAt).toISOString(), dur:Math.max(0, Math.round((end - ACTIVE.startedAt) / 1000)),
@@ -5329,18 +5330,36 @@ const ACT = {
     const s = buildSession(); if (!s.ex.length) return;
     const upd = $('#fin-upd')?.checked; const p = planById(ACTIVE.planId);
     if (upd && p){
-      for (const x of ACTIVE.ex){ const it = p.items.find(i => i.id === x.itemId); const done = x.sets.filter(q => q.done); if (!it || !done.length) continue;
-        it.mode = x.mode; it.rest = x.rest; it.sets = done.map(q => x.mode === 'time' ? {sec:q.sec ?? 30, kg:q.kg ?? null} : {reps:q.reps ?? 10, kg:q.kg ?? null}); }
-      persist();
+      // tylko odhaczone serie, każda na swojej pozycji w planie; plan nie traci serii, nieodhaczone zostają bez zmian,
+      // ćwiczenia dodane w trakcie treningu (bez itemId) i zamienione na inne (exId ≠ ćwiczeniu w planie) są pomijane
+      let changed = false;
+      for (const x of ACTIVE.ex){
+        const it = x.itemId && p.items.find(i => i.id === x.itemId); if (!it || it.exId !== x.exId || it.mode !== x.mode) continue;
+        const hasPi = x.sets.some(q => q.pi != null);   // pi = pozycja serii w planie (starsze treningi w toku: według kolejności)
+        x.sets.forEach((q, j) => {
+          const ps = q.done && it.sets[hasPi ? q.pi : j]; if (!ps) return;
+          ps.kg = q.kg || null;
+          if (x.mode === 'time'){ if (q.sec != null) ps.sec = Math.round(q.sec); } else if (q.reps != null) ps.reps = Math.round(q.reps);
+          changed = true;
+        });
+      }
+      if (changed) persist();
     }
     saveSession(s); endWorkout(); openSheet({type:'summary', id:s.id});
   },
   discardAsk(){ confirmBox('Odrzucić trening?', 'Wpisane serie nie zostaną zapisane w historii.', 'Odrzuć trening', () => { endWorkout(); toast('Trening odrzucony.'); }); },
   toggleSet(el){
     audioUnlock(); const i = +el.dataset.i, j = +el.dataset.j; const x = ACTIVE.ex[i], s = x.sets[j];
+    if (!s.done && x.mode !== 'time'){
+      if (s.reps == null && s.tReps != null) s.reps = s.tReps;
+      if (s.reps == null){   // puste pole powtórzeń: nie odhaczaj (inaczej zapisałoby się 0), podświetl pole
+        const inp = $(`#w-${x.key}-${j}-reps`); toast('Wpisz liczbę powtórzeń.');
+        if (inp){ inp.classList.add('bad'); inp.focus(); setTimeout(() => inp.classList.remove('bad'), 2500); }
+        return;
+      }
+    }
     s.done = !s.done;
     if (s.done){
-      if (x.mode !== 'time' && s.reps == null && s.tReps != null) s.reps = s.tReps;
       afterSetDone(i);
       if (x.mode !== 'time' && ACTIVE) ACTIVE.rirAsk = {key:x.key, j};
     } else { delete s.rir; if (ACTIVE.timer && ACTIVE.timer.kind === 'rest' && ACTIVE.timer.focus === i) ACTIVE.timer = null; }
@@ -5421,8 +5440,10 @@ const ACT = {
   tbSkip(){ const T = ACTIVE.timer; ACTIVE.timer = null; saveActive(); renderWorkout(); if (T){ const x = ACTIVE.ex[T.focus]; const c = x && $('#wex-' + x.key); if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); } },
 };
 function limitInput(t){
-  const f = t.dataset.f, v = num(t.value), c = clampV(f, v);
+  const f = t.dataset.f, v = num(t.value); let c = clampV(f, v);
   if (v != null && c !== v){ t.value = fmtN(c); toast(f === 'kg' ? `Maksymalnie ${LIM.kg} kg.` : f === 'sec' ? `Maksymalnie ${LIM.sec} s.` : `Maksymalnie ${LIM.reps} powtórzeń.`); }
+  if (c != null && f !== 'kg'){ const r = Math.round(c); if (r !== c){ c = r; t.value = String(r); } }   // powtórzenia i sekundy tylko całkowite (8,5 → 9)
+  if (f === 'kg' && c === 0) c = null;   // 0 kg = puste pole (masa ciała)
   return c;
 }
 const BIND = {
@@ -5439,10 +5460,11 @@ const BIND = {
     if (t.dataset.f === 'date'){ const v = new Date(t.value); if (!isNaN(v)) d.date = v.toISOString(); }
     else { const m = num(t.value); if (m != null) d.dur = Math.max(0, Math.min(600, Math.round(m))) * 60; } },
   wnote(t){ const x = ACTIVE?.ex[+t.dataset.i]; if (!x) return; x.wnote = t.value; saveActive(); },
-  wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; s[t.dataset.f] = limitInput(t); saveActive();
-    // ciężar / powtórzenia / sekundy od razu w kolejnych, jeszcze niezrobionych seriach (piramida: zmień serię 3 → zmieniają się 3, 4, 5…)
-    const f = t.dataset.f, x = ACTIVE.ex[i], j = +t.dataset.j;
-    if (!s.done){ x.sets.forEach((q, k) => { if (k <= j || q.done) return; q[f] = s[f]; const inp = $(`#w-${x.key}-${k}-${f}`); if (inp && inp !== document.activeElement) inp.value = f === 'kg' ? fmtN(s[f]) : (s[f] ?? ''); }); saveActive(); }
+  wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; const f = t.dataset.f, was = s[f] ?? null; s[f] = limitInput(t); saveActive();
+    // ciężar / powtórzenia / sekundy od razu w kolejnych, jeszcze niezrobionych seriach, ale tylko w tych, które przed zmianą miały tę samą wartość
+    // co zmieniana seria (plan 60/70/80: wpisz 65 w serii 1 → 65/70/80; plan 60/60/60: 62,5 → 62,5 we wszystkich trzech)
+    const x = ACTIVE.ex[i], j = +t.dataset.j;
+    if (!s.done){ x.sets.forEach((q, k) => { if (k <= j || q.done || (q[f] ?? null) !== was) return; q[f] = s[f]; const inp = $(`#w-${x.key}-${k}-${f}`); if (inp && inp !== document.activeElement) inp.value = f === 'kg' ? fmtN(s[f]) : (s[f] ?? ''); }); saveActive(); }
     // pasek „Szybka zmiana” pokazuje najbliższą niezrobioną serię: odśwież liczbę na bieżąco
     const nj = x.sets.findIndex(q => !q.done), qb = $(`#wex-${x.key} .qstep [data-qf="${f}"]`);
     if (qb && nj >= 0){ const v = x.sets[nj][f] ?? (f === 'reps' ? x.sets[nj].tReps : f === 'sec' ? x.sets[nj].tSec : null); qb.textContent = v != null ? (f === 'kg' ? fmtN(v) : v) : '–'; }
@@ -5499,16 +5521,24 @@ const onBind = e => { const t = e.target; if (t.dataset && t.dataset.bind && BIN
 document.addEventListener('input', onBind);
 document.addEventListener('change', onBind);
 // pola liczbowe (serie w treningu i w planie): po stuknięciu puste, stara wartość jako szara podpowiedź.
-// iPhone stawia kursor za liczbą, więc cyfry się doklejały. Wyjście bez wpisania = wraca stara wartość.
+// iPhone stawia kursor za liczbą, więc cyfry się doklejały. Wyjście bez żadnego naciśnięcia klawisza = wraca stara wartość, bez zdarzenia
+// input (nic się nie zmienia, także w kolejnych seriach). Skasowanie (był klawisz, pole puste) zostawia puste pole = brak ciężaru / powtórzeń.
 const CLEAR_SEL = 'input[data-bind="wset"], input[data-bind="pset"], input[data-bind="sedSet"]';
 document.addEventListener('focusin', e => {
   const t = e.target; if (!t.matches || !t.matches(CLEAR_SEL) || t.dataset.old != null || t.value === '') return;
-  t.dataset.old = t.value; t.dataset.ph = t.placeholder; t.placeholder = t.value; t.value = '';
+  t.dataset.old = t.value; t.dataset.ph = t.placeholder; t.placeholder = t.value; t.value = ''; delete t.dataset.typed;
 });
+// „naciśnięcie klawisza” w polu, które właśnie wyczyściło focusin: znak, Backspace/Delete (puste pole nie wysyła wtedy input), wklejenie
+const markTyped = e => { const t = e.target; if (t && t.dataset && t.dataset.old != null) t.dataset.typed = '1'; };
+document.addEventListener('beforeinput', markTyped);
+document.addEventListener('input', markTyped);
+document.addEventListener('keydown', e => { if (!e.ctrlKey && !e.metaKey && (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Unidentified' || e.key === 'Process' || e.key.length === 1)) markTyped(e); });
 document.addEventListener('focusout', e => {
   const t = e.target; if (!t.matches || !t.matches(CLEAR_SEL) || t.dataset.old == null) return;
-  const old = t.dataset.old; t.placeholder = t.dataset.ph; delete t.dataset.old; delete t.dataset.ph;
-  if (t.value.trim() === ''){ t.value = old; t.dispatchEvent(new Event('input', {bubbles:true})); }   // nic nie wpisane → przywróć (także w kolejnych seriach)
+  const old = t.dataset.old, typed = t.dataset.typed; t.placeholder = t.dataset.ph; delete t.dataset.old; delete t.dataset.ph; delete t.dataset.typed;
+  if (t.value.trim() !== '') return;
+  if (!typed) t.value = old;                                          // stuknięcie i wyjście: nic się nie zmienia
+  else t.dispatchEvent(new Event('input', {bubbles:true}));           // skasowane: zapisz puste (Backspace w pustym polu nie wysłał input)
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && topSheet()) closeSheet();
