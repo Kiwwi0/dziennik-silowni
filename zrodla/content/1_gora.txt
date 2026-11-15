@@ -107,6 +107,15 @@
 ! Łokcie lekko ugięte i nieruchome.
 ! Trzymaj stabilną pozycję bioder przez całą serię.
 
+@Smith_Machine_Incline_Bench_Press | Wyciskanie na suwnicy Smitha na ławce skośnej | reps
+- Ustaw ławkę skośną (ok. 30–45°) pod gryfem suwnicy tak, aby gryf schodził nad górną część klatki. Połóż się, stopy oprzyj stabilnie na podłodze.
+- Chwyć gryf nachwytem nieco szerzej niż barki, ściągnij łopatki do siebie i w dół, a następnie obróć gryf, aby zdjąć blokadę.
+- Opuszczaj gryf powoli do górnej części klatki, łokcie ustaw ok. 45–70° od tułowia.
+- Po krótkim zatrzymaniu wypchnij gryf z wydechem prawie do pełnego wyprostu rąk.
+! Ustaw ławkę tak, aby dół ruchu wypadał na górnej części klatki, a nie na szyi.
+! Pośladki i łopatki zostają na ławce, lędźwi nie wyginaj mocno.
+! Ustaw ograniczniki suwnicy na wysokości klatki, zanim zaczniesz serię.
+
 ## PLECY
 
 @Pullups | Podciąganie na drążku nachwytem | reps
@@ -279,6 +288,66 @@
 ! Ręce pozostają proste.
 ! Głowa w neutralnej pozycji, nie wysuwaj jej do przodu.
 
+@Unilateral_Chest_Supported_Lat_Pulldown | Ściąganie jednorącz na maszynie z podparciem klatki | reps | en=Unilateral Chest Supported Lat Pulldown; eq=Maszyna; level=początkujący; p=lats; s=biceps,middle back
+- Usiądź przy maszynie dźwigniowej lub wyciągu z poduszką tak, aby klatka piersiowa opierała się o poduszkę, a stopy stały stabilnie.
+- Chwyć uchwyt jedną ręką, drugą przytrzymaj się maszyny. Zacznij z wyprostowaną ręką i lekko wysuniętą łopatką.
+- Ściągnij łopatkę w dół i do tyłu, a następnie pociągnij łokieć w dół do biodra.
+- Zatrzymaj na chwilę, potem powoli wyprostuj rękę, czując rozciągnięcie najszerszego grzbietu. Po serii zmień stronę.
+! Klatka cały czas dotyka poduszki – nie odchylaj się i nie skręcaj tułowia w stronę uchwytu.
+! Prowadź ruch łokciem, a nie bicepsem; nadgarstek trzymaj prosto.
+! Obie strony wykonuj z tą samą liczbą powtórzeń.
+
+@Head_Supported_DB_Row | Wiosłowanie hantlami w opadzie z czołem opartym o ławkę | reps | en=Head Supported DB Row; eq=Hantle; level=średni; p=lats,middle back; s=biceps,shoulders
+- Ustaw ławkę skośną (ok. 30–45°), stań przed nią w lekkim rozkroku i pochyl się, opierając czoło o górną część oparcia. W każdej ręce trzymaj hantel.
+- Kolana lekko ugięte, plecy proste, hantle zwisają pod barkami.
+- Pociągnij oba hantle do bioder, łokcie prowadząc blisko tułowia i ściągając łopatki.
+- Zatrzymaj na sekundę i powoli opuść hantle do pełnego wyprostu rąk.
+! Czoło tylko lekko dotyka oparcia – nie odciążaj się głową i nie podrywaj tułowia.
+! Nie unoś barków do uszu.
+! Szyję trzymaj w przedłużeniu kręgosłupa.
+
+@Kroc_Row | Wiosłowanie hantlem jednorącz Kroc | reps | en=Kroc Row; eq=Hantle; level=średni; p=lats,middle back; s=biceps,forearms
+- Stań bokiem do ławki lub stojaka i oprzyj o nią wolną rękę. Kolana lekko ugięte, tułów mocno pochylony z prostymi plecami.
+- Chwyć ciężki hantel i opuść go swobodnie pod kontrolą, aż poczujesz rozciągnięcie w plecach.
+- Pociągnij hantel do biodra, ściągając łopatkę. Lekki ruch tułowia i bioder jest dozwolony, ale niewielki.
+- Opuść hantel w kontrolowany sposób i rób dużo powtórzeń w serii (15–30).
+! Ciężar ma być duży, ale seria 15–30 powtórzeń musi zostać czysta technicznie.
+! Ruch tułowia tylko pomaga – nie rozhuśtuj się i nie skręcaj mocno kręgosłupa.
+! Plecy zostają proste, bez zaokrąglania; jeśli chwyt puszcza, użyj pasków.
+
+@Wide_Grip_Machine_Row | Wiosłowanie na maszynie szerokim chwytem | reps | en=Wide Grip Machine Row; eq=Maszyna; level=początkujący; p=middle back; s=lats,shoulders,biceps
+- Ustaw siedzisko i poduszkę tak, aby klatka opierała się o nią, a uchwyty znajdowały się na wysokości mostka.
+- Chwyć szerokie uchwyty nachwytem, ręce wyprostowane, łopatki lekko rozsunięte.
+- Pociągnij uchwyty do siebie, prowadząc łokcie szeroko na boki, aż ściągniesz łopatki.
+- Zatrzymaj w skurczu i powoli wróć do pełnego wyprostu rąk.
+! Nie podciągaj barków do uszu i nie odchylaj się do tyłu.
+! Szeroki chwyt mocniej angażuje górę pleców i tył barków niż wiosłowanie wąskim chwytem.
+
+@Cable_One_Arm_Row | Przyciąganie linki wyciągu dolnego jednorącz siedząc | reps | en=Seated One-arm Cable Pulley Rows; eq=Wyciąg; level=średni; p=middle back; s=lats,biceps,traps
+- Usiądź przy wyciągu dolnym, stopy oprzyj o podpórkę, kolana lekko ugnij. Chwyć jedną ręką pojedynczy uchwyt.
+- Plecy proste, tułów lekko pochylony do przodu. Wolną rękę oprzyj na udzie, ręka z uchwytem jest wyprostowana, a łopatka lekko wysunięta.
+- Pociągnij uchwyt do brzucha, prowadząc łokieć przy tułowiu i ściągając łopatkę.
+- Zatrzymaj na chwilę i powoli wyprostuj rękę. Po serii zmień stronę.
+! Tułów stoi w miejscu – nie odchylaj się i nie skręcaj w stronę ciągniętej ręki.
+! Nie unoś barku do ucha.
+
+@Cable_Pullover | Pullover na wyciągu górnym | reps | en=Cable Pullover; eq=Wyciąg; level=początkujący; p=lats; s=triceps
+- Zaczep linę lub prosty drążek na wyciągu górnym. Stań przodem do wyciągu, kolana lekko ugnij, a tułów pochyl do przodu z prostymi plecami.
+- Chwyć uchwyt i unieś ręce prawie proste do góry, nad głowę, tak aby poczuć pełne rozciągnięcie najszerszego grzbietu.
+- Sprowadź ręce łukiem w dół do bioder, napinając najszerszy grzbietu.
+- Powoli wróć do góry, bez odpuszczania napięcia.
+! W porównaniu ze ściąganiem wyciągu prostymi rękami ruch zaczyna się wyżej (ręce nad głową) i ma dłuższy zakres, a lina pozwala swobodnie ustawić nadgarstki.
+! Łokcie lekko ugięte i nieruchome, ruch odbywa się w stawach barkowych.
+
+@Kelso_Shrug | Szrugsy Kelso (ściąganie łopatek z podparciem klatki) | reps | en=Kelso Shrug; eq=Hantle; level=średni; p=traps,middle back; s=shoulders
+- Połóż się przodem na ławce skośnej (ok. 30–45°) tak, aby klatka opierała się o oparcie, a głowa wystawała ponad ławkę. W dłoniach trzymaj hantle, ręce proste zwisają w dół.
+- Rozluźnij barki, aby łopatki lekko się rozsunęły.
+- Nie zginając łokci, ściągnij łopatki do siebie i lekko w dół.
+- Zatrzymaj na sekundę i powoli wróć do rozsunięcia łopatek.
+! Ruch wykonują tylko łopatki – łokcie zostają wyprostowane, to nie jest wiosłowanie.
+! Nie unoś barków do uszu (to szrugsy, nie Kelso) i nie podnoś głowy.
+! Wybierz lżejszy ciężar, zakres ruchu jest mały.
+
 ## BARKI
 
 @Standing_Military_Press | Wyciskanie sztangi nad głowę stojąc (OHP) | reps
@@ -379,3 +448,19 @@
 - Powoli wróć. Po serii zmień stronę.
 ! Bardzo lekki ciężar, to ćwiczenie wzmacniające stożek rotatorów.
 ! Łokieć cały czas przy tułowiu.
+
+@One-Arm_Incline_Lateral_Raise | Unoszenie hantla bokiem jednorącz na ławce skośnej | reps
+- Połóż się bokiem na ławce skośnej tak, aby dolny bark opierał się o oparcie. Hantel trzymaj w górnej ręce, wyprostowanej i leżącej przed ciałem w okolicy brzucha.
+- Utrzymując lekko ugięty łokieć, unieś hantel łukiem w górę, aż ręka będzie wskazywać w stronę sufitu.
+- Zatrzymaj na sekundę, czując skurcz barku.
+- Powoli opuść hantel z powrotem przed ciałem. Po serii zmień bok.
+! Ruch wykonuje bark – nie bujaj tułowiem i nie szarp.
+! Użyj lekkiego ciężaru, bo dźwignia jest długa.
+
+@Single_Arm_Reverse_Butterfly | Odwrotne rozpiętki jednorącz na maszynie | reps | en=Single Arm Reverse Butterfly; eq=Maszyna; level=początkujący; p=shoulders; s=middle back,traps
+- Ustaw siedzisko tak, aby uchwyt był na wysokości barku. Usiądź przodem do oparcia, klatką na poduszce, i chwyć jeden uchwyt jedną ręką. Drugą rękę oprzyj na maszynie.
+- Ręka prawie prosta, łokieć lekko ugięty.
+- Odciągnij uchwyt łukiem na bok i do tyłu, prowadząc łokieć na wysokości barku, aż poczujesz skurcz tylnej części barku.
+- Zatrzymaj na chwilę i powoli wróć. Po serii zmień stronę.
+! Nie skręcaj tułowia i nie ściągaj mocno łopatki – ma pracować tył barku, a nie plecy.
+! Ruch prowadzi łokieć, nadgarstek trzymaj prosto.

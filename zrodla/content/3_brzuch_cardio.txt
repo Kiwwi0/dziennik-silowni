@@ -94,6 +94,14 @@
 ! Biodra nisko, w linii z barkami.
 ! Dłonie pod barkami.
 
+@Incline_Bench_Leg_Raise | Unoszenie nóg leżąc na ławce skośnej | reps | en=Incline Bench Leg Raise; eq=Masa ciała; level=średni; p=abdominals; s=
+- Połóż się na ławce skośnej głową wyżej i chwyć ławkę rękami za głową. Plecy dociśnięte do oparcia.
+- Nogi wyprostowane lub lekko ugięte trzymaj razem, nad podłogą.
+- Unieś nogi, a na końcu ruchu lekko unieś miednicę, zwijając dolny odcinek pleców.
+- Powoli opuść nogi, nie dotykając podłogi.
+! Ruch kontroluj brzuchem, nie bujaj biodrami.
+! Lędźwie zostają przy ławce – jeśli się odrywają, ugnij kolana.
+
 ## CAŁE CIAŁO
 
 @One-Arm_Kettlebell_Swings | Swing kettlebell jednorącz | reps

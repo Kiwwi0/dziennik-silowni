@@ -63,6 +63,30 @@
 ! Wyciąg utrzymuje napięcie w całym zakresie ruchu.
 ! Nie odchylaj tułowia.
 
+@Single_Arm_Machine_Preacher_Curl | Uginanie ramienia jednorącz na modlitewniku (maszyna) | reps | en=Single Arm Machine Preacher Curl; eq=Maszyna; level=początkujący; p=biceps; s=forearms
+- Ustaw siedzisko tak, aby ramię leżało całą długością na podpórce, a pacha lekko dotykała jej górnej krawędzi.
+- Chwyć uchwyt podchwytem jedną ręką, druga ręka odpoczywa.
+- Ugnij łokieć, unosząc uchwyt w stronę barku i napinając biceps.
+- Zatrzymaj w górze i powoli opuść prawie do pełnego wyprostu. Po serii zmień stronę.
+! Ramię cały czas opiera się o poduszkę – nie szarp tułowiem.
+! W dole nie prostuj łokcia gwałtownie, utrzymaj kontrolę.
+
+@Arnold_Curl | Uginanie hantli z rotacją nadgarstka (Arnold curl) | reps | en=Arnold Curl; eq=Hantle; level=średni; p=biceps; s=forearms
+- Stań prosto, hantle trzymaj wzdłuż ciała chwytem młotkowym (kciuki do przodu), łokcie przy tułowiu.
+- Zacznij uginać ramiona i w trakcie ruchu stopniowo obracaj nadgarstki na zewnątrz, tak aby w górze dłonie były zwrócone do barków (podchwyt).
+- Napnij biceps w górze i zacznij opuszczać hantle, obracając nadgarstki z powrotem do chwytu młotkowego.
+- Opuść hantle powoli do pozycji wyjściowej.
+! Łokcie zostają przy tułowiu, bez bujania.
+! Obrót rób płynnie przez cały ruch, a nie tylko na końcu.
+
+@Elbow_Supported_Biceps_Curl | Uginanie ramienia z podpartym łokciem | reps | en=Elbow Supported Biceps Curl; eq=Hantle; level=początkujący; p=biceps; s=forearms
+- Usiądź i oprzyj łokieć ramienia z hantlem o oparcie ławki skośnej, kolano lub poduszkę tak, aby ramię było zablokowane.
+- Chwyć hantel podchwytem, ręka wyprostowana.
+- Ugnij łokieć, unosząc hantel w stronę barku, bez ruchu łokcia.
+- Zatrzymaj w skurczu i powoli opuść do pełnego wyprostu. Po serii zmień stronę.
+! Łokieć nie odrywa się od podparcia – to eliminuje bujanie.
+! W dole utrzymaj lekkie napięcie, nie opadaj bezwładnie.
+
 ## TRICEPS
 
 @Triceps_Pushdown | Prostowanie ramion na wyciągu górnym (drążek) | reps
@@ -134,6 +158,23 @@
 - Powoli wróć do 90°. Po serii zmień stronę.
 ! Ramię nieruchome, przy tułowiu.
 ! Lekki ciężar. Liczy się pełny wyprost.
+
+@Unilateral_Rope_Triceps_Pushdown | Prostowanie ramienia jednorącz na wyciągu górnym (lina) | reps | en=Unilateral Rope Triceps Pushdown; eq=Wyciąg; level=początkujący; p=triceps; s=
+- Zaczep linę na wyciągu górnym i chwyć jedną ręką jej koniec. Stań blisko wyciągu, łokieć trzymaj przy boku.
+- Ugnij łokieć mniej więcej do kąta prostego, przedramię skierowane w górę.
+- Wyprostuj łokieć, ściągając linę w dół, a na końcu ruchu lekko odciągnij koniec liny na zewnątrz.
+- Powoli wróć do kąta prostego. Po serii zmień stronę.
+! Łokieć nieruchomy przy tułowiu, ruch tylko w stawie łokciowym.
+! Nie pochylaj się całym ciężarem nad wyciągiem i nie wyginaj nadgarstka.
+
+@Smith_JM_Press | Wyciskanie JM na suwnicy Smitha | reps | en=Smith JM Press; eq=Maszyna; level=średni; p=triceps; s=chest,shoulders
+- Ustaw ławkę płaską pod gryfem suwnicy tak, aby gryf schodził nad górną część klatki. Połóż się, stopy oprzyj stabilnie na podłodze.
+- Chwyć gryf wąsko (na szerokość barków lub odrobinę węziej), zdejmij blokadę i ustaw gryf nad klatką na prawie wyprostowanych rękach.
+- Opuszczaj gryf, kierując łokcie do przodu, a nie na boki, aż znajdzie się nad górną częścią klatki lub blisko szyi. To ruch pośredni między wyciskaniem wąskim a francuskim.
+- Wypchnij gryf w górę, prostując łokcie i pracując głównie tricepsem.
+! Łokcie zostają skierowane w przód i nie rozjeżdżają się na boki.
+! Zacznij od lekkiego ciężaru i ustaw ograniczniki suwnicy, bo gryf schodzi blisko szyi.
+! Nadgarstki trzymaj prosto.
 
 ## CZWOROGŁOWE UDA
 
@@ -242,6 +283,41 @@
 ! Nie podrzucaj ciężaru.
 ! Pośladki cały czas na siedzisku.
 
+@Smith_Single-Leg_Split_Squat | Przysiad wykroczny na suwnicy Smitha | reps
+- Ustaw płaską ławkę ok. 60–90 cm za suwnicą, a gryf na wysokości dopasowanej do wzrostu. Wejdź pod gryf i ułóż go na mięśniach grzbietu, tuż pod karkiem.
+- Zdejmij gryf z blokady, prostując nogi i tułów. Jedną stopę ustaw z przodu pod gryfem, a górę drugiej stopy oprzyj z tyłu na ławce.
+- Powoli zejdź w dół, uginając przednią nogę, aż udo będzie w przybliżeniu równoległe do podłogi.
+- Wyprostuj przednią nogę, odpychając się całą stopą. Po serii zmień nogę.
+! Przednie kolano prowadź w jednej linii ze stopą, pięta zostaje na podłodze.
+! Ustaw stopę na tyle daleko od gryfu, aby kolano nie wyjeżdżało mocno przed palce.
+! Po serii zablokuj gryf, obracając go na hak.
+
+@Landmine_Sissy_Squat | Przysiad sissy z landmine | reps | en=Landmine Sissy Squat; eq=Sztanga; level=średni; p=quadriceps; s=abdominals
+- Wsuń koniec sztangi w uchwyt landmine (lub w narożnik). Stań przodem do sztangi i trzymaj jej koniec obiema rękami przy klatce, stopy na szerokość bioder.
+- Unieś pięty i zacznij uginać kolana, przesuwając je daleko do przodu, a tułów odchylaj do tyłu, utrzymując linię od kolan do głowy.
+- Zejdź tak głęboko, na ile pozwalają kolana, bez zginania w biodrach.
+- Wypchnij się, prostując kolana, i wróć do pozycji wyjściowej.
+! Zacznij od lekkiej sztangi, bo kolana i stawy skokowe muszą przyzwyczaić się do tego zakresu.
+! Biodra zostają w jednej linii z tułowiem i udami, nie siadaj do tyłu.
+! Przy bólu kolan zmniejsz zakres ruchu.
+
+@Split_Squat_Isometric_Hold | Przysiad wykroczny – izometryczne trzymanie | time | en=Split Squat Isometric Hold; eq=Masa ciała; level=początkujący; p=quadriceps; s=glutes,hamstrings
+- Stań w wykroku: jedna noga z przodu, druga z tyłu na palcach. Ręce połóż na biodrach lub trzymaj hantle.
+- Zejdź w dół, aż tylne kolano znajdzie się tuż nad podłogą, a przednie udo będzie w przybliżeniu równoległe do podłogi.
+- Utrzymaj pozycję przez zadany czas, tułów prosty, ciężar na przedniej stopie.
+- Wstań i powtórz na drugą nogę.
+! Przednie kolano zostaje nad stopą i nie zapada się do środka.
+! Nie opieraj tylnego kolana o podłogę i oddychaj spokojnie.
+
+@Zercher_Box_Squat | Przysiad Zerchera do skrzyni | reps | en=Zercher Box Squat; eq=Sztanga; level=zaawansowany; p=quadriceps; s=glutes,hamstrings,abdominals,lower back
+- Ustaw sztangę w stojaku na wysokości pasa, a za sobą skrzynię lub ławkę na takiej wysokości, aby w siadzie uda były mniej więcej równoległe do podłogi.
+- Włóż sztangę w zgięcia łokci (owiń ją podkładką lub ręcznikiem), złącz ręce przed klatką, wyprostuj się i cofnij ze stojaka.
+- Stopy ustaw na szerokość barków lub odrobinę szerzej. Siadaj powoli, odsuwając biodra do tyłu, aż lekko dotkniesz skrzyni. Tułów prosty, łokcie wysoko.
+- Nie rozluźniaj się na skrzyni, wstań, dociskając stopy do podłogi.
+! Siadaj kontrolowanie – skrzynia nie służy do odbicia ani do odpoczynku.
+! Sztanga mocno uciska zgięcia łokci, więc zacznij od lekkiego ciężaru.
+! Ćwicz w stojaku z ogranicznikami i najlepiej z asekuracją.
+
 ## DWUGŁOWE UDA
 
 @Romanian_Deadlift | Rumuński martwy ciąg | reps
@@ -283,6 +359,14 @@
 - Wróć do wyprostu, wypychając biodra do przodu.
 ! Zacznij od lekkiego ciężaru, bo ćwiczenie mocno obciąża dolny odcinek pleców.
 ! Nigdy nie zaokrąglaj pleców.
+
+@Landmine_B-Stance_RDL | Rumuński martwy ciąg B-stance z landmine | reps | en=Landmine B-Stance RDL; eq=Sztanga; level=średni; p=hamstrings; s=glutes,lower back
+- Ustaw koniec sztangi w uchwycie landmine i chwyć go jedną ręką lub obiema przy biodrze. Ustaw nogi w pozycji B: noga robocza stoi stabilnie, druga lekko z tyłu, oparta na palcach.
+- Większość ciężaru trzymaj na nodze przedniej. Lekko ugnij jej kolano i odsuwaj biodra do tyłu, a tułów pochylaj do przodu z prostymi plecami.
+- Opuść sztangę, aż poczujesz mocne rozciągnięcie tylnej części uda. Tylna noga tylko pomaga w równowadze.
+- Wróć, prostując biodra i napinając pośladek. Po serii zmień nogę.
+! Plecy zostają proste, ruch wychodzi z bioder.
+! Nie przenoś ciężaru na tylną nogę.
 
 ## POŚLADKI I BIODRA
 
@@ -330,6 +414,33 @@
 - Powoli wróć do rozstawienia nóg.
 ! Ustaw zakres ruchu tak, by nie czuć nadmiernego rozciągania w pachwinach.
 ! Kontroluj fazę powrotu.
+
+@Single_Leg_Hip_Thrust | Hip thrust jednonóż | reps | en=Single Leg Hip Thrust; eq=Masa ciała; level=średni; p=glutes; s=hamstrings
+- Usiądź na podłodze przed ławką i oprzyj łopatki o jej krawędź. Jedną stopę postaw płasko na podłodze, drugą nogę unieś. Opcjonalnie połóż hantel na biodrze.
+- Ściągnij żebra, brodę przyciągnij do klatki i wypchnij biodra w górę, dociskając piętę.
+- Na górze ciało tworzy linię od kolana do barków; napnij pośladek na sekundę.
+- Opuść biodra w kontrolowany sposób i powtórz. Po serii zmień nogę.
+! Nie wyginaj lędźwi na górze – ruch kończ pośladkiem, a nie plecami.
+! Kolano prowadź w tym samym kierunku co stopę.
+! W odróżnieniu od mostka jednonóż z leżenia łopatki są na ławce, więc zakres ruchu jest większy.
+
+@Unilateral_Hyperextension | Wyprosty tułowia jednonóż na ławce rzymskiej | reps | en=Unilateral Hyperextension; eq=Maszyna; level=średni; p=lower back; s=glutes,hamstrings
+- Ustaw ławkę rzymską tak, aby poduszka była poniżej kości biodrowych. Zablokuj jedną nogę pod wałkiem, druga pozostaje swobodna.
+- Skrzyżuj ręce na klatce lub trzymaj je za głową, ciało w jednej linii.
+- Opuść tułów, zginając się w biodrach, plecy proste.
+- Unieś tułów do linii ciała, napinając pośladek i tył uda. Po serii zmień nogę.
+! Nie wyginaj się do tyłu powyżej linii ciała.
+! Ruch wychodzi z bioder, nie zaokrąglaj pleców.
+! Zacznij bez obciążenia.
+
+@Copenhagen_Plank_Weighted | Deska kopenhaska z obciążeniem | time | en=Copenhagen Plank Weighted; eq=Masa ciała; level=zaawansowany; p=adductors; s=abdominals
+- Połóż się bokiem na podłodze obok ławki. Oprzyj dolne przedramię pod barkiem, a górną nogę ułóż na ławce (kolano lub kostka).
+- Unieś biodra, aż ciało utworzy jedną linię, a dolna noga zawiśnie w powietrzu.
+- Opcjonalnie połóż obciążenie (talerz lub hantel) na biodrze.
+- Utrzymaj pozycję przez zadany czas, potem zmień stronę.
+! Biodra zostają wysoko, a ciało nie skręca się do przodu ani do tyłu.
+! Łatwiejsza wersja: górna noga opiera się kolanem i bez obciążenia.
+! Zacznij od krótkich serii, bo przywodziciele pracują bardzo mocno.
 
 ## ŁYDKI
 
