@@ -749,8 +749,13 @@ def scenariusz(r):
     def pole(j, f='kg', root='#workout'):
         return page.locator(f'{root} input[data-bind="wset"][data-j="{j}"][data-f="{f}"]')
 
+    def wyjdz(neutralny='#workout .srow .n'):
+        """Wyjście z pola: stuknięcie obok, a gdy pole nadal ma fokus (iOS/WebKit nie zdejmuje fokusu przy stuknięciu w tekst), blur jak przycisk „Gotowe”."""
+        r.klik(neutralny)
+        page.evaluate("() => { const a = document.activeElement; if (a && a.tagName === 'INPUT') a.blur(); }")
+
     def stuknij_obok():
-        r.klik('#workout .srow .n')   # stuknięcie w numer serii: nie jest polem, więc pole traci fokus
+        wyjdz()
 
     def serie(f):
         return page.evaluate("(f) => ACTIVE.ex[0].sets.map(s => s[f])", f)
@@ -805,9 +810,9 @@ def scenariusz(r):
         zakladka('plany'); r.klik('[data-act="editPlan"]'); r.klik('[data-act="toggleItem"]')
         kg = lambda j: page.locator(f'#view input[data-bind="pset"][data-i="{j}"][data-f="kg"]')
         expect(kg(0)).to_have_value('10')
-        r.klik(kg(0)); expect(kg(0)).to_be_focused(); r.klik('#view .prow .sn'); expect(kg(0)).to_have_value('10')
+        r.klik(kg(0)); expect(kg(0)).to_be_focused(); wyjdz('#view .prow .sn'); expect(kg(0)).to_have_value('10')
         assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [10, 10, 10], 'plan: stuknięcie bez klawisza nie zmienia ciężaru'
-        r.klik(kg(0)); page.keyboard.press('Backspace'); r.klik('#view .prow .sn')
+        r.klik(kg(0)); page.keyboard.press('Backspace'); wyjdz('#view .prow .sn')
         assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [None, 10, 10] and kg(0).input_value() == '', 'plan: skasowany ciężar ma zostać pusty (bez kopiowania w dół)'
         # edycja zapisanego treningu
         page.evaluate("""() => { SESS = [{id:'sB1', date:new Date(Date.now() - 3600e3).toISOString(), dur:1800, planId:'PT', planName:'Plan B1', dayId:'PT', dayName:'Plan B1',
@@ -815,11 +820,11 @@ def scenariusz(r):
         zakladka('historia'); r.klik('[data-act="hist"][data-v="treningi"]'); r.klik('[data-act="sessOpen"]'); r.klik('[data-act="sedOpen"]')
         sed = lambda j, f: page.locator(f'#sheet input[data-bind="sedSet"][data-i="0"][data-j="{j}"][data-f="{f}"]')
         expect(sed(0, 'kg')).to_have_value('10')
-        r.klik(sed(0, 'kg')); r.klik('#sheet .sed-row.head'); expect(sed(0, 'kg')).to_have_value('10')
+        r.klik(sed(0, 'kg')); wyjdz('#sheet .sed-row.head'); expect(sed(0, 'kg')).to_have_value('10')
         assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [10, 10], 'edycja treningu: stuknięcie bez klawisza nie zmienia ciężaru'
-        r.klik(sed(0, 'kg')); page.keyboard.press('Backspace'); r.klik('#sheet .sed-row.head')
+        r.klik(sed(0, 'kg')); page.keyboard.press('Backspace'); wyjdz('#sheet .sed-row.head')
         assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [None, 10] and sed(0, 'kg').input_value() == '', 'edycja treningu: skasowany ciężar ma zostać pusty'
-        r.klik(sed(1, 'reps')); page.keyboard.type('8,5'); r.klik('#sheet .sed-row.head')
+        r.klik(sed(1, 'reps')); page.keyboard.type('8,5'); wyjdz('#sheet .sed-row.head')
         assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.reps)') == [8, 9] and sed(1, 'reps').input_value() == '9', 'edycja treningu: powtórzenia do całości'
         r.klik('[data-act="sedSave"]')
         assert page.evaluate('() => SESS[0].ex[0].sets.map(s => [s.reps, s.kg ?? null])') == [[8, None], [9, 10]], 'zapis edycji treningu: pusty ciężar zostaje pusty'
