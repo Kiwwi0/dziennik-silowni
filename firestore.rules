@@ -1,16 +1,74 @@
 rules_version = '2';
 // Dziennik siłowni – każdy folder (osoba) chroniony 4-cyfrowym PIN-em.
 // Lista folderów (same imiona) jest widoczna dla wszystkich; plany i treningi tylko dla urządzeń, które podały PIN.
-// Reset zapomnianego PIN-u: w konsoli usuń dokument folders/{id}/secret/pin i pole „pin” w folders/{id}.
+// Reset zapomnianego PIN-u (tylko konsola Firebase – konsola omija reguły; tryb „set” dla obcych urządzeń nie istnieje):
+//  1) policz skrót nowego PIN-u: SHA-256("dziennik-silowni:" + ID_KONTA + ":" + PIN), przepis w komentarzu bloku „PIN folderu” w app.html;
+//  2) wpisz go w folders/{id}/secret/pin → pole hash;
+//  3) jeśli PIN mógł wyciec – zwiększ o 1 pole gen w folders/{id} (typ number; brak pola = 0, więc wpisz 1) – to wyloguje wszystkie urządzenia;
+//  4) jeśli konto jest zablokowane limitem prób – usuń dokument folders/{id}/secret/gate.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isMember(fid) { return signedIn() && exists(/databases/$(database)/documents/folders/$(fid)/members/$(request.auth.uid)); }
-    function isMemberAfter(fid) { return signedIn() && existsAfter(/databases/$(database)/documents/folders/$(fid)/members/$(request.auth.uid)); }
+    function fPath(fid) { return /databases/$(database)/documents/folders/$(fid); }
+    function pinPath(fid) { return /databases/$(database)/documents/folders/$(fid)/secret/pin; }
+    function gatePath(fid) { return /databases/$(database)/documents/folders/$(fid)/secret/gate; }
+    function mPath(fid) { return /databases/$(database)/documents/folders/$(fid)/members/$(request.auth.uid); }
+    function tPath(fid) { return /databases/$(database)/documents/folders/$(fid)/tries/$(request.auth.uid); }
+
+    // Członek = własny wpis members z generacją równą generacji konta (brak pola gen = 0, jak w danych sprzed A3).
+    // Brak wpisu lub folderu: get() kończy się błędem, a błąd = odmowa. 2 odczyty.
+    function isMember(fid) {
+      return signedIn() && get(mPath(fid)).data.get('gen', 0) == get(fPath(fid)).data.get('gen', 0);
+    }
     function validFolder(d) {
-      return d.keys().hasOnly(['name', 'createdAt', 'updatedAt', 'pin'])
+      return d.keys().hasOnly(['name', 'createdAt', 'updatedAt', 'pin', 'gen'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 40
-        && (!('pin' in d) || d.pin is bool);
+        && (!('pin' in d) || d.pin is bool)
+        && (!('gen' in d) || (d.gen is int && d.gen >= 0));
+    }
+    function validHash(d) {
+      return d.keys().hasOnly(['hash']) && d.keys().hasAll(['hash'])
+        && d.hash is string && d.hash.size() == 64;
+    }
+    // Żeton: to urządzenie przeszło przez bramkę najwyżej 15 min temu ze skrótem h (odczyt sprzed zapisu – get, nie getAfter).
+    function triedPin(fid, h) {
+      let t = get(tPath(fid)).data;
+      return t.hash == h && t.at > request.time - duration.value(15, 'm');
+    }
+    // Świeży żeton z poprawnym PIN-em (usuwanie konta).
+    function pinFresh(fid) { return triedPin(fid, get(pinPath(fid)).data.hash); }
+    // Sekret powstaje albo zmienia się w tym samym zapisie.
+    function pinChanging(fid) {
+      return !exists(pinPath(fid)) || getAfter(pinPath(fid)).data.hash != get(pinPath(fid)).data.hash;
+    }
+
+    // Bramka prób: stałe okna – 15 min (≤ 5 prób) i doba (≤ 10 prób). Czas tylko z request.time.
+    // GATE_15 = 5, GATE_DAY = 10 – zmieniać razem ze stałymi o tych nazwach w app.html.
+    function gateKeys(n) {
+      return n.keys().hasOnly(['n15', 'w15', 'nd', 'wd', 'at']) && n.keys().hasAll(['n15', 'w15', 'nd', 'wd', 'at'])
+        && n.at == request.time;
+    }
+    function gateFirst(n) {
+      return gateKeys(n) && n.n15 == 1 && n.w15 == request.time && n.nd == 1 && n.wd == request.time;
+    }
+    function gateNext(o, n) {
+      return gateKeys(n)
+        && (request.time > o.w15 + duration.value(15, 'm')
+              ? (n.n15 == 1 && n.w15 == request.time)
+              : (n.n15 == o.n15 + 1 && n.n15 <= 5 && n.w15 == o.w15))
+        && (request.time > o.wd + duration.value(1, 'd')
+              ? (n.nd == 1 && n.wd == request.time)
+              : (n.nd == o.nd + 1 && n.nd <= 10 && n.wd == o.wd));
+    }
+    // Zmiana folderu: urządzenie jest członkiem po zapisie; pin nie znika; gen +1 tylko razem ze zmianą istniejącego sekretu.
+    function folderUpdOk(fid) {
+      let o = resource.data;
+      let n = request.resource.data;
+      let og = o.get('gen', 0);
+      let ng = n.get('gen', 0);
+      return getAfter(mPath(fid)).data.get('gen', 0) == ng
+        && (n.get('pin', false) == o.get('pin', false) || (n.get('pin', false) == true && existsAfter(pinPath(fid))))
+        && (ng == og || (ng == og + 1 && exists(pinPath(fid)) && pinChanging(fid)));
     }
     function validShare(d) {
       return d.keys().hasOnly(['fid', 'from', 'plan', 'custom', 'updatedAt'])
@@ -125,27 +183,64 @@ service cloud.firestore {
 
     match /folders/{fid} {
       allow read: if true;
-      allow create: if signedIn() && validFolder(request.resource.data);
-      allow update: if validFolder(request.resource.data) && isMemberAfter(fid);
-      allow delete: if isMember(fid);
+      // Nowe konto: folder + secret/pin + własny wpis members w jednym zapisie grupowym (pinGo, tryb 'new').
+      allow create: if signedIn() && validFolder(request.resource.data)
+        && request.resource.data.get('pin', false) == true
+        && request.resource.data.get('gen', 0) == 0
+        && existsAfter(pinPath(fid));
+      allow update: if signedIn() && validFolder(request.resource.data) && folderUpdOk(fid);
+      // Usunięcie konta: członek ze świeżym żetonem poprawnego PIN-u; sekret znika w tym samym zapisie.
+      allow delete: if isMember(fid) && pinFresh(fid) && !existsAfter(pinPath(fid));
 
-      // Skrót PIN-u: nikt go nie odczyta; ustawić można tylko raz (zmiana = reset w konsoli).
-      match /secret/{doc} {
-        allow read, update: if false;
-        allow create: if signedIn() && doc == 'pin'
-          && existsAfter(/databases/$(database)/documents/folders/$(fid))
-          && request.resource.data.keys().hasOnly(['hash'])
-          && request.resource.data.hash is string && request.resource.data.hash.size() == 64;
-        allow delete: if isMember(fid);
+      // Skrót PIN-u – nikt go nie odczyta.
+      match /secret/pin {
+        allow read: if false;
+        // Tylko razem z nowym kontem (folder powstaje w tym samym zapisie) albo przez członka konta, które sekretu nie ma.
+        allow create: if signedIn() && validHash(request.resource.data)
+          && ((!exists(fPath(fid)) && existsAfter(fPath(fid))) || isMember(fid));
+        // Zmiana PIN-u: członek, świeży żeton z OBECNYM PIN-em, inny skrót, generacja konta +1 w tym samym zapisie.
+        allow update: if isMember(fid) && validHash(request.resource.data)
+          && request.resource.data.hash != resource.data.hash
+          && triedPin(fid, resource.data.hash)
+          && getAfter(fPath(fid)).data.get('gen', 0) == get(fPath(fid)).data.get('gen', 0) + 1;
+        // Usunąć można tylko razem z kontem.
+        allow delete: if isMember(fid) && !existsAfter(fPath(fid));
       }
 
-      // Urządzenia z dostępem: wpis powstaje tylko, gdy skrót zgadza się z sekretem.
+      // Bramka prób (bez skrótów). Czytelna, żeby aplikacja pokazała „Spróbuj za … min” i zapisała próbę w transakcji.
+      match /secret/gate {
+        allow get: if signedIn();
+        allow create: if signedIn() && exists(pinPath(fid)) && gateFirst(request.resource.data);
+        allow update: if signedIn() && gateNext(resource.data, request.resource.data);
+        allow delete: if isMember(fid) && !existsAfter(fPath(fid));
+      }
+
+      // Żeton próby: skrót do sprawdzenia; powstaje tylko w tym samym zapisie co zwiększenie bramki.
+      match /tries/{uid} {
+        allow read: if false;
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['hash', 'at']) && request.resource.data.keys().hasAll(['hash', 'at'])
+          && request.resource.data.hash is string && request.resource.data.hash.size() == 64
+          && request.resource.data.at == request.time
+          && getAfter(gatePath(fid)).data.at == request.time;
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+
+      // Urządzenia z dostępem. Wpis = skrót równy sekretowi + generacja równa generacji konta, oraz jedno z:
+      //  (a) świeży żeton z tym samym skrótem (logowanie, sprawdzenie PIN-u przed usunięciem/zmianą),
+      //  (b) nowe konto – folder powstaje w tym samym zapisie,
+      //  (c) członek ustawia lub zmienia PIN w tym samym zapisie (bez tego warunku wpis byłby wyrocznią PIN-u bez limitu).
       match /members/{uid} {
         allow get: if signedIn() && request.auth.uid == uid;
         allow list: if false;
         allow create, update: if signedIn() && request.auth.uid == uid
-          && request.resource.data.keys().hasOnly(['hash', 'at'])
-          && getAfter(/databases/$(database)/documents/folders/$(fid)/secret/pin).data.hash == request.resource.data.hash;
+          && request.resource.data.keys().hasOnly(['hash', 'at', 'gen'])
+          && request.resource.data.keys().hasAll(['hash', 'at'])
+          && request.resource.data.get('gen', 0) == getAfter(fPath(fid)).data.get('gen', 0)
+          && request.resource.data.hash == getAfter(pinPath(fid)).data.hash
+          && (triedPin(fid, request.resource.data.hash)
+            || !exists(fPath(fid))
+            || (isMember(fid) && pinChanging(fid)));
         allow delete: if signedIn() && request.auth.uid == uid;
       }
 
