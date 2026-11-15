@@ -2632,6 +2632,17 @@ function zFailed(fid, quiet){
   if (!quiet && !zWarned){ zWarned = true; toast('Nie udało się zapisać zmian w bazie. Spróbuję ponownie.'); }
   clearTimeout(zRetryT); zRetryT = setTimeout(flushFire, ZP.backoff(zRetryN++));
 }
+/* A6g: transakcja zapisu z limitem czasu. Zawieszona transakcja (sieć bez internetu, uśpiona karta) nie trzyma blokady zBusy do przeładowania strony:
+   po ZTX_MS blokada jest zwolniona, kolejka zostaje w localStorage, ponowienie jak po błędzie (zFailed) albo przy następnym wyzwoleniu (zmiana, 'online', migawka).
+   Spóźniony wynik jest bezpieczny: done(r, false) rozlicza go (ZP.settleTx / ZP.afterMirror zdejmują tylko wpisy o tym samym znaczniku), ale nie dotyka
+   blokady (może ją już trzymać nowsza transakcja) ani nie wyzwala kolejnej wysyłki. */
+let ZTX_MS = 20000;
+function zRun(fid, fn, done, quiet){
+  let live = true;
+  const t = setTimeout(() => { if (live){ live = false; zFailed(fid, quiet); } }, ZTX_MS);
+  FB.runTransaction(FB.db, fn).then(r => { clearTimeout(t); const now = live; live = false; done(r, now); },
+    () => { clearTimeout(t); if (live){ live = false; zFailed(fid, quiet); } });
+}
 function zHoldToast(){ if (zHoldWarned) return; zHoldWarned = true; toast('Konto w bazie ma nieznany układ danych. Nie zapisuję do niego; plany zostają w tej przeglądarce, spróbuję po kolejnym odczycie.'); }
 function flushFire(){
   if (!fireOn() || ZP.emptyQ(Z.q)) return;
@@ -2646,13 +2657,14 @@ function flushFire(){
   const S0 = clone(S), z0 = {q:clone(z.q), kn:clone(z.kn)};
   // Zapis kolejki = JEDNA transakcja (plan A6f): odczyt dokumentu, scalenie z kolejką (ZP.txPlan – zapisuje tylko to, co nowsze niż w bazie),
   // zapis zmienionych pól (mergeFields) albo całego dokumentu (migracja / naprawa po starej karcie). Przy konflikcie SDK powtarza funkcję na świeżym dokumencie.
-  FB.runTransaction(FB.db, async tx => {
+  zRun(fid, async tx => {
     const snap = await tx.get(ref);
     const r = ZP.txPlan(snap.exists() ? snap.data() : null, S0, z0, Date.now(), d => normalize(d), p => normalize({plans:[p]}).plans[0] || p);
     if (r.kind === 'v3') tx.set(ref, zUnDel(r.data), {mergeFields:r.fields});
     else if (r.kind === 'full') tx.set(ref, r.doc);
     return r;
-  }).then(r => {
+  }, (r, live) => {
+    if (!live){ if (r.kind !== 'hold') ZP.settleTx(LS, fid, zCur(fid), z, r, Date.now(), S); return; }   // spóźniony wynik po limicie czasu: tylko rozliczenie kolejki
     if (r.kind === 'hold'){ zBusy.free(fid); zHoldToast(); return; }   // dokument nieznanego kształtu (bez plans i pm): nie nadpisujemy go, zmiany czekają w kolejce; ponowienie po kolejnym odczycie z bazy
     // po zatwierdzeniu: wysłane i przegrane wpisy schodzą z kolejki; kolejka i stan idą do localStorage tylko, gdy z jest nadal bieżącym Z (ZP.settleTx, zCur)
     ZP.settleTx(LS, fid, zCur(fid), z, r, Date.now(), S); zBusy.free(fid); zRetryN = 0; zWarned = false;
@@ -2662,22 +2674,24 @@ function flushFire(){
     if (r.mirrorSkipped && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
     if (r.repaired) toast('Starsza wersja strony zapisała dane na innym urządzeniu. Scaliłem je z danymi na tym urządzeniu.');
     if (FOLDER && FOLDER.id === fid && !ZP.emptyQ(Z.q) && (Z !== z || JSON.stringify(z.q) !== q0)) flushFire();   // dalej tylko, gdy kolejka się zmieniła (bez pętli transakcji)
-  }, () => zFailed(fid));
+  });
 }
 /* Lustro starego układu (plans/custom dla starych kart) zapisuje osobna transakcja: czyta dokument i zapisuje lustro tylko, gdy dokument ma `full`
    (nie jest zapisem starej karty). Zwykły zapis scalający lustra nie dotyka, więc nie nadpisze planów dodanych przez starą kartę tuż przed nim. */
 function flushMirror(z, fid, ref){
   const m = z.q.m;
-  FB.runTransaction(FB.db, async tx => {
+  zRun(fid, async tx => {
     const snap = await tx.get(ref), p = ZP.mirrorPatch(snap.exists() ? snap.data() : null);
     if (p.action === 'set') tx.update(ref, {plans:p.plans, custom:p.custom});
     else if (p.action === 'drop') tx.update(ref, {plans:FB.deleteField(), custom:FB.deleteField()});   // za duży dokument: stare lustro znika
     return p;
-  }).then(p => {
-    ZP.afterMirror(z, m); ZP.store(LS, fid, zCur(fid), z, S, {m}); zBusy.free(fid); zRetryN = 0; zWarned = false;
+  }, (p, live) => {
+    ZP.afterMirror(z, m); ZP.store(LS, fid, zCur(fid), z, S, {m});
+    if (!live) return;                                                                                   // spóźniony wynik po limicie czasu: blokady nie ruszamy
+    zBusy.free(fid); zRetryN = 0; zWarned = false;
     if (p.tooBig && !zMirrorWarned){ zMirrorWarned = true; toast('Plany są bardzo duże: starsza wersja strony na innym urządzeniu nie zobaczy ich w całości.'); }
     if (FOLDER && FOLDER.id === fid && !ZP.emptyQ(Z.q)) flushFire();
-  }, () => zFailed(fid, true));
+  }, true);
 }
 async function flush(){
   if (store.mode === 'fire'){ flushFire(); return; }

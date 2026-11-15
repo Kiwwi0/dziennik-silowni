@@ -1058,12 +1058,27 @@ test('33. app.html: flushFire zapisuje data/state TYLKO w transakcji (tx.set po 
   assert.ok(!/FB\.setDoc\(/.test(ff), 'w flushFire nie ma setDoc (zapis bez warunku)');
   assert.ok(!/FB\.setDoc\(\s*zStateRef\(/.test(APP) && !/FB\.updateDoc\(\s*zStateRef\(/.test(APP), 'nigdzie w app.html setDoc/updateDoc na data/state przez zStateRef');
   assert.ok(!/noop|ZP\.migrate\(|ZP\.buildWrite\(/.test(ff), 'bez noop i bez osobnych ścieżek migracji / zwykłego zapisu');
-  const tr = ff.indexOf('FB.runTransaction(FB.db, async tx => {'), get = ff.indexOf('await tx.get(ref)'), plan = ff.indexOf('ZP.txPlan('), set1 = ff.indexOf("tx.set(ref, zUnDel(r.data), {mergeFields:r.fields})"), set2 = ff.indexOf('tx.set(ref, r.doc)');
-  assert.ok(tr >= 0 && tr < get && get < plan && plan < set1 && plan < set2, 'kolejność: runTransaction → tx.get → ZP.txPlan → tx.set (mergeFields albo cały dokument)');
+  const tr = ff.indexOf('zRun(fid, async tx => {'), get = ff.indexOf('await tx.get(ref)'), plan = ff.indexOf('ZP.txPlan('), set1 = ff.indexOf("tx.set(ref, zUnDel(r.data), {mergeFields:r.fields})"), set2 = ff.indexOf('tx.set(ref, r.doc)');
+  assert.ok(tr >= 0 && tr < get && get < plan && plan < set1 && plan < set2, 'kolejność: zRun (runTransaction z limitem czasu) → tx.get → ZP.txPlan → tx.set (mergeFields albo cały dokument)');
   assert.ok(ff.indexOf("navigator.onLine === false) return;") >= 0 && ff.indexOf("navigator.onLine === false) return;") < tr, 'bez sieci wyjście przed transakcją (kolejka czeka w localStorage)');
-  assert.ok(ff.indexOf('syncShares()') > ff.indexOf('.then(r => {'), 'syncShares dopiero po zatwierdzeniu');
+  assert.ok(ff.indexOf('syncShares()') > ff.indexOf('(r, live) => {'), 'syncShares dopiero po zatwierdzeniu');
   assert.ok(/ZP\.txPlan\([^;]*, S0, z0, /.test(ff) && ff.indexOf('const S0 = clone(S), z0 = {q:clone(z.q), kn:clone(z.kn)}') >= 0 && ff.indexOf('const S0') < tr,
     'txPlan liczy z migawki S0/z0 zrobionej przed transakcją (nie z globalnego S – po przełączeniu konta albo przy ponowieniu byłby to stan innego konta)');
+});
+
+test('33b. app.html: transakcje zapisu (flushFire, flushMirror) mają limit czasu – zRun zwalnia blokadę po ZTX_MS, spóźniony wynik nie zwalnia blokady nowszej transakcji (A6g-2)', () => {
+  const zr = ciało(APP, 'function zRun(fid, fn, done, quiet){'), ff = ciało(APP, 'function flushFire(){'), fm = ciało(APP, 'function flushMirror(z, fid, ref){');
+  assert.ok(/let ZTX_MS = \d+;/.test(APP), 'stała ZTX_MS (limit czasu transakcji)');
+  assert.ok(/setTimeout\(\(\) => \{ if \(live\)\{ live = false; zFailed\(fid, quiet\); \} \}, ZTX_MS\)/.test(zr), 'po ZTX_MS: zFailed (zwolnienie blokady + ponowienie), tylko raz');
+  assert.ok(/FB\.runTransaction\(FB\.db, fn\)/.test(zr) && /done\(r, now\)/.test(zr), 'zRun uruchamia transakcję i przekazuje, czy wynik zdążył przed limitem');
+  for (const [n, b] of [['flushFire', ff], ['flushMirror', fm]]){
+    assert.ok(!/FB\.runTransaction\(/.test(b), n + ': transakcja tylko przez zRun (z limitem czasu)');
+    assert.ok(/zRun\(fid, async tx => \{/.test(b), n + ': używa zRun');
+  }
+  const lateF = ff.slice(ff.indexOf('if (!live){'), ff.indexOf('if (r.kind === \'hold\'){'));
+  assert.ok(lateF.includes('ZP.settleTx(') && !lateF.includes('zBusy.free') && !lateF.includes('flushFire()') && lateF.includes('return;'), 'flushFire: spóźniony wynik tylko rozlicza kolejkę');
+  const lateM = fm.slice(fm.indexOf('(p, live) => {'), fm.indexOf('zBusy.free(fid)'));
+  assert.ok(lateM.includes('if (!live) return;'), 'flushMirror: spóźniony wynik nie zwalnia blokady');
 });
 
 /* ======================= A6f: zapis kolejki transakcją (ZP.txPlan, ZP.afterTx) ======================= */

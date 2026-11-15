@@ -52,7 +52,7 @@ SZTUCZNY_FIREBASE = r"""() => {
   const cl = v => JSON.parse(JSON.stringify(v));
   const sorted = v => Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.keys(v).sort().reduce((o, k) => (o[k] = sorted(v[k]), o), {}) : v;
   const DEL = {__fdel:true};
-  const sv = window.__sv = {doc:null, sess:{}, st:[], se:[], fail:false, log:[], delay:5};
+  const sv = window.__sv = {doc:null, sess:{}, st:[], se:[], fail:false, log:[], delay:5, zawies:false, wstrzymane:[]};
   const setPath = (obj, parts, val) => { for (let i = 0; i < parts.length - 1; i++){ if (!obj[parts[i]] || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {}; obj = obj[parts[i]]; } const k = parts[parts.length - 1]; if (val === DEL) delete obj[k]; else obj[k] = cl(val); };
   const snapOf = () => ({exists:() => !!sv.doc, data:() => sorted(cl(sv.doc)), metadata:{fromCache:false, hasPendingWrites:false}});
   Object.assign(FB, {
@@ -76,7 +76,10 @@ SZTUCZNY_FIREBASE = r"""() => {
     getDocs:async () => ({docs:[], empty:true}), getDoc:async () => ({exists:() => false}),
     // Transakcja jak w SDK: odczyt, funkcja, zatwierdzenie po sv.delay ms; jeśli dokument zmienił się w tym czasie (sv.konflikt – „inny zapis” wstrzyknięty przez test),
     // funkcja jest wywoływana ponownie na świeżym dokumencie (do 5 razy). tx.set z {mergeFields} zapisuje tylko wskazane pola (deleteField usuwa), bez opcji – cały dokument.
-    runTransaction:(db, fn) => new Promise(async (res, rej) => {
+    // sv.zawies = true (A6g): transakcja wisi (nie kończy się ani błędem, ani wynikiem), dopóki test nie wywoła jej z sv.wstrzymane.
+    runTransaction:(db, fn) => sv.zawies ? new Promise((res, rej) => sv.wstrzymane.push(() => sv.wykonaj(fn).then(res, rej))) : sv.wykonaj(fn),
+  });
+  sv.wykonaj = fn => new Promise(async (res, rej) => {
       for (let proba = 0; proba < 5; proba++){
         if (sv.fail) return rej(new Error('sztuczny brak sieci'));
         const przed = JSON.stringify(sv.doc), pend = [], tx = {get:async () => snapOf(), set:(ref, data, opts) => pend.push({set:data, opts}), update:(ref, data) => pend.push({upd:data})};
@@ -94,7 +97,8 @@ SZTUCZNY_FIREBASE = r"""() => {
         return res(r);
       }
       rej(new Error('sztuczna transakcja: za dużo konfliktów'));
-    }),
+    });
+  Object.assign(FB, {
     onSnapshot:(target, ...a) => {
       const cb = a.find(x => typeof x === 'function'), e = {target, cb};
       const list = target.kind === 'doc' && /\/data\/state$/.test(target.path) ? sv.st : target.kind === 'query' && /\/sessions$/.test(target.path) ? sv.se : [];
@@ -681,6 +685,52 @@ def scenariusz(r):
         assert 'tx-retry' in pk['log'] and pk['rest'] == pk['oczekiwane'] and pk['planyT8wBazie'] == [], f'ponowiona transakcja po przełączeniu konta zapisała stan innego konta: {pk}'
         assert w['setDoc'] == 0, f"zapis data/state przez setDoc: {w['setDoc']}"
     r.krok('zapis: transakcja (tylko nowsze niż w bazie), bez sieci nic, konflikt (sztuczny Firebase, A6f)', zapis_a6f)
+
+    # ---- A6g: zawieszona transakcja nie blokuje synchronizacji (limit czasu ZTX_MS), spóźniony wynik nie zwalnia blokady nowszej transakcji ----
+    def zapis_a6g_limit():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.evaluate(SZTUCZNY_FIREBASE)
+        w = page.evaluate(r"""async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          const P = (id, name) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:'', sets:[{reps:8, kg:40}]}]});
+          const plans = [P('P1', 'Plan A'), P('P2', 'Plan B')];
+          const toasty = [], toastOrg = toast; toast = m => { toasty.push(m); toastOrg(m); };
+          const kq = () => Object.keys(LS.get(ZP.zKey('t9'), {q:{p:{}}}).q.p).sort(), wolna = () => { const ok = zBusy.take('t9'); if (ok) zBusy.free('t9'); return ok; };
+          store.mode = 'fire'; FOLDER = {id:'t9', name:'A6g'}; ZTX_MS = 300;
+          sv.doc = {v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[]};
+          LS.set('dz.f.t9.state', {v:2, plans, custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t9.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80); sv.log.length = 0;
+          // 1. transakcja wisi: po limicie czasu blokada wolna, zmiana czeka w kolejce localStorage, w bazie nic, komunikat
+          sv.zawies = true; S.plans[0].name = 'A: po zawieszeniu'; persist(); clearTimeout(store.t); flushFire(); await sleep(100);
+          out.wTrakcie = {wolna:wolna(), kolejka:kq()};
+          await sleep(350); clearTimeout(zRetryT);
+          out.poLimicie = {wolna:wolna(), kolejka:kq(), p1:sv.doc.pm.P1.name, toast:toasty.some(t => /Nie udało się zapisać/.test(t)), wiszace:sv.wstrzymane.length};
+          // 2. następne wyzwolenie (tu: kolejna zmiana) – nowa transakcja też wisi; spóźniona PIERWSZA kończy się w jej trakcie i nie zwalnia jej blokady
+          S.plans[1].name = 'B: druga'; persist(); clearTimeout(store.t); flushFire(); await sleep(30);
+          if (sv.wstrzymane.length !== 2){ sv.zawies = false; sv.wstrzymane.splice(0).forEach(f => f()); toast = toastOrg; ZTX_MS = 20000; return out; }   // blokada nie zwolniona: asercje niżej to pokażą
+          const [pierwsza, druga] = sv.wstrzymane.splice(0); sv.zawies = false;
+          pierwsza(); await sleep(60);
+          out.spozniona = {wolna:wolna(), p1:sv.doc.pm.P1.name, kolejka:kq()};
+          druga(); await sleep(80); sv.emit(); await sleep(60);
+          out.koniec = {wolna:wolna(), p1:sv.doc.pm.P1.name, p2:sv.doc.pm.P2.name, kolejka:kq(), lokalnie:S.plans.map(p => p.name)};
+          // 3. bez zawieszenia wszystko jak zwykle
+          sv.log.length = 0; S.plans[0].name = 'A: zwykły'; persist(); await sleep(900); sv.emit(); await sleep(60);
+          out.zwykly = {p1:sv.doc.pm.P1.name, kolejka:kq(), log:sv.log.slice()};
+          toast = toastOrg; ZTX_MS = 20000; clearTimeout(zRetryT);
+          return out;
+        }""")
+        t = w['wTrakcie']
+        assert t['wolna'] is False and t['kolejka'] == ['P1'], f'w trakcie transakcji blokada zajęta, zmiana w kolejce: {t}'
+        p = w['poLimicie']
+        assert p['wolna'] is True and p['kolejka'] == ['P1'] and p['p1'] == 'Plan A' and p['toast'] and p['wiszace'] == 1, f'po limicie czasu blokada ma być wolna, zmiana w kolejce localStorage: {p}'
+        s_ = w['spozniona']
+        assert s_['wolna'] is False and s_['p1'] == 'A: po zawieszeniu', f'spóźniona transakcja zapisuje, ale nie zwalnia blokady nowszej: {s_}'
+        k = w['koniec']
+        assert k['wolna'] is True and k['p1'] == 'A: po zawieszeniu' and k['p2'] == 'B: druga' and k['kolejka'] == [] and k['lokalnie'] == ['A: po zawieszeniu', 'B: druga'], f'po obu transakcjach: {k}'
+        z = w['zwykly']
+        assert z['p1'] == 'A: zwykły' and z['kolejka'] == [] and 'tx:mf' in z['log'], f'zwykły zapis po wszystkim: {z}'
+    r.krok('zapis: zawieszona transakcja – limit czasu, spóźniony wynik (sztuczny Firebase, A6g)', zapis_a6g_limit)
 
     def kopia_przed_i_po():
         page.goto(BASE + '/', wait_until='load')
