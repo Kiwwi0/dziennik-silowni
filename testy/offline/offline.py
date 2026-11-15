@@ -60,6 +60,8 @@ def trasy(ctx, st):
     cors = {'access-control-allow-origin': '*'}
     def h(route):
         u = route.request.url
+        if route.request.method == 'OPTIONS' and not st['offline'] and not (st['bez_recaptcha'] and 'recaptcha' in u):   # zapytanie wstępne CORS (WebKit nie odpowiada na nie sam)
+            return route.fulfill(status=204, headers={**cors, 'access-control-allow-headers': '*', 'access-control-allow-methods': '*', 'access-control-max-age': '600'})
         if st['offline'] or (st['bez_recaptcha'] and 'recaptcha' in u): return route.abort()
         if 'recaptcha/enterprise.js' in u:
             return route.fulfill(content_type='text/javascript', body="window.grecaptcha=window.grecaptcha||{};grecaptcha.enterprise={render:function(){return 'w1'},ready:function(cb){cb()},execute:function(){return Promise.resolve('fake-recaptcha')}};")
@@ -120,6 +122,7 @@ SCENARIUSZE = {
 
 
 def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
+    stan = {'dbg': None, 'page': None}
     def sprawdz(warunek, opis):
         print(('    ok     ' if warunek else '    BŁĄD   ') + opis, flush=True)
         if not warunek: bledy.append(f'{silnik} / {nazwa}: {opis}')
@@ -131,7 +134,9 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
             if silnik == 'chromium' and os.path.exists('/usr/bin/google-chrome') and not os.environ.get('PLAYWRIGHT_BUNDLED'): opcje['executable_path'] = '/usr/bin/google-chrome'
             b = getattr(p, silnik).launch(**opcje); ctx = b.new_context(); trasy(ctx, st); page = ctx.new_page(); bl = []
             page.on('pageerror', lambda e: bl.append(str(e)[:120]))
+            dbg = []; page.on('console', lambda m: dbg.append(f'konsola {m.type}: {m.text[:160]}')); ctx.on('requestfailed', lambda r: dbg.append(f'żądanie nieudane: {r.method} {r.url[:110]} {r.failure}'))
             url = f'http://localhost:{WEBPORT}/'
+            stan['dbg'] = dbg; stan['page'] = lambda: page.evaluate("({db: !!FB.db, uid: FB.uid || null, fireError: store.fireError, appCheck: APPCHK.on, ladowanie: APPCHK.loading, grecaptcha: !!(self.grecaptcha && self.grecaptcha.enterprise)})")
             page.goto(url); page.wait_for_timeout(2500); page.evaluate('navigator.serviceWorker.ready.then(() => 1)'); page.wait_for_timeout(1000)
             page.evaluate(ZASIEW)
             for _ in range(cfg['wejsc']): page.goto(url); page.wait_for_timeout(2500)
@@ -155,10 +160,16 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
             if not cfg.get('tylko_dane'): sprawdz(not r['fireError'], '(c) bez błędu połączenia z bazą')
             sprawdz(r['historia'], '(c) zapisany trening widoczny w historii'); sprawdz(r['stan'] and r['kolejka'], '(d) zmiana planu: stan i kolejka w localStorage')
             sprawdz(r['trening'] and r['niewyslany'], '(d) trening: zapisany lokalnie i na liście niewysłanych')
-            sprawdz(not bl, 'brak błędów skryptu strony' + (f' ({bl[:2]})' if bl else ''))
+            if not cfg['usun_z_libs']: sprawdz(not bl, 'brak błędów skryptu strony' + (f' ({bl[:2]})' if bl else ''))   # moduł usunięty celowo: WebKit zgłasza nieudany import() jako błąd strony ("Load failed"), choć aplikacja go łapie
             b.close()
     finally:
         www.stop(); cdn.stop(); shutil.rmtree(kopia, ignore_errors=True)
+        if any(x.startswith(f'{silnik} / {nazwa}') for x in bledy) and stan['dbg'] is not None:
+            print('    --- diagnostyka (ostatnie zdarzenia) ---')
+            for l in stan['dbg'][-14:]: print('      ' + l)
+            if stan['page']:
+                try: print('      stan strony:', stan['page']())
+                except Exception as e: print('      stan strony niedostępny:', str(e)[:80])
 
 
 def main():
