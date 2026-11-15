@@ -652,7 +652,7 @@ try { applyTheme(localStorage.getItem('theme') || 'auto'); } catch (e) {}
 /* ====================== dane i narzędzia ====================== */
 const EX = JSON.parse(document.getElementById('exdata').textContent);
 const EXMAP = new Map(EX.map(e => [e.id, e]));
-const GROUPS = ['Klatka piersiowa','Plecy','Barki','Biceps','Triceps','Czworogłowe uda','Dwugłowe uda','Pośladki i biodra','Łydki','Brzuch','Całe ciało','Cardio'];
+const GROUPS = ['Klatka piersiowa','Plecy','Barki','Biceps','Triceps','Czworogłowe uda','Dwugłowe uda','Pośladki i biodra','Łydki','Brzuch','Całe ciało','Cardio','Rozgrzewka'];
 const EQUIPS = ['Sztanga','Sztanga łamana','Hantle','Kettlebell','Wyciąg','Maszyna','Masa ciała','Guma','Inne'];
 const DEF_SETTINGS = {restSet:90, restEx:120, autoRest:true, sound:true, bar:20, perWeek:3};
 const TABS = [
@@ -826,7 +826,7 @@ let Z = ZP.fixZ(FIRE && FOLDER ? LS.get(zKey(FOLDER.id), null) : null), zLast = 
 const zBusy = ZP.newBusy();   // zajętość zapisu osobno dla każdego konta
 let zRetryT = null, zRetryN = 0, zWarned = false, zMirrorAt = 0, zMirrorWarned = false, zRenderT = null, zHoldWarned = false, zSizeWarned = false;
 const getEx = id => EXMAP.get(id) || S.custom.find(c => c.id === id) || {id, name:'Usunięte ćwiczenie', group:'', equipment:'', mode:'reps', primary:[], secondary:[], steps:[], tips:[], missing:true};
-const hasImg = id => EXMAP.has(id);
+const hasImg = () => false;   // zdjęć ćwiczeń nie ma w stronie (build_web usuwa img/): miniatura to animacja albo litera, karta animacja, film albo nic
 const planById = id => S.plans.find(p => p.id === id);
 function ssRange(list, i){ let a = i, b = i; while (a > 0 && list[a - 1].ssNext) a--; while (b < list.length - 1 && list[b].ssNext) b++; return [a, b]; }
 function ssPos(list, i){ const [a, b] = ssRange(list, i); return b > a ? {a, b, n:b - a + 1, k:i - a} : null; }
@@ -1675,18 +1675,20 @@ function samplePlans(){
 /* ---------- sugerowana kolejność ćwiczeń ----------
    Zasady: ćwiczenia dynamiczne i najcięższe wielostawowe na świeżo, potem pozostałe wielostawowe
    (wolne ciężary przed maszynami), potem izolowane na duże partie, małe partie, brzuch, kondycja, cardio.
+   Rozgrzewka (grupa „Rozgrzewka”) zawsze na samym początku.
    Ćwiczenia z tej samej grupy zostają w kolejności wybranej przez użytkownika. */
 const ORDER_TIERS = [
+  [-10, 'rozgrzewka', 'Inchworm_Worlds_Greatest_Stretch Cat_Cow Shin_Box_Get_Up Eccentric_Split_Squat Dynamic_Push_Ups Inverted_Row_Drop_Catch'],
   [0, 'dynamiczne, na świeżo', 'One-Arm_Kettlebell_Swings'],
-  [10, 'ciężkie wielostawowe', 'Barbell_Squat Front_Barbell_Squat Barbell_Deadlift Sumo_Deadlift Trap_Bar_Deadlift Barbell_Bench_Press_-_Medium_Grip Barbell_Incline_Bench_Press_-_Medium_Grip Decline_Barbell_Bench_Press Standing_Military_Press Bent_Over_Barbell_Row Reverse_Grip_Bent-Over_Rows T-Bar_Row_with_Handle'],
-  [20, 'wielostawowe', 'Dumbbell_Bench_Press Incline_Dumbbell_Press Dips_-_Chest_Version Pullups Chin-Up Seated_Dumbbell_Press Arnold_Dumbbell_Press Romanian_Deadlift Stiff-Legged_Dumbbell_Deadlift Good_Morning Barbell_Hip_Thrust Barbell_Glute_Bridge Goblet_Squat Dumbbell_Incline_Row Inverted_Row'],
-  [22, 'wielostawowe, lżejsze', 'Split_Squat_with_Dumbbells Dumbbell_Lunges Barbell_Walking_Lunge Dumbbell_Rear_Lunge Dumbbell_Step_Ups One-Arm_Dumbbell_Row Pushups Bodyweight_Squat Band_Assisted_Pull-Up'],
-  [25, 'wielostawowe na maszynie', 'Machine_Bench_Press Wide-Grip_Lat_Pulldown V-Bar_Pulldown Seated_Cable_Rows Lying_T-Bar_Row Leverage_Iso_Row Machine_Shoulder_Military_Press Leg_Press Hack_Squat Smith_Machine_Squat'],
-  [28, 'wielostawowe na ramiona', 'Close-Grip_Barbell_Bench_Press Dips_-_Triceps_Version'],
-  [30, 'izolowane, duże partie', 'Dumbbell_Flyes Incline_Dumbbell_Flyes Cable_Crossover Butterfly Straight-Arm_Dumbbell_Pullover Straight-Arm_Pulldown Hyperextensions_Back_Extensions Side_Lateral_Raise Standing_Low-Pulley_Deltoid_Raise Front_Dumbbell_Raise Reverse_Flyes Reverse_Machine_Flyes Upright_Barbell_Row Leg_Extensions Lying_Leg_Curls Seated_Leg_Curl Single_Leg_Glute_Bridge One-Legged_Cable_Kickback Thigh_Abductor Thigh_Adductor'],
-  [40, 'izolowane, małe partie', 'Barbell_Curl EZ-Bar_Curl Dumbbell_Alternate_Bicep_Curl Hammer_Curls Incline_Dumbbell_Curl Preacher_Curl Concentration_Curls Standing_Biceps_Cable_Curl Triceps_Pushdown Triceps_Pushdown_-_Rope_Attachment Cable_Rope_Overhead_Triceps_Extension EZ-Bar_Skullcrusher Standing_Dumbbell_Triceps_Extension Tricep_Dumbbell_Kickback Bench_Dips Standing_Calf_Raises Seated_Calf_Raise Calf_Press_On_The_Leg_Press_Machine Barbell_Shrug Dumbbell_Shrug'],
+  [10, 'ciężkie wielostawowe', 'Barbell_Squat Front_Barbell_Squat Barbell_Deadlift Sumo_Deadlift Trap_Bar_Deadlift Barbell_Bench_Press_-_Medium_Grip Barbell_Incline_Bench_Press_-_Medium_Grip Decline_Barbell_Bench_Press Standing_Military_Press Bent_Over_Barbell_Row Reverse_Grip_Bent-Over_Rows T-Bar_Row_with_Handle Zercher_Box_Squat'],
+  [20, 'wielostawowe', 'Dumbbell_Bench_Press Incline_Dumbbell_Press Dips_-_Chest_Version Pullups Chin-Up Seated_Dumbbell_Press Arnold_Dumbbell_Press Romanian_Deadlift Stiff-Legged_Dumbbell_Deadlift Good_Morning Barbell_Hip_Thrust Barbell_Glute_Bridge Goblet_Squat Dumbbell_Incline_Row Inverted_Row Head_Supported_DB_Row'],
+  [22, 'wielostawowe, lżejsze', 'Split_Squat_with_Dumbbells Dumbbell_Lunges Barbell_Walking_Lunge Dumbbell_Rear_Lunge Dumbbell_Step_Ups One-Arm_Dumbbell_Row Pushups Bodyweight_Squat Band_Assisted_Pull-Up Kroc_Row Single_Leg_Hip_Thrust Landmine_B-Stance_RDL'],
+  [25, 'wielostawowe na maszynie', 'Machine_Bench_Press Wide-Grip_Lat_Pulldown V-Bar_Pulldown Seated_Cable_Rows Lying_T-Bar_Row Leverage_Iso_Row Machine_Shoulder_Military_Press Leg_Press Hack_Squat Smith_Machine_Squat Smith_Machine_Incline_Bench_Press Unilateral_Chest_Supported_Lat_Pulldown Wide_Grip_Machine_Row Cable_One_Arm_Row Smith_Single-Leg_Split_Squat'],
+  [28, 'wielostawowe na ramiona', 'Close-Grip_Barbell_Bench_Press Dips_-_Triceps_Version Smith_JM_Press'],
+  [30, 'izolowane, duże partie', 'Dumbbell_Flyes Incline_Dumbbell_Flyes Cable_Crossover Butterfly Straight-Arm_Dumbbell_Pullover Straight-Arm_Pulldown Hyperextensions_Back_Extensions Side_Lateral_Raise Standing_Low-Pulley_Deltoid_Raise Front_Dumbbell_Raise Reverse_Flyes Reverse_Machine_Flyes Upright_Barbell_Row Leg_Extensions Lying_Leg_Curls Seated_Leg_Curl Single_Leg_Glute_Bridge One-Legged_Cable_Kickback Thigh_Abductor Thigh_Adductor Cable_Pullover One-Arm_Incline_Lateral_Raise Single_Arm_Reverse_Butterfly Landmine_Sissy_Squat Split_Squat_Isometric_Hold Unilateral_Hyperextension'],
+  [40, 'izolowane, małe partie', 'Barbell_Curl EZ-Bar_Curl Dumbbell_Alternate_Bicep_Curl Hammer_Curls Incline_Dumbbell_Curl Preacher_Curl Concentration_Curls Standing_Biceps_Cable_Curl Triceps_Pushdown Triceps_Pushdown_-_Rope_Attachment Cable_Rope_Overhead_Triceps_Extension EZ-Bar_Skullcrusher Standing_Dumbbell_Triceps_Extension Tricep_Dumbbell_Kickback Bench_Dips Standing_Calf_Raises Seated_Calf_Raise Calf_Press_On_The_Leg_Press_Machine Barbell_Shrug Dumbbell_Shrug Single_Arm_Machine_Preacher_Curl Arnold_Curl Elbow_Supported_Biceps_Curl Unilateral_Rope_Triceps_Pushdown Copenhagen_Plank_Weighted Kelso_Shrug'],
   [42, 'tylne barki i rotatory', 'Face_Pull Band_Pull_Apart External_Rotation_with_Cable'],
-  [50, 'brzuch', 'Hanging_Leg_Raise Knee_Hip_Raise_On_Parallel_Bars Ab_Roller Cable_Crunch Ab_Crunch_Machine'],
+  [50, 'brzuch', 'Hanging_Leg_Raise Knee_Hip_Raise_On_Parallel_Bars Ab_Roller Cable_Crunch Ab_Crunch_Machine Incline_Bench_Leg_Raise'],
   [51, 'brzuch', 'Crunches Reverse_Crunch Russian_Twist Dead_Bug Pallof_Press'],
   [52, 'brzuch, izometria', 'Plank Side_Bridge'],
   [60, 'kondycja', 'Battling_Ropes Farmers_Walk Mountain_Climbers'],
@@ -1698,6 +1700,7 @@ function exOrd(e){
   if (ORD.has(e.id)) return ORD.get(e.id);
   // Własne ćwiczenia: zgadujemy po grupie, sprzęcie i nazwie.
   const n = norm(e.name);
+  if (e.group === 'Rozgrzewka') return -10;
   if (e.group === 'Cardio') return 70;
   if (e.group === 'Całe ciało') return 60;
   if (e.group === 'Brzuch') return e.mode === 'time' ? 52 : 51;
@@ -1747,7 +1750,11 @@ function vOrderHint(p){
 /* ---------- ĆWICZENIA ---------- */
 function allEx(){ return [...EX, ...S.custom]; }
 // dodatkowe hasła do wyszukiwarki (inne nazwy, po angielsku)
-const EX_ALIAS = {Lying_Leg_Curls:'prone leg curl leg curl', 'Lying_T-Bar_Row':'chest supported t-bar row podparcie'};
+const EX_ALIAS = {Lying_Leg_Curls:'prone leg curl leg curl', 'Lying_T-Bar_Row':'chest supported t-bar row podparcie',
+  // angielskie nazwy z planów treningowych, których nie ma w nazwie ani w polu en
+  'Dips_-_Chest_Version':'dips chest', 'Chin-Up':'underhand pullup', Side_Lateral_Raise:'lateral raises', Front_Dumbbell_Raise:'dumbbell front raise',
+  Standing_Dumbbell_Triceps_Extension:'db tricep extension', Dumbbell_Bench_Press:'db bench press', Thigh_Adductor:'seated thigh adduction',
+  Ab_Crunch_Machine:'seated machine abs curl abs curl'};
 function filterEx(q, group, equip){
   const nq = norm(q).trim();
   return allEx().filter(e => (!group || e.group === group) && (!equip || e.equipment === equip) &&
@@ -1848,7 +1855,7 @@ function animFigure(id){
       <span class="anim-ph"><span>Faza: <b class="anim-lbl"></b></span><span class="anim-pct"></span></span>
       <figcaption class="anim-note"><i></i>na czerwono mięśnie, które pracują najmocniej. Szare sylwetki w tle pokazują początek i koniec ruchu, przerywana linia tor ciężaru. Suwakiem zatrzymasz ruch w dowolnym miejscu.</figcaption></figure>`;
   }
-  if (!hasImg(id)) return `<figure class="media"><div class="ph-big" aria-hidden="true">${esc((getEx(id).name || '?').charAt(0))}</div></figure>`;
+  if (!hasImg(id)) return EXMAP.has(id) ? '' : `<figure class="media"><div class="ph-big" aria-hidden="true">${esc((getEx(id).name || '?').charAt(0))}</div></figure>`;
   const src = `img/${encodeURIComponent(id)}.jpg`;
   return `<figure class="media"><span class="frames"><img class="a" src="${src}" alt="${esc(getEx(id).name)}: pozycja startowa i końcowa"><img class="b" src="${src}" alt=""></span>
     <span class="ctl"><button data-act="mediaToggle">${reduced ? 'Pokaż koniec ruchu' : 'Zatrzymaj'}</button></span></figure>`;
@@ -2197,6 +2204,8 @@ function vWeek(){
 
 /* ---------- zamiennik ćwiczenia: te same mięśnie główne ---------- */
 function swapCandidates(exId, n = 6){
+  // Rozgrzewka nie ma mięśni, więc zamienniki to inne ćwiczenia rozgrzewkowe (i tylko one)
+  if (getEx(exId).group === 'Rozgrzewka') return EX.filter(e => e.group === 'Rozgrzewka' && e.id !== exId).slice(0, n);
   const m0 = exMuscles(getEx(exId)), P0 = new Set(wkExpand(m0.p)), S0 = new Set(wkExpand(m0.s)), g0 = getEx(exId).group, cardio = g0 === 'Cardio';
   const out = [];
   for (const e of EX){
