@@ -6,6 +6,7 @@ Podstawa: A6 pkt 4–6 i sekcje A6d–A6e w `A6-zapis-planow-i-treningow.md`.
 **Stan: zbudowane (commity A6f-2 … A6f-7 na `a6f-wip`).** Co faktycznie powstało, los łatek i wynik przeglądu – sekcja „A6f” w pkt 11 planu A6.
 Różnice względem tego planu: testy 34i (migracja/hold/znacznik naprawy w `txPlan`) i 34j (migawka własnego zapisu przed odpowiedzią) ponad 34a–34h; `ZP.settleTx`
 zamiast rozszerzania `ZP.settle`; w `flushFire` migawka `S0`/`z0` (poprawka po przeglądzie).
+Po przeglądzie niezależnym (2026-11-15): poprawki A6g-1 … A6g-3 na `a6-zapis` i znane ograniczenia – pkt 10 niżej.
 
 Stan wyjściowy: `a6f-wip` @ 18f9d75 (łatki w `zapis.js` i `flushFire`, testy 3c, 3d, 26f, 32, 33). `node testy/zapis/test_zapis.js` zielony (66),
 test 32 na 40 ziarnach `SEED = k*7919`: czerwony tylko k = 9 (ziarno 71271), przebieg 42.
@@ -82,6 +83,7 @@ Funkcja jest czysta, bo SDK może ją wywołać kilka razy (ponowienie transakcj
 ## 5. Koszt odczytu
 - Każdy zapis kolejki = **+1 odczyt dokumentu** (transakcja czyta `data/state`), przy konflikcie do 5 odczytów. Zapis lustra już dziś czyta 1 dokument w swojej transakcji.
   Razem: ok. 2 odczyty + 2 zapisy na jedną serię zmian (zapis jest odkładany o 600 ms, więc seria kliknięć = 1 transakcja).
+  **Poprawione po przeglądzie niezależnym (pkt 10):** ta liczba pomija odczyty reguł i nasłuchu – realnie ok. 15–19 odczytów i 2–3 zapisy na serię przy 2 urządzeniach.
 - Plan bezpłatny Firestore (Spark): 50 000 odczytów i 20 000 zapisów dziennie na projekt. Nawet 300 serii zmian dziennie na konto to ~600 odczytów – ok. 1% limitu.
 - Transfer: transakcja pobiera cały dokument (zwykle kilkadziesiąt KB, najwyżej ~900 KB – próg lustra). Przy telefonie na danych komórkowych to pomijalne przy typowych planach.
 - Opóźnienie: odczyt + zatwierdzenie = 2 wymiany z serwerem zamiast 1; zapis i tak dzieje się w tle, widok się nie zmienia.
@@ -147,3 +149,40 @@ do utrzymania). **Czerwono → zostaje**, z testem, który ją pilnuje, i zdanie
 5. Test 32 na 40 ziarnach, test dymny (sztuczny `runTransaction`), `build_web`, `web/`.
 6. Dokumentacja: sekcja A6f w planie A6 (pkt 4 „Zapis”, pkt 8, pkt 11), zdanie w `CLAUDE.md` (zapis transakcją).
 7. Przegląd krytyczny w tym samym czacie, poprawki, scalenie `a6f-wip` → `a6-zapis`.
+
+## 10. A6g – poprawki po przeglądzie niezależnym (2026-11-15) i znane ograniczenia
+
+Przegląd niezależny (osobny czat, Opus) `a6-zapis` @ 045eff3: **zgoda z poprawkami po wdrożeniu** – bez utraty danych i bez zapisu do złego konta.
+Poprawki (osobne commity na `a6-zapis`, każda z testem czerwonym bez niej i mutacją):
+
+- **A6g-1 – najnowszy znany nagrobek wraca** (`rememberTombs` zachowuje nowszy nagrobek z `kn` w terminie `TOMB_TTL`; `merge` w v3 bierze `max(doc.pt, kn.pt)`).
+  Usunięcie przez `ee6f037` (A6f-4c) było błędem: w bazie nagrobek nie maleje, ale zapis transakcji trafia do pamięci podręcznej SDK dopiero z serwera.
+  Karta zamknięta tuż po usunięciu dostawała przy otwarciu najpierw migawkę z pamięci podręcznej sprzed usunięcia – plan wracał w widoku, `kn.pt` ginął,
+  a edycja (zwłaszcza offline) wskrzeszała plan w bazie. Test **34k** odtwarza dokładnie ten scenariusz. Plan odtworzony później (nowszy znacznik, np. „Przywróć z kopii”)
+  jest widoczny mimo znanego nagrobka (też w 34k). Mutacje: bez linii w `rememberTombs` albo bez `max` w `merge` → 34k czerwony.
+- **A6g-2 – limit czasu transakcji** (`zRun`, `ZTX_MS = 20000` w app.html): `flushFire` i `flushMirror` uruchamiają transakcję przez `zRun`. Po `ZTX_MS` blokada `zBusy`
+  jest zwalniana przez `zFailed` (kolejka zostaje w localStorage, ponowienie z `backoff` albo przy następnym wyzwoleniu: zmiana, `online`, migawka). Spóźniony wynik
+  tylko rozlicza kolejkę (`ZP.settleTx` / `ZP.afterMirror` zdejmują wpisy o tym samym znaczniku – idempotentne), blokady nie rusza (może ją trzymać nowsza transakcja)
+  i nie wyzwala kolejnej wysyłki. Testy: **33b** (statyczny) i krok dymny „zapis: zawieszona transakcja” (sztuczny Firebase: `sv.zawies`, `sv.wstrzymane`).
+  Mutacje: bez licznika czasu albo spóźniony wynik jak zwykły → oba czerwone.
+- **A6g-3 – testy:** **35** – losowy test zbieżności z przeplotem transakcji (odczyt i zatwierdzenie osobno; między nimi edycje, migawki, inne karty, odświeżenie karty
+  z transakcją w locie, zgubiona odpowiedź, limit czasu i spóźniony wynik; ponowienie, gdy dokument się zmienił), te same ziarna co 32 (`SEEDS=40`);
+  **36** – czyszczenie nagrobków po 60 dniach liczone w transakcji z odczytanego dokumentu; **37** – `q.mx` po transakcji (znacznik widziany tylko w transakcji).
+  Mutacje: afterTx/afterSend bez sprawdzenia znacznika (35, 34g, 8), settleTx bez zdejmowania z localStorage (35, 32, 26f), bez `q.mx` (37), czyszczenie bez dokumentu (36).
+  Uwaga: warunek „w bazie nowsza wersja” w kroku 4 `txPlan` dubluje `merge` (mutacja bez niego jest zielona) – zostaje jako drugie zabezpieczenie;
+  „starszy nagrobek nie nadpisuje nowszego” (krok 4) pilnują 34d i 34h, w 35 maskuje go znany nagrobek z A6g-1.
+
+**Znane, świadomie bez zmian:**
+- **Koszt** (poprawka pkt 5): seria zmian przy 2 otwartych urządzeniach to ok. 15–19 odczytów i 2–3 zapisy, nie 2 + 2. Składniki: transakcja zapisu (1 odczyt dokumentu,
+  1 zapis, ok. 4 odczyty reguł – `isMember` to 2 × `get()` przy odczycie i przy zatwierdzeniu), transakcja lustra (tyle samo), po 2 odczyty nasłuchu na każdym urządzeniu
+  (zapis + lustro), a każde **inne** otwarte urządzenie po migawce z nieaktualnym lustrem robi własną transakcję lustra (`checkMirror`, raz na 30 s) – często w wyścigu
+  z lustrem urządzenia, które zapisywało. Bez pętli (lustro idempotentne, `mirrorPatch` → `same`). To nadal daleko od limitu 50 000 odczytów dziennie przy kilku osobach.
+  Możliwe później: lustro w tej samej transakcji co zapis albo `checkMirror` dopiero po kilku sekundach. Sprawdzić w konsoli Firebase (Usage) po dniu użytkowania.
+- **Kosmetyka po przełączeniu konta w trakcie transakcji:** `syncShares()` i toasty w `.then` `flushFire` wykonują się także wtedy, gdy otwarte jest już inne konto
+  (działają spójnie na bieżącym koncie – nic nie trafia do złego konta; komunikat może dotyczyć poprzedniego konta).
+- **Wysyłka po powrocie karty:** bez zdarzenia `online` (np. iPhone wybudzony z tła) wysyłka czeka na migawkę nasłuchu albo kolejną zmianę; `visibilitychange` → `visible`
+  nie wyzwala `flushFire`. Nic nie ginie (kolejka w localStorage), najwyżej opóźnienie.
+- **Trening usunięty na innym urządzeniu może wrócić** (sprzed A6f): gdy urządzenie, które go zapisało, nie dostało potwierdzenia (karta zamknięta tuż po zapisie),
+  przy następnym otwarciu wysyła go ponownie (`mergeSessions`, a także kolejka SDK). Rzadkie; ewentualnie nagrobki treningów w przyszłości.
+- Nadal niesprawdzone poza prawdziwym Firebase: `tx.set` z `mergeFields` i `deleteField()` w SDK, transakcje przy kilku kartach, tryb samolotowy, stara karta, rozliczenie odczytów.
+

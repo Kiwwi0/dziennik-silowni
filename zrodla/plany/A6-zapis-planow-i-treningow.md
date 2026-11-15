@@ -380,3 +380,7 @@ nadpisać w bazie nowszą zmianę innego urządzenia. Łatki po stronie urządze
    **Zostaje do sprawdzenia przez właściciela po wdrożeniu (nie da się w sesji):** prawdziwy Firebase – `runTransaction` z `mergeFields`/`deleteField` na iPhonie (Safari) i laptopie,
    tryb samolotowy (zmiana czeka, po powrocie sieci zapisuje się raz), dwa urządzenia edytujące ten sam plan. Przy sieci „udawanej” (Wi-Fi bez internetu) pojawia się komunikat
    o nieudanym zapisie i ponawianie – zmiany czekają w kolejce.
+6. **A6g – po przeglądzie niezależnym (zgoda z poprawkami, szczegóły w pkt 10 planu A6f):** „najnowszy znany nagrobek” wrócił (`rememberTombs` + `tomb = max` w `merge`;
+   jego usunięcie w pkt 3 było błędem – migawka z pamięci podręcznej SDK sprzed własnego usunięcia przywracała plan; test 34k); transakcje zapisu mają limit czasu
+   (`zRun`, `ZTX_MS`; test 33b i krok dymny „zawieszona transakcja”); nowe testy 35 (losowy z przeplotem transakcji), 36 (czyszczenie nagrobków w transakcji), 37 (`q.mx`).
+   Znane i bez zmian: koszt ok. 15–19 odczytów na serię zmian przy 2 urządzeniach, kosmetyka po przełączeniu konta, wysyłka po wybudzeniu karty czeka na migawkę.
