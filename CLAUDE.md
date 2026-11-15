@@ -52,6 +52,10 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
   Testy losowe 32 i 35 (35 z przeplotem transakcji) na 40 ziarnach (przed scaleniem zmian w zapisie): `SEEDS=40 node testy/zapis/test_zapis.js` (domyślnie 2 ziarna; `SEED=n` – jedno).
   Test dymny ma kroki „zapis: …” (sztuczny Firebase w `SZTUCZNY_FIREBASE`) i „kopia zapasowa” (porównanie z `testy/zapis/kopia_przed.json` – eksport z `main` @ e82b8c6
   na stanie z `kopia_stan.json`; zmiana formatu kopii = świadoma zmiana tego pliku). Żaden z nich nie sprawdza prawdziwego Firebase (SDK, tryb samolotowy) – to robi właściciel po wdrożeniu.
+- Test startu bez sieci (A7a): `python3 testy/offline/offline.py --silniki chromium[,webkit]` (z katalogu repozytorium; potrzebuje Node i npm – przy pierwszym uruchomieniu buduje do katalogu tymczasowego prawdziwe moduły Firebase 10.14.1 z npm pod adresem udającym gstatic).
+  Prawdziwy service worker i SDK; sztuczne są tylko odpowiedzi Google (logowanie anonimowe, token App Check, skrypt reCAPTCHA), baza jest nieosiągalna. Sprawdza po wejściu online i „zniknięciu sieci”: odświeżenie i nowa karta pokazują dane,
+  Firebase startuje (`FB.db`) i logowanie się rozwiązuje, zmiana planu i trening zapisują się lokalnie (stan, kolejka, lista niewysłanych); osobny scenariusz: internet jest, ale skrypt reCAPTCHA niedostępny (bloker).
+  Rusza w `test.yml` po teście dymnym. Scenariusz „libs-puste” opisuje znane ograniczenie (brak modułów Firebase w pamięci = Firebase nie wstaje do przeładowania; dane lokalne działają).
 - Szkielet strony, z którego korzysta test (jak w prawdziwej stronie z build_web): `<!doctype html><html lang="pl"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><style>[hidden]{display:none!important}</style></head><body>` + zawartość `zrodla/dist/index.html`
   (podana przez `page.route`); reguła `[hidden]` jest konieczna, bo bez niej ukryta warstwa arkuszy zasłania przyciski. Dane testowe: `S.plans = templatePlans(TEMPLATES.find(t => t.id === 'fbw2'))`, potem `render()`.
