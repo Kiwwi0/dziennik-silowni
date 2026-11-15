@@ -1203,5 +1203,28 @@ test('34i. transakcja na dokumencie starego układu albo bez dokumentu = migracj
   assert.ok(ZP.onlyMirror({...ZP.emptyQueue(), m:3}) && !ZP.onlyMirror({...ZP.emptyQueue(), m:3, po:1}) && !ZP.onlyMirror(ZP.emptyQueue()));
 });
 
+/* ======================= A6g (poprawki po przeglądzie niezależnym) ======================= */
+test('34k. usunięcie transakcją, karta zamknięta przed migawką; nowa karta dostaje NAJPIERW migawkę z pamięci podręcznej SDK (sprzed usunięcia): plan nie wraca w widoku, edycja offline go nie wskrzesza (A6g-1)', () => {
+  const sv = serwerV3(), ls = wspolnyLS(), A = kartaSv('A', ls, sv); A.odbierz();
+  const cache = sv.get();                                                                          // pamięć podręczna SDK: dokument sprzed usunięcia
+  tick(); A.edit(S => { S.plans = S.plans.filter(p => p.id !== 'P2'); }); assert.equal(A.wyslij(), true);
+  assert.ok(!sv.doc.pm.P2 && sv.doc.pt.P2 > 0, 'w bazie nagrobek P2');                            // transakcja zatwierdzona, karta zamyka się przed migawką z serwera
+  const N = kartaSv('N', ls, sv); assert.deepEqual(ids(N.S), ['P1'], 'stan z localStorage bez P2');
+  migawkaV3(N, cache, tick(1));                                                                    // pierwsza migawka nasłuchu: z pamięci podręcznej (fromCache)
+  assert.deepEqual(ids(N.S), ['P1'], 'migawka z pamięci podręcznej nie przywraca usuniętego planu w widoku');
+  assert.ok(N.z.kn.pt.P2 > 0, 'znany nagrobek nie ginie po starszej migawce');
+  assert.ok(!N.z.q.p.P2, 'brak wpisu P2 do wysłania');
+  assert.deepEqual(ids(ls.get(ZP.stateKey('X'), null)), ['P1']); assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).kn.pt.P2 > 0, 'nagrobek zostaje też w localStorage');
+  tick(); N.edit(S => { byId(S, 'P1').name = 'edycja offline'; });                                // użytkownik pracuje offline na tym, co widzi
+  const M = kartaSv('M', ls, sv); migawkaV3(M, cache, tick(1));                                    // druga karta też zaczyna od pamięci podręcznej
+  assert.deepEqual(ids(M.S), ['P1']);
+  for (let i = 0; i < 4; i++) for (const k of [N, M]){ k.wyslij(); k.odbierz(); }               // sieć wraca: transakcje i migawki z serwera
+  assert.deepEqual(Object.keys(widocznePlany(sv.get())), ['P1'], 'P2 nie wraca do bazy'); assert.equal(sv.doc.pm.P1.name, 'edycja offline');
+  for (const k of [N, M]) assert.deepEqual(ids(k.S), ['P1']);
+  // plan odtworzony później (np. „Przywróć z kopii”, nowszy znacznik) jest widoczny mimo znanego nagrobka
+  tick(); N.edit(S => { S.plans.push(plan('P2', 'wraca z kopii')); }); N.wyslij(); M.odbierz(); N.odbierz();
+  assert.equal(byId(M.S, 'P2').name, 'wraca z kopii'); assert.equal(byId(N.S, 'P2').name, 'wraca z kopii'); assert.equal(sv.doc.pm.P2.name, 'wraca z kopii');
+});
+
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
 process.exit(bledy ? 1 : 0);
