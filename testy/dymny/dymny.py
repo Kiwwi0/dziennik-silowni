@@ -888,6 +888,53 @@ def scenariusz(r):
         assert serie('reps')[0] == 12, 'puste pole powtórzeń przy odhaczaniu wypełnia się celem z planu'
     r.krok('odhaczanie serii z pustym polem powtórzeń: podświetlenie bez odhaczenia, powtórzenia do całości (E2-09)', b1_puste_powtorzenia, 'pola-e2-09')
 
+    def b1_poprawka_literowki():
+        # kopiowanie w dół liczone od wartości sprzed edycji pola, nie od wartości sprzed każdego znaku
+        nowy_trening([{'sets': [(12, 60), (10, 60), (8, 60)]}])
+        r.klik(pole(0, 'reps')); page.keyboard.type('8'); page.keyboard.press('Backspace'); page.keyboard.type('10'); stuknij_obok()
+        assert serie('reps') == [10, 10, 8], f'piramida 12/10/8, w serii 1: 8, Backspace, 10 – seria 3 ma zostać 8: {serie("reps")}'
+        nowy_trening([{'sets': [(10, 60), (10, 70), (10, 7)]}])
+        r.klik(pole(0, 'kg')); page.keyboard.type('75'); stuknij_obok()
+        assert serie('kg') == [75, 70, 7], f'60/70/7, wpisane 75 w serii 1 – pośrednie „7” nie może trafić do serii 3: {serie("kg")}'
+        # kolejna edycja tego samego pola liczy listę od nowa (60/60/60 → 65 → potem 70: wszystkie trzy)
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        r.klik(pole(0, 'kg')); page.keyboard.type('65'); stuknij_obok()
+        r.klik(pole(0, 'kg')); page.keyboard.type('70'); stuknij_obok()
+        assert serie('kg') == [70, 70, 70], f'dwie kolejne edycje serii 1: {serie("kg")}'
+        # keydown bez klawisza (autouzupełnianie Chrome) nie może rzucić błędu strony (pilnuje strażnik pageerror po kroku)
+        page.evaluate("() => { document.dispatchEvent(new Event('keydown')); }")
+    r.krok('pola serii: poprawka literówki i wartość pośrednia nie kopiują się do serii o innej wartości; keydown bez klawisza', b1_poprawka_literowki, 'pola-literowka')
+
+    def b1_zapis_do_planu_pozycje():
+        def zakoncz_z_planem():
+            r.klik('#workout [data-act="finishOpen"]'); r.klik('#fin-upd'); expect(page.locator('#fin-upd')).to_be_checked()
+            r.klik('#sheet [data-act="finishSave"]'); page.wait_for_function('SESS.length === 1 && !ACTIVE')
+            return page.evaluate('() => S.plans[0].items[0].sets.map(s => [s.reps, s.kg])')
+        # pi: odhaczone serie 1 i 3, środkowa usunięta w treningu → wartości trafiają na pozycje 1 i 3 w planie (nie 1 i 2)
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        page.evaluate("() => { const x = ACTIVE.ex[0]; x.sets[0].kg = 61; x.sets[0].done = true; x.sets[2].kg = 63; x.sets[2].done = true; saveActive(); renderWorkout(); }")
+        r.klik('#workout [data-act="wDelSet"][data-i="0"]')
+        assert page.evaluate('() => ACTIVE.ex[0].sets.length') == 2, 'usunięcie serii 2 w treningu'
+        plan = zakoncz_z_planem()
+        assert plan == [[10, 61], [10, 60], [10, 63]], f'pozycje pi po usunięciu środkowej serii: {plan}'
+        # seria dodana w treningu nie trafia do planu (plan nie rośnie)
+        nowy_trening([{'sets': [(10, 60), (10, 60)]}])
+        r.klik('#workout [data-act="wAddSet"][data-i="0"]')
+        page.evaluate("() => { ACTIVE.ex[0].sets.forEach(s => { s.done = true; s.reps = 6; }); saveActive(); renderWorkout(); }")
+        plan = zakoncz_z_planem()
+        assert plan == [[6, 60], [6, 60]], f'dodana seria w treningu nie rozszerza planu: {plan}'
+        # plan zmieniony w trakcie treningu (inna liczba serii) → ćwiczenie pominięte przy zapisie do planu
+        nowy_trening([{'sets': [(10, 60), (10, 70), (10, 80)]}])
+        page.evaluate("() => { const x = ACTIVE.ex[0]; x.sets[2].kg = 85; x.sets[2].done = true; S.plans[0].items[0].sets.splice(0, 1); persist(); saveActive(); renderWorkout(); }")
+        plan = zakoncz_z_planem()
+        assert plan == [[10, 70], [10, 80]], f'plan po usunięciu serii w trakcie treningu nie może dostać wartości z przesuniętej pozycji: {plan}'
+        # trening w toku sprzed zmiany (bez pi i pn) → pozycje według kolejności, jak dawniej
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        page.evaluate("() => { const x = ACTIVE.ex[0]; delete x.pn; x.sets.forEach(s => delete s.pi); x.sets[1].kg = 65; x.sets[1].reps = 8; x.sets[1].done = true; saveActive(); renderWorkout(); }")
+        plan = zakoncz_z_planem()
+        assert plan == [[10, 60], [8, 65], [10, 60]], f'trening sprzed zmiany (bez pi): {plan}'
+    r.krok('zapis do planu: pozycje pi, dodana seria, plan zmieniony w trakcie, trening bez pi (E2-02)', b1_zapis_do_planu_pozycje, 'plan-pi')
+
     def b1_czcionka_pol():
         nowy_trening([{'sets': [(10, 20)]}])
         przed = page.evaluate("() => [...document.querySelectorAll('#workout input[data-bind=\"wset\"]')].map(e => parseFloat(getComputedStyle(e).fontSize))")
