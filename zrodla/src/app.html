@@ -1051,15 +1051,42 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 /* ---------- foldery osób w bazie Firebase ---------- */
 const FB = {};
 let unsubState = null, unsubSess = null;
+/* App Check (A7) i skrypt reCAPTCHA. SDK 10.14.1 nie obsługuje błędu pobrania skryptu (jest tylko onload, brak onerror), a obietnica tokenu jest zapamiętana w stanie
+   aplikacji: gdy skryptu nie ma (tryb samolotowy, blokada, słaby zasięg), każde pobranie tokenu wisi do przeładowania strony, a logowanie i baza czekają na ten token –
+   start offline stawał (zlecenie A7a). Dlatego skrypt pobieramy sami i uruchamiamy App Check dopiero, gdy jest; bez niego aplikacja startuje jak przed A7,
+   a App Check rusza później (powrót sieci albo spóźnione załadowanie skryptu). */
+const RECAPTCHA_URL = 'https://www.google.com/recaptcha/enterprise.js';
+const APPCHK = {mod:null, app:null, on:false, loading:false};
+function acLoadScript(ms){
+  if (self.grecaptcha && self.grecaptcha.enterprise) return Promise.resolve(true);
+  if (APPCHK.loading) return Promise.resolve(false);   // poprzednia próba jeszcze trwa; jej onload uruchomi App Check
+  return new Promise(res => {
+    const s = document.createElement('script'); let t = null, fin = false;
+    const done = ok => { if (fin) return; fin = true; clearTimeout(t); res(ok); };
+    APPCHK.loading = true;
+    s.src = RECAPTCHA_URL; s.async = true;
+    s.onload = () => { APPCHK.loading = false; done(true); if (!APPCHK.on) acStart(); };   // po limicie czasu też: spóźniony skrypt uruchamia App Check
+    s.onerror = () => { APPCHK.loading = false; s.remove(); done(false); };
+    t = setTimeout(() => done(false), ms);
+    document.head.appendChild(s);
+  });
+}
+async function acStart(){
+  if (APPCHK.on || !APPCHK.mod || !APPCHK.app) return APPCHK.on;
+  if (!(await acLoadScript(2500)) || APPCHK.on) return APPCHK.on;
+  try { APPCHK.mod.initializeAppCheck(APPCHK.app, {provider:new APPCHK.mod.ReCaptchaEnterpriseProvider(APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled:true}); APPCHK.on = true; } catch {}
+  return APPCHK.on;
+}
+addEventListener('online', () => { if (!APPCHK.on) acStart(); });
 async function initFirebase(){
   const v = '10.14.1', base = `https://www.gstatic.com/firebasejs/${v}/`;
   // App Check (A7) jest dodatkiem: brak modułu (np. start offline u kogoś, kto jeszcze go nie pobrał) nie może zatrzymać aplikacji.
   const [appMod, fs, au, ac] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-firestore.js'), import(base + 'firebase-auth.js'),
     import(base + 'firebase-app-check.js').catch(() => null)]);
   const app = appMod.initializeApp(FIREBASE_CONFIG);
-  // App Check musi ruszyć zaraz po utworzeniu aplikacji, przed pierwszym użyciem logowania i bazy. Błąd tokenu albo skryptu reCAPTCHA
-  // (brak sieci, blokada) SDK tylko zapisuje w konsoli i wysyła zapytanie bez tokenu; tu łapiemy resztę, żeby użytkownik nic nie zauważył.
-  if (ac){ try { ac.initializeAppCheck(app, {provider:new ac.ReCaptchaEnterpriseProvider(APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled:true}); } catch {} }
+  // App Check musi ruszyć zaraz po utworzeniu aplikacji, przed pierwszym użyciem logowania i bazy – ale tylko, gdy da się pobrać skrypt reCAPTCHA (acStart).
+  APPCHK.mod = ac; APPCHK.app = app;
+  if (ac) await acStart();
   // Anonimowe konto urządzenia: baza wpuszcza do folderu tylko urządzenia, które podały jego PIN.
   const auth = au.getAuth(app);
   FB.uid = await new Promise(res => { const off = au.onAuthStateChanged(auth, u => { off(); res(u ? u.uid : null); }); });
