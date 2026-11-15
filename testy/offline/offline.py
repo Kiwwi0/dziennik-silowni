@@ -7,6 +7,10 @@ trasy Google przerywają) i sprawdzamy: (a) odświeżenie, (b) nowa karta – da
 (d) zmiana planu i trening zapisują się lokalnie (stan, kolejka, lista niewysłanych). Scenariusz "recaptcha-zablokowana" sprawdza to samo przy działającym internecie,
 ale bez dostępu do skryptu reCAPTCHA (bloker reklam, filtr). Bez poprawki A7a (skrypt reCAPTCHA sprawdzany przed uruchomieniem App Check) kroki (c) są czerwone.
 
+Uwaga o WebKit: trasy Playwrighta nie obejmują tam żądań, które strona pod service workerem wysyła do sieci przez niego (a runner Actions ma internet), więc w WebKit
+prawdziwe usługi Google (reCAPTCHA, logowanie) mogą odpowiadać także "offline", sztuczne logowanie nie zapisuje użytkownika (stąd brak asercji uid) a limity czasu są luźniejsze.
+Czerwień na wdrożonej wersji 6c44bba widać mimo to także w WebKit (Firebase nie wstaje wcale); sama bramka na limity czasu tokenu: APPCHK_TOKEN_MS = 4 s.
+
 Użycie: python3 testy/offline/offline.py [--silniki chromium,webkit] [--web web] [--sdk KATALOG] [--scenariusze a,b]"""
 import argparse, base64, functools, http.server, json, os, re, shutil, socketserver, subprocess, sys, tempfile, threading, time
 from playwright.sync_api import sync_playwright
@@ -122,7 +126,7 @@ SCENARIUSZE = {
     'normalny': dict(wejsc=3, bez_recaptcha=False, usun_z_libs=None, offline=True),
     'jedno-wejscie': dict(wejsc=1, bez_recaptcha=False, usun_z_libs=None, offline=True),
     'brak-app-check-w-libs': dict(wejsc=3, bez_recaptcha=False, usun_z_libs='firebase-app-check.js', offline=True),
-    'tryb-samolotowy (navigator.onLine = false)': dict(wejsc=3, bez_recaptcha=False, usun_z_libs=None, offline=True, samolot=True, skrypt_z_cache=True),
+    'tryb-samolotowy (navigator.onLine = false)': dict(wejsc=3, bez_recaptcha=False, usun_z_libs=None, offline=True, samolot=True, skrypt_z_cache=True, tylko_chromium=True),
     'skrypt-reCAPTCHA-z-pamieci, ramka niedostępna (Wi-Fi bez internetu)': dict(wejsc=3, bez_recaptcha=False, usun_z_libs=None, offline=True, skrypt_z_cache=True, limit_db=9),
     'recaptcha-zablokowana': dict(wejsc=2, bez_recaptcha=True, usun_z_libs=None, offline=False),
     'libs-puste (znane ograniczenie: Firebase nie wstaje, dane lokalne działają)': dict(wejsc=3, bez_recaptcha=False, usun_z_libs='*', offline=True, tylko_dane=True),
@@ -156,8 +160,9 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
             elif cfg['usun_z_libs']: page.evaluate("caches.open('libs').then(c => c.delete(%s))" % json.dumps(CDN_URL + cfg['usun_z_libs']))
             if not cfg['offline']:
                 sprawdz(widac(page)[0], 'online, reCAPTCHA niedostępna: dane widoczne')
-                t = czekaj_db(page, 6000); sprawdz(t is not None and t <= 4, f'online, reCAPTCHA niedostępna: Firebase wstaje w ≤ 4 s (po {t} s)')
-                uid = page.evaluate('FB.uid || null'); sprawdz(uid == 'uid1', f'online, reCAPTCHA niedostępna: logowanie anonimowe działa (uid={uid})')
+                lim = 4 if silnik == 'chromium' else 12; t = czekaj_db(page, (lim + 3) * 1000); sprawdz(t is not None and t <= lim, f'online, reCAPTCHA niedostępna: Firebase wstaje w ≤ {lim} s (po {t} s)')
+                if silnik == 'chromium':
+                    uid = page.evaluate('FB.uid || null'); sprawdz(uid == 'uid1', f'online, reCAPTCHA niedostępna: logowanie anonimowe działa (uid={uid})')
                 sprawdz(not page.evaluate('store.fireError'), 'online, reCAPTCHA niedostępna: bez błędu połączenia z bazą')
                 b.close(); return
             st['offline'] = True; www.stop(); cdn.stop(); time.sleep(.5); bl.clear()
@@ -167,8 +172,8 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
             p2 = ctx.new_page(); p2.goto(url, wait_until='load', timeout=20000)
             sprawdz(widac(p2)[0], '(b) nowa karta bez sieci: dane widoczne'); p2.close()
             if not cfg.get('tylko_dane'):
-                lim = cfg.get('limit_db', 4); t = czekaj_db(page, (lim + 3) * 1000); sprawdz(t is not None and t <= lim, f'(c) bez sieci Firebase wstaje w ≤ {lim} s (po {t} s)')
-                sprawdz(page.evaluate('FB.uid || null') == 'uid1', '(c) bez sieci logowanie anonimowe się rozwiązuje (zapamiętany użytkownik)')
+                lim = cfg.get('limit_db', 4) + (5 if silnik == 'webkit' else 0); t = czekaj_db(page, (lim + 3) * 1000); sprawdz(t is not None and t <= lim, f'(c) bez sieci Firebase wstaje w ≤ {lim} s (po {t} s)')
+                if silnik == 'chromium': sprawdz(page.evaluate('FB.uid || null') == 'uid1', '(c) bez sieci logowanie anonimowe się rozwiązuje (zapamiętany użytkownik)')   # WebKit: patrz uwaga w nagłówku
             r = page.evaluate(SONDA)
             if not cfg.get('tylko_dane'): sprawdz(not r['fireError'], '(c) bez błędu połączenia z bazą')
             sprawdz(r['historia'], '(c) zapisany trening widoczny w historii'); sprawdz(r['stan'] and r['kolejka'], '(d) zmiana planu: stan i kolejka w localStorage')
@@ -190,6 +195,7 @@ def main():
     wybrane = [s for s in SCENARIUSZE if not a.scenariusze or any(x in s for x in a.scenariusze.split(','))]
     for silnik in a.silniki.split(','):
         for nazwa in wybrane:
+            if silnik != 'chromium' and SCENARIUSZE[nazwa].get('tylko_chromium'): print(f'[{silnik}] {nazwa}: pominięty (context.set_offline w WebKit kończy się błędem wewnętrznym przy odświeżeniu strony z service workera)'); continue
             print(f'[{silnik}] {nazwa}', flush=True)
             try: scenariusz(silnik, nazwa, SCENARIUSZE[nazwa], a.web, a.sdk, bledy)
             except Exception as e: bledy.append(f'{silnik} / {nazwa}: wyjątek testu: {str(e)[:200]}'); print('    BŁĄD   wyjątek testu:', str(e)[:200], flush=True)
