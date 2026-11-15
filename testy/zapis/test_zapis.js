@@ -1053,6 +1053,81 @@ test('32. losowy test zbieżności (ziarno ' + ZIARNO + '): dwie zakładki i dru
   } finally { clock.t = t0; }
 });
 
+/* Test 35 (A6g-3): jak 32, ale transakcja NIE jest atomowa względem reszty – start (migawka S0/z0 jak w flushFire + odczyt dokumentu) i zatwierdzenie
+   to osobne kroki, a między nimi: edycje tej karty, migawki nasłuchu, zatwierdzenia innych kart, odświeżenie karty (transakcja w locie czasem i tak
+   dochodzi, bez .then), zgubiona odpowiedź (serwer zapisał, karta dostaje błąd), limit czasu (blokada zwolniona, wynik dochodzi później – A6g-2).
+   Zatwierdzenie: jeśli dokument zmienił się od odczytu, funkcja liczy się od nowa na świeżym dokumencie (jak SDK, do 5 razy). */
+function kartaTx(nazwa, ls, sv){
+  const k = kartaSv(nazwa, ls, sv); k.tx = null; k.late = [];
+  k.start = () => {
+    if (k.tx || ZP.emptyQ(k.z.q) || ZP.onlyMirror(k.z.q)) return false;
+    const S0 = cl(k.S), z0 = cl(k.z), d = sv.get(), now = tick(1); k.tx = {S0, z0, d:JSON.stringify(d), r:ZP.txPlan(d, S0, z0, now)}; return true;
+  };
+  k.zatwierdz = (tx, rozlicz) => {
+    let r = tx.r;
+    for (let n = 0; JSON.stringify(sv.get()) !== tx.d; n++){ if (n >= 5) return; const d = sv.get(); tx.d = JSON.stringify(d); r = ZP.txPlan(d, tx.S0, tx.z0, tick(1)); }
+    if (r.kind === 'v3') sv.merge(r.data, r.fields); else if (r.kind === 'full') sv.setFull(r.doc);
+    if (rozlicz && r.kind !== 'hold') ZP.settleTx(ls, 'X', k.z, k.z, r, tick(1), k.S);
+  };
+  k.ok = () => { const tx = k.tx; if (tx){ k.tx = null; k.zatwierdz(tx, true); } };
+  k.zgub = () => { const tx = k.tx; if (tx){ k.tx = null; k.zatwierdz(tx, false); } };       // serwer zapisał, odpowiedź nie dotarła: kolejka bez zmian (ponowienie później)
+  k.limit = () => { if (k.tx){ k.late.push(k.tx); k.tx = null; } };                           // limit czasu: blokada wolna, transakcja dalej w locie
+  k.spozniona = () => { const tx = k.late.shift(); if (tx) k.zatwierdz(tx, true); };           // spóźniony wynik: tylko rozliczenie kolejki (ZP.settleTx)
+  return k;
+}
+for (const ZIARNO of ZIARNA)
+test('35. losowy test zbieżności z PRZEPLOTEM transakcji (ziarno ' + ZIARNO + '): między odczytem a zatwierdzeniem edycje, migawki, inne karty, odświeżenie, zgubiona odpowiedź, limit czasu; po uspokojeniu wszystko zgodne, ostatnia zmiana wygrywa (A6g-3)', () => {
+  const t0 = clock.t; clock.t = Date.now(); let seed = ZIARNO * 31 + 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }, pick = a => a[Math.floor(rnd() * a.length)];
+  const POOL = ['P1', 'P2', 'P3', 'P4'], PRZEBIEGI = 300;
+  try {
+  for (let run = 0; run < PRZEBIEGI; run++){
+    const sv = serwerV3(), ls1 = wspolnyLS(), ls2 = wspolnyLS(), log = [], nazwy0 = {P1:'Plan A', P2:'Plan B'};
+    const karty = [kartaTx('Z1', ls1, sv), kartaTx('Z2', ls1, sv), kartaTx('U2', ls2, sv)]; karty.forEach(k => k.odbierz());
+    const ops = {}, zanotuj = (id, op) => (ops[id] ||= []).push(op); let nr = 0;
+    for (let i = 0; i < 18; i++){
+      const ki = Math.floor(rnd() * karty.length), k = karty[ki];
+      const op = pick(['edit', 'edit', 'del', 'add', 'odb', 'start', 'start', 'ok', 'ok', 'zgub', 'limit', 'spoz', 'nowa']);
+      log.push(k.nazwa + ':' + op);
+      if (op === 'edit' || op === 'del'){
+        const p = k.S.plans.length ? pick(k.S.plans) : null; if (!p) continue;
+        if (op === 'edit'){ const name = k.nazwa + '#' + (++nr); k.edit(S => { byId(S, p.id).name = name; }); zanotuj(p.id, {u:k.z.q.p[p.id], name}); }
+        else { k.edit(S => { S.plans = S.plans.filter(x => x.id !== p.id); }); zanotuj(p.id, {u:k.z.q.pd[p.id], del:true}); }
+      } else if (op === 'add'){
+        const id = pick(POOL); if (k.S.plans.some(x => x.id === id)) continue;
+        const name = k.nazwa + '+' + (++nr); k.edit(S => { S.plans.push(plan(id, name)); }); zanotuj(id, {u:k.z.q.p[id], name});
+      } else if (op === 'odb') k.odbierz();
+      else if (op === 'start') k.start();
+      else if (op === 'ok') k.ok();
+      else if (op === 'zgub') k.zgub();
+      else if (op === 'limit') k.limit();
+      else if (op === 'spoz') k.spozniona();
+      else {                                                                                       // odświeżenie: transakcje w locie czasem i tak dochodzą (bez .then)
+        for (const tx of [k.tx, ...k.late]) if (tx && rnd() < 0.5) k.zatwierdz(tx, false);
+        karty[ki] = kartaTx(k.nazwa, k.ls, sv);
+      }
+    }
+    for (const k of karty){ k.ok(); while (k.late.length) k.spozniona(); }
+    for (let r = 0; r < 10; r++) for (const k of karty){ k.odbierz(); if (k.start()) k.ok(); }
+    const ocz = {}; let remis = false;
+    for (const id of POOL){
+      const lista = ops[id] || []; if (!lista.length){ if (nazwy0[id]) ocz[id] = nazwy0[id]; continue; }
+      const max = Math.max(...lista.map(o => o.u)), ost = lista.filter(o => o.u === max); if (ost.length > 1) remis = true;
+      if (!ost[0].del) ocz[id] = ost[0].name;
+    }
+    if (remis) continue;
+    const opis = 'przebieg ' + run + ' [' + log.join(' ') + ']', O = JSON.stringify(Object.fromEntries(Object.entries(ocz).sort()));
+    assert.equal(JSON.stringify(widocznePlany(sv.get())), O, opis + ': baza = ostatnia zmiana każdego planu');
+    for (const k of karty) assert.equal(JSON.stringify(planyMapa(k.S)), O, opis + ': pamięć karty ' + k.nazwa);
+    for (const [nm, ls] of [['LS1', ls1], ['LS2', ls2]]){
+      assert.equal(JSON.stringify(planyMapa(ls.get(ZP.stateKey('X'), null))), O, opis + ': zapisany stan ' + nm);
+      const q = ZP.fixZ(ls.get(ZP.zKey('X'), null)).q;
+      assert.ok(![q.p, q.pd, q.c, q.cd, q.s].some(m => Object.keys(m).length), opis + ': zapisana kolejka ' + nm + ' pusta');
+    }
+  }
+  } finally { clock.t = t0; }
+});
+
 test('33. app.html: flushFire zapisuje data/state TYLKO w transakcji (tx.set po tx.get + ZP.txPlan), bez setDoc i bez ścieżki noop; bez sieci nic nie wysyła (A6f)', () => {
   const ff = ciało(APP, 'function flushFire(){');
   assert.ok(!/FB\.setDoc\(/.test(ff), 'w flushFire nie ma setDoc (zapis bez warunku)');
@@ -1239,6 +1314,37 @@ test('34k. usunięcie transakcją, karta zamknięta przed migawką; nowa karta d
   // plan odtworzony później (np. „Przywróć z kopii”, nowszy znacznik) jest widoczny mimo znanego nagrobka
   tick(); N.edit(S => { S.plans.push(plan('P2', 'wraca z kopii')); }); N.wyslij(); M.odbierz(); N.odbierz();
   assert.equal(byId(M.S, 'P2').name, 'wraca z kopii'); assert.equal(byId(N.S, 'P2').name, 'wraca z kopii'); assert.equal(sv.doc.pm.P2.name, 'wraca z kopii');
+});
+
+test('36. czyszczenie nagrobków po 60 dniach w TRANSAKCJI: liczone z dokumentu odczytanego w transakcji (nie z migawki karty); starszy wpis pod nagrobkiem znika, nowszy zostaje, świeży nagrobek zostaje (A6g-3)', () => {
+  const t0 = clock.t; clock.t = Date.now();
+  try {
+    const sv = serwerV3(), ls = wspolnyLS(), t = clock.t;
+    Object.assign(sv.doc.pm, {P5:{...plan('P5', 'odtworzony po usunięciu'), u:t - 5 * DZIEN}, P8:{...plan('P8', 'stary wpis pod nagrobkiem'), u:t - 70 * DZIEN}});
+    sv.doc.po.push('P5'); sv.doc.pt = {P9:t - 61 * DZIEN, P8:t - 61 * DZIEN, P7:t - 10 * DZIEN, P5:t - 61 * DZIEN};
+    const A = kartaSv('A', ls, sv);                                                                // karta bez migawki: transakcja czyta dokument sama
+    tick(); A.edit(S => { byId(S, 'P1').name = 'zmiana'; }); assert.equal(A.wyslij(), true);
+    assert.ok(!('P9' in sv.doc.pt) && !('P5' in sv.doc.pt), 'nagrobki starsze niż 60 dni usunięte w tej samej transakcji');
+    assert.ok(sv.doc.pt.P7 > 0, 'nagrobek sprzed 10 dni zostaje');
+    assert.equal(sv.doc.pm.P5.name, 'odtworzony po usunięciu', 'wpis nowszy od czyszczonego nagrobka zostaje');
+    assert.ok(!sv.doc.pm.P8, 'starszy wpis pod nagrobkiem znika (plan nie wraca po wyczyszczeniu nagrobka)');
+    tick(); A.edit(S => { byId(S, 'P1').name = 'kolejna'; }); A.wyslij();
+    assert.ok(!('P8' in sv.doc.pt), 'nagrobek po sprzątniętym wpisie znika przy kolejnym zapisie');
+    A.odbierz(); const N = kartaSv('N', wspolnyLS(), sv); N.odbierz();
+    for (const k of [A, N]) assert.deepEqual(ids(k.S).sort(), ['P1', 'P2', 'P5'], 'P8 nie wraca, P5 widoczny');
+  } finally { clock.t = t0; }
+});
+test('37. q.mx po transakcji: znacznik z bazy widziany TYLKO w transakcji (bez migawki) podnosi q.mx – następna zmiana tego urządzenia jest późniejsza i wygrywa (A6g-3)', () => {
+  const sv = serwerV3(), ls = wspolnyLS(), A = kartaSv('A', ls, sv);                                // A nie dostaje migawek (nasłuch opóźniony)
+  const przyszly = clock.t + 3600e3;                                                               // inne urządzenie z zegarem godzinę do przodu zapisało P1
+  sv.doc.pm.P1 = {...plan('P1', 'inne urządzenie (zegar do przodu)'), u:przyszly};
+  tick(); A.edit(S => { byId(S, 'P1').name = 'A: pierwsza'; }); A.wyslij();
+  assert.equal(sv.doc.pm.P1.name, 'inne urządzenie (zegar do przodu)', 'starsza zmiana przegrywa z bazą');
+  assert.ok(A.z.q.mx >= przyszly, 'q.mx podniesione z dokumentu odczytanego w transakcji');
+  assert.ok(ZP.fixZ(ls.get(ZP.zKey('X'), null)).q.mx >= przyszly, 'także w zapisanej kolejce');
+  tick(); A.edit(S => { byId(S, 'P1').name = 'A: świadomie później'; });                         // użytkownik zmienia P1 jeszcze raz – to późniejsza zmiana
+  assert.ok(A.z.q.p.P1 > przyszly, 'nowy znacznik większy niż widziany w bazie'); A.wyslij();
+  assert.equal(sv.doc.pm.P1.name, 'A: świadomie później', 'późniejsza zmiana wygrywa');
 });
 
 console.log(`\n${n} testów zaliczonych, ${bledy} błędów`);
