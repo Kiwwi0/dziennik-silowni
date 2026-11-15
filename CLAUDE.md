@@ -37,6 +37,8 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
   Każda zmiana `firestore.rules` wymaga dopisania lub poprawienia testu w tym samym commicie.
   Po pushu powiedz Kamilowi, żeby zatwierdził wdrożenie, i sprawdź wynik: `gh run list -R Kiwwi0/dziennik-silowni -w rules.yml -L 1`
   (do zatwierdzenia status to „waiting”).
+  Strona używa Firebase App Check (zlecenie A7: `ReCaptchaEnterpriseProvider`, klucz witryny `APPCHECK_SITE_KEY` w app.html obok `FIREBASE_CONFIG`; start bez modułu lub tokenu działa jak dotąd, wymuszanie w konsoli włącza właściciel).
+  Klucz API Firebase jest ograniczony do adresu https://kiwwi0.github.io/*, więc pełny test z prawdziwą bazą jest możliwy tylko na żywej stronie, nie z sesji ani z localhost.
   Udostępnianie planów: `shares/{KOD}` (6 znaków), w app.html `sharePayload`, `syncShares`, `shareSanitize`, `SHEETS.share/shareImp`,
   ACT `planShare`, `shareFind`, `shareAdd`, `shareStop`; link `?plan=KOD`.
 

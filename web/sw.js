@@ -1,5 +1,5 @@
 // Pozwala korzystać z aplikacji bez internetu (np. na siłowni).
-const VERSION = 'dziennik-6acc441ca6';
+const VERSION = 'dziennik-ac237b15b6';
 const NAV_WAIT_MS = 3000;   // tyle czeka otwarcie strony na sieć, gdy jest zapisana kopia
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const IMAGES = [];
@@ -58,6 +58,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.hostname.endsWith('openfoodfacts.org')) return;   // odpowiedzi API nigdy nie trafiają do pamięci podręcznej
+  if ((url.hostname === 'www.google.com' || url.hostname === 'www.gstatic.com') && url.pathname.startsWith('/recaptcha/')) return;   // skrypt reCAPTCHA (App Check) zawsze z sieci, nigdy z pamięci podręcznej
   if ((url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/')) || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/@zxing/library@'))) {
     // Biblioteka bazy danych: wersja w adresie się nie zmienia, więc wystarczy pamięć podręczna.
     event.respondWith((async () => {
