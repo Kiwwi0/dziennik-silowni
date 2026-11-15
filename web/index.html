@@ -2834,8 +2834,10 @@ let unsubState = null, unsubSess = null;
    start offline stawał (zlecenie A7a). Dlatego skrypt pobieramy sami i uruchamiamy App Check dopiero, gdy jest; bez niego aplikacja startuje jak przed A7,
    a App Check rusza później (powrót sieci albo spóźnione załadowanie skryptu). */
 const RECAPTCHA_URL = 'https://www.google.com/recaptcha/enterprise.js';
+const APPCHK_TOKEN_MS = 4000;
 const APPCHK = {mod:null, app:null, on:false, loading:false};
 function acLoadScript(ms){
+  if (navigator.onLine === false) return Promise.resolve(false);   // tryb samolotowy: skrypt mógłby być jeszcze w pamięci przeglądarki, ale ramka reCAPTCHA się nie pobierze
   if (self.grecaptcha && self.grecaptcha.enterprise) return Promise.resolve(true);
   if (APPCHK.loading) return Promise.resolve(false);   // poprzednia próba jeszcze trwa; jej onload uruchomi App Check
   return new Promise(res => {
@@ -2852,7 +2854,14 @@ function acLoadScript(ms){
 async function acStart(){
   if (APPCHK.on || !APPCHK.mod || !APPCHK.app) return APPCHK.on;
   if (!(await acLoadScript(2500)) || APPCHK.on) return APPCHK.on;
-  try { APPCHK.mod.initializeAppCheck(APPCHK.app, {provider:new APPCHK.mod.ReCaptchaEnterpriseProvider(APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled:true}); APPCHK.on = true; } catch {}
+  try {
+    // Limit czasu na token: gdy skrypt reCAPTCHA jest (z pamięci przeglądarki), ale jego ramka się nie pobierze (sieć padła, Wi-Fi bez internetu), execute() wisi bez końca.
+    // Po limicie SDK zwraca błąd tokenu i logowanie oraz baza idą dalej bez niego (wymuszanie jest wyłączone).
+    class TimedProvider extends APPCHK.mod.ReCaptchaEnterpriseProvider {
+      getToken(){ return Promise.race([super.getToken(), new Promise((_, no) => setTimeout(() => no(new Error('App Check: limit czasu')), APPCHK_TOKEN_MS))]); }
+    }
+    APPCHK.mod.initializeAppCheck(APPCHK.app, {provider:new TimedProvider(APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled:true}); APPCHK.on = true;
+  } catch {}
   return APPCHK.on;
 }
 addEventListener('online', () => { if (!APPCHK.on) acStart(); });

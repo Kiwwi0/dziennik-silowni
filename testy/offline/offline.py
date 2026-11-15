@@ -62,9 +62,13 @@ def trasy(ctx, st):
         u = route.request.url
         if route.request.method == 'OPTIONS' and not st['offline'] and not (st['bez_recaptcha'] and 'recaptcha' in u):   # zapytanie wstępne CORS (WebKit nie odpowiada na nie sam)
             return route.fulfill(status=204, headers={**cors, 'access-control-allow-headers': '*', 'access-control-allow-methods': '*', 'access-control-max-age': '600'})
-        if st['offline'] or (st['bez_recaptcha'] and 'recaptcha' in u): return route.abort()
+        if st['offline'] and st['skrypt_z_cache'] and 'recaptcha/enterprise.js' in u: pass   # skrypt jak z pamięci przeglądarki: ładuje się mimo braku sieci
+        elif st['offline'] or (st['bez_recaptcha'] and 'recaptcha' in u): return route.abort()
         if 'recaptcha/enterprise.js' in u:
-            return route.fulfill(content_type='text/javascript', body="window.grecaptcha=window.grecaptcha||{};grecaptcha.enterprise={render:function(){return 'w1'},ready:function(cb){cb()},execute:function(){return Promise.resolve('fake-recaptcha')}};")
+            # execute() jak prawdziwy reCAPTCHA: potrzebuje ramki (anchor); gdy sieci nie ma, nigdy się nie kończy (ani nie zgłasza błędu)
+            return route.fulfill(content_type='text/javascript', body="window.grecaptcha=window.grecaptcha||{};grecaptcha.enterprise={render:function(){return 'w1'},ready:function(cb){cb()},execute:function(){return fetch('https://www.google.com/recaptcha/enterprise/anchor').then(function(){return 'fake-recaptcha'},function(){return new Promise(function(){})})}};")
+        if 'recaptcha/enterprise/anchor' in u:
+            return route.fulfill(content_type='text/html', headers=cors, body='ok')
         if 'firebaseappcheck.googleapis.com' in u:
             return route.fulfill(content_type='application/json', headers=cors, body=json.dumps({'token': 'fake.appcheck.token', 'ttl': '3600s'}))
         if 'accounts:signUp' in u:
@@ -118,6 +122,8 @@ SCENARIUSZE = {
     'normalny': dict(wejsc=3, bez_recaptcha=False, usun_z_libs=None, offline=True),
     'jedno-wejscie': dict(wejsc=1, bez_recaptcha=False, usun_z_libs=None, offline=True),
     'brak-app-check-w-libs': dict(wejsc=3, bez_recaptcha=False, usun_z_libs='firebase-app-check.js', offline=True),
+    'tryb-samolotowy (navigator.onLine = false)': dict(wejsc=3, bez_recaptcha=False, usun_z_libs=None, offline=True, samolot=True, skrypt_z_cache=True),
+    'skrypt-reCAPTCHA-z-pamieci, ramka niedostępna (Wi-Fi bez internetu)': dict(wejsc=3, bez_recaptcha=False, usun_z_libs=None, offline=True, skrypt_z_cache=True, limit_db=9),
     'recaptcha-zablokowana': dict(wejsc=2, bez_recaptcha=True, usun_z_libs=None, offline=False),
     'libs-puste (znane ograniczenie: Firebase nie wstaje, dane lokalne działają)': dict(wejsc=3, bez_recaptcha=False, usun_z_libs='*', offline=True, tylko_dane=True),
 }
@@ -133,7 +139,7 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
                 try: stan['snap'] = stan['page']()
                 except Exception as e: stan['snap'] = 'niedostępny: ' + str(e)[:60]
     kopia = tempfile.mkdtemp(prefix='dz-offline-'); kopia_strony(web, kopia)
-    www, cdn = Serwer(kopia, WEBPORT), Serwer(os.path.join(sdk, 'cdn'), CDNPORT); st = dict(offline=False, bez_recaptcha=cfg['bez_recaptcha'])
+    www, cdn = Serwer(kopia, WEBPORT), Serwer(os.path.join(sdk, 'cdn'), CDNPORT); st = dict(offline=False, bez_recaptcha=cfg['bez_recaptcha'], skrypt_z_cache=cfg.get('skrypt_z_cache', False))
     try:
         with sync_playwright() as p:
             opcje = {}
@@ -155,12 +161,13 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
                 sprawdz(not page.evaluate('store.fireError'), 'online, reCAPTCHA niedostępna: bez błędu połączenia z bazą')
                 b.close(); return
             st['offline'] = True; www.stop(); cdn.stop(); time.sleep(.5); bl.clear()
+            if cfg.get('samolot'): ctx.set_offline(True)   # tryb samolotowy: navigator.onLine = false
             page.reload(wait_until='load', timeout=20000)
             sprawdz(widac(page)[0], '(a) odświeżenie bez sieci: dane widoczne')
             p2 = ctx.new_page(); p2.goto(url, wait_until='load', timeout=20000)
             sprawdz(widac(p2)[0], '(b) nowa karta bez sieci: dane widoczne'); p2.close()
             if not cfg.get('tylko_dane'):
-                t = czekaj_db(page, 6000); sprawdz(t is not None and t <= 4, f'(c) bez sieci Firebase wstaje w ≤ 4 s (po {t} s)')
+                lim = cfg.get('limit_db', 4); t = czekaj_db(page, (lim + 3) * 1000); sprawdz(t is not None and t <= lim, f'(c) bez sieci Firebase wstaje w ≤ {lim} s (po {t} s)')
                 sprawdz(page.evaluate('FB.uid || null') == 'uid1', '(c) bez sieci logowanie anonimowe się rozwiązuje (zapamiętany użytkownik)')
             r = page.evaluate(SONDA)
             if not cfg.get('tylko_dane'): sprawdz(not r['fireError'], '(c) bez błędu połączenia z bazą')
