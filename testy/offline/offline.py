@@ -72,7 +72,9 @@ def trasy(ctx, st):
         if 'accounts:lookup' in u:
             return route.fulfill(content_type='application/json', headers=cors, body=json.dumps({'users': [{'localId': 'uid1', 'providerUserInfo': [], 'lastLoginAt': '1', 'createdAt': '1'}]}))
         route.abort()   # baza Firestore i reszta: nieosiągalne
-    ctx.route(re.compile(r'https://(www\.google\.com|www\.gstatic\.com|firebaseappcheck\.googleapis\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com|firestore\.googleapis\.com)/.*'), h)
+    # hermetycznie: wszystko spoza localhost/127.0.0.1 (też apis.google.com, iframe logowania z firebaseapp.com, czcionki) jest atrapą albo przerwane,
+    # niezależnie od tego, czy runner ma internet (w Actions ma, w piaskownicy nie)
+    ctx.route(lambda u: not re.match(r'^https?://(localhost|127\.0\.0\.1)[:/]', u), h)
 
 
 ZASIEW = """() => {
@@ -125,7 +127,11 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
     stan = {'dbg': None, 'page': None}
     def sprawdz(warunek, opis):
         print(('    ok     ' if warunek else '    BŁĄD   ') + opis, flush=True)
-        if not warunek: bledy.append(f'{silnik} / {nazwa}: {opis}')
+        if not warunek:
+            bledy.append(f'{silnik} / {nazwa}: {opis}')
+            if stan.get('snap') is None and stan['page']:
+                try: stan['snap'] = stan['page']()
+                except Exception as e: stan['snap'] = 'niedostępny: ' + str(e)[:60]
     kopia = tempfile.mkdtemp(prefix='dz-offline-'); kopia_strony(web, kopia)
     www, cdn = Serwer(kopia, WEBPORT), Serwer(os.path.join(sdk, 'cdn'), CDNPORT); st = dict(offline=False, bez_recaptcha=cfg['bez_recaptcha'])
     try:
@@ -167,9 +173,7 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
         if any(x.startswith(f'{silnik} / {nazwa}') for x in bledy) and stan['dbg'] is not None:
             print('    --- diagnostyka (ostatnie zdarzenia) ---')
             for l in stan['dbg'][-14:]: print('      ' + l)
-            if stan['page']:
-                try: print('      stan strony:', stan['page']())
-                except Exception as e: print('      stan strony niedostępny:', str(e)[:80])
+            print('      stan strony przy pierwszym błędzie:', stan.get('snap'))
 
 
 def main():
