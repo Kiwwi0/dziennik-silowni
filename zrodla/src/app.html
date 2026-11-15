@@ -2818,7 +2818,7 @@ const SHEETS = {
     return sheetHead('Zakończ trening') + staleTxt + (s.auto ? `<p class="muted" style="margin:0">Wszystkie serie zrobione. Zapisać trening? Jeśli chcesz jeszcze coś dorobić, zamknij to okno.</p>` : '') + `<div class="tiles"><div class="tile"><div class="l">Czas</div><div class="v">${fmtDur(sess.dur)}</div></div><div class="tile"><div class="l">Serie</div><div class="v">${sessSets(sess)}</div></div>
       <div class="tile"><div class="l">Objętość</div><div class="v">${fmtN(Math.round(sessVol(sess)))} <small>kg</small></div></div><div class="tile"><div class="l">Ćwiczenia</div><div class="v">${sess.ex.length}</div></div></div>
       ${sessSets(sess) ? '' : '<p class="note">Nie odhaczyłeś żadnej serii, więc nie ma czego zapisać.</p>'}
-      ${linked ? `<label class="toggle"><input type="checkbox" id="fin-upd" ${s.upd ? 'checked' : ''} data-bind="finUpd">Zapisz dzisiejsze ciężary i powtórzenia w planie</label>` : ''}
+      ${linked ? `<label class="toggle"><input type="checkbox" id="fin-upd" ${s.upd ? 'checked' : ''} data-bind="finUpd">Zapisz dzisiejsze ciężary i wyższe powtórzenia w planie</label>` : ''}
       <div class="sheet-f" style="flex-wrap:wrap"><button class="btn primary" data-act="finishSave" ${sessSets(sess) ? '' : 'disabled'}>Zapisz trening</button><button class="btn danger" data-act="discardAsk">Odrzuć</button></div>`;
   },
   folders(){
@@ -3563,7 +3563,9 @@ const ACT = {
         x.sets.forEach((q, j) => {
           const ps = q.done && it.sets[hasPi ? q.pi : j]; if (!ps) return;
           ps.kg = q.kg || null;
-          if (x.mode === 'time'){ if (q.sec != null) ps.sec = Math.round(q.sec); } else if (q.reps != null) ps.reps = Math.round(q.reps);
+          // powtórzenia (sekundy w serii na czas) tylko w górę: cel w planie nie spada po słabszym dniu; ciężar zawsze
+          const f = x.mode === 'time' ? 'sec' : 'reps', v = q[f] != null ? Math.round(q[f]) : null;
+          if (v != null && (ps[f] == null || v > ps[f])) ps[f] = v;
           changed = true;
         });
       }

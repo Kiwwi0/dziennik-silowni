@@ -838,13 +838,22 @@ def scenariusz(r):
         for j in (0, 1):
             r.klik(f'#workout .chk[data-j="{j}"][data-act="toggleSet"]'); expect(page.locator(f'#workout .chk[data-j="{j}"][aria-pressed="true"]')).to_have_count(1)
         r.klik('#workout [data-act="finishOpen"]')
-        expect(page.locator('#sheet .toggle')).to_contain_text('Zapisz dzisiejsze ciężary i powtórzenia w planie')
+        expect(page.locator('#sheet .toggle')).to_contain_text('Zapisz dzisiejsze ciężary i wyższe powtórzenia w planie')
         assert 'jako nowe wartości' not in page.locator('#sheet .toggle').inner_text(), 'napis opcji ma być skrócony'
+        assert 'i powtórzenia w planie' not in page.locator('#sheet .toggle').inner_text(), 'napis nie może obiecywać zapisu powtórzeń w obie strony'
         r.klik('#fin-upd'); expect(page.locator('#fin-upd')).to_be_checked()
         r.klik('#sheet [data-act="finishSave"]')
         page.wait_for_function('SESS.length === 1 && !ACTIVE')
         plan = page.evaluate('() => S.plans[0].items[0].sets.map(s => [s.reps, s.kg])')
-        assert plan == [[10, 62.5], [8, 62.5], [10, 60]], f'plan po zapisie: 3 serie, ciężary 62,5/62,5/60, powtórzenia 10/8/10: {plan}'
+        assert plan == [[10, 62.5], [10, 62.5], [10, 60]], f'plan 3×10×60, serie 62,5×10 i 62,5×8: ciężary 62,5/62,5/60, powtórzenia 10/10/10 (8 nie obniża celu): {plan}'
+        # seria z 12 powtórzeniami podnosi cel do 12
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        r.klik(pole(0, 'reps')); page.keyboard.type('12'); stuknij_obok()
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]'); expect(page.locator('#workout .chk[data-j="0"][aria-pressed="true"]')).to_have_count(1)
+        r.klik('#workout [data-act="finishOpen"]'); r.klik('#fin-upd'); r.klik('#sheet [data-act="finishSave"]')
+        page.wait_for_function('SESS.length === 1 && !ACTIVE')
+        plan = page.evaluate('() => S.plans[0].items[0].sets.map(s => [s.reps, s.kg])')
+        assert plan == [[12, 60], [10, 60], [10, 60]], f'12 powtórzeń w serii 1 podnosi cel do 12: {plan}'
     r.krok('zapis do planu: tylko odhaczone serie, na swoich pozycjach, plan ma nadal 3 serie (E2-02)', b1_zapis_do_planu, 'plan-e2-02')
 
     def b1_zapis_do_planu_zamiennik():
@@ -857,7 +866,7 @@ def scenariusz(r):
         page.evaluate("""() => {
           ACTIVE.ex[0].sets.forEach(s => { s.kg = 55; s.reps = 5; s.done = true; });                       // zamiennik
           ACTIVE.ex[1].sets[0].kg = 22.5; ACTIVE.ex[1].sets[0].reps = 9; ACTIVE.ex[1].sets[0].done = true; // zwykłe ćwiczenie, jedna seria zrobiona
-          ACTIVE.ex[2].sets[1].sec = 41; ACTIVE.ex[2].sets[1].done = true;                                  // seria na czas
+          ACTIVE.ex[2].sets[1].sec = 41; ACTIVE.ex[2].sets[1].done = true; ACTIVE.ex[2].sets[0].sec = 20; ACTIVE.ex[2].sets[0].done = true; // seria na czas: 41 s podnosi, 20 s nie obniża
           const d = newWorkoutEx(EX[5].id); d.sets.forEach(s => { s.kg = 15; s.reps = 12; s.done = true; }); ACTIVE.ex.push(d); // dodane w trakcie
           saveActive(); renderWorkout();
         }""")
@@ -866,7 +875,7 @@ def scenariusz(r):
         po = page.evaluate('() => S.plans[0].items.map(i => i.sets.map(s => i.mode === "time" ? [s.sec, s.kg ?? null] : [s.reps, s.kg ?? null]))')
         assert page.evaluate('() => S.plans[0].items.length') == 3, 'liczba ćwiczeń w planie się zmieniła'
         assert json.loads(przed)[0]['sets'] == page.evaluate('() => S.plans[0].items[0].sets') and page.evaluate('() => S.plans[0].items[0].exId === EX[0].id'), 'przysiad zamieniony w treningu ma zostać w planie bez zmian'
-        assert po[1] == [[9, 22.5], [10, 20]] and po[2] == [[30, None], [41, None]], f'zwykłe ćwiczenie i seria na czas: {po}'
+        assert po[1] == [[10, 22.5], [10, 20]] and po[2] == [[30, None], [41, None]], f'zwykłe ćwiczenie (9 < 10 nie obniża celu) i seria na czas (41 s > 30 s podnosi): {po}'
     r.krok('zapis do planu: zamiennik i ćwiczenie dodane w trakcie są pomijane, seria na czas analogicznie (E3-02)', b1_zapis_do_planu_zamiennik, 'plan-e3-02')
 
     def b1_puste_powtorzenia():
@@ -922,7 +931,7 @@ def scenariusz(r):
         r.klik('#workout [data-act="wAddSet"][data-i="0"]')
         page.evaluate("() => { ACTIVE.ex[0].sets.forEach(s => { s.done = true; s.reps = 6; }); saveActive(); renderWorkout(); }")
         plan = zakoncz_z_planem()
-        assert plan == [[6, 60], [6, 60]], f'dodana seria w treningu nie rozszerza planu: {plan}'
+        assert plan == [[10, 60], [10, 60]], f'dodana seria w treningu nie rozszerza planu, 6 powtórzeń nie obniża celu: {plan}'
         # plan zmieniony w trakcie treningu (inna liczba serii) → ćwiczenie pominięte przy zapisie do planu
         nowy_trening([{'sets': [(10, 60), (10, 70), (10, 80)]}])
         page.evaluate("() => { const x = ACTIVE.ex[0]; x.sets[2].kg = 85; x.sets[2].done = true; S.plans[0].items[0].sets.splice(0, 1); persist(); saveActive(); renderWorkout(); }")
@@ -932,7 +941,7 @@ def scenariusz(r):
         nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
         page.evaluate("() => { const x = ACTIVE.ex[0]; delete x.pn; x.sets.forEach(s => delete s.pi); x.sets[1].kg = 65; x.sets[1].reps = 8; x.sets[1].done = true; saveActive(); renderWorkout(); }")
         plan = zakoncz_z_planem()
-        assert plan == [[10, 60], [8, 65], [10, 60]], f'trening sprzed zmiany (bez pi): {plan}'
+        assert plan == [[10, 60], [10, 65], [10, 60]], f'trening sprzed zmiany (bez pi), 8 nie obniża celu: {plan}'
     r.krok('zapis do planu: pozycje pi, dodana seria, plan zmieniony w trakcie, trening bez pi (E2-02)', b1_zapis_do_planu_pozycje, 'plan-pi')
 
     def b1_czcionka_pol():
