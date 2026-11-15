@@ -45,6 +45,11 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 - Wersja testowa: `python3 -I zrodla/build.py` → `zrodla/dist/index.html` (bez Firebase i bez 3D; dane w localStorage).
 - Test: `python3 testy/dymny/dymny.py --silniki chromium` (lokalnie Chrome z `/usr/bin/google-chrome`; WebKit zwykle tylko w Actions) zamiast własnych skryptów,
   a zasada brzmi: nowy błąd = nowy krok w tym teście (błąd aplikacji, którego nie naprawiasz od razu, wpisz do `ZNANE_BLEDY` z numerem).
+- Test logiki zapisu planów i treningów (A6): `node testy/zapis/test_zapis.js` (Node, bez przeglądarki i bez Firebase; sztuczny serwer i dwa urządzenia,
+  plik `zrodla/src/zapis.js` jest ten sam, który `build.py` i `build_web.py` wklejają do strony). Nowy błąd w scalaniu/kolejce = nowy przypadek tam.
+  Testy losowe 32 i 35 (35 z przeplotem transakcji) na 40 ziarnach (przed scaleniem zmian w zapisie): `SEEDS=40 node testy/zapis/test_zapis.js` (domyślnie 2 ziarna; `SEED=n` – jedno).
+  Test dymny ma kroki „zapis: …” (sztuczny Firebase w `SZTUCZNY_FIREBASE`) i „kopia zapasowa” (porównanie z `testy/zapis/kopia_przed.json` – eksport z `main` @ e82b8c6
+  na stanie z `kopia_stan.json`; zmiana formatu kopii = świadoma zmiana tego pliku). Żaden z nich nie sprawdza prawdziwego Firebase (SDK, tryb samolotowy) – to robi właściciel po wdrożeniu.
 - Szkielet strony, z którego korzysta test (jak w prawdziwej stronie z build_web): `<!doctype html><html lang="pl"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><style>[hidden]{display:none!important}</style></head><body>` + zawartość `zrodla/dist/index.html`
   (podana przez `page.route`); reguła `[hidden]` jest konieczna, bo bez niej ukryta warstwa arkuszy zasłania przyciski. Dane testowe: `S.plans = templatePlans(TEMPLATES.find(t => t.id === 'fbw2'))`, potem `render()`.
@@ -57,6 +62,13 @@ wdrożeniem przez push do `main`. Przy dostępie tylko do odczytu nie da się wd
 ## Jak zbudowany jest `zrodla/src/app.html`
 - Stan: `S = {plans, custom, settings}` (osobny dla każdej osoby), `SESS` (zapisane treningi), `ACTIVE` (trwający trening,
   localStorage `dz.active`). Zapis: `commit()` / `persist()` (plany), `saveActive()` (trening), `saveSession()`.
+  Zapis w bazie (tryb „fire”, zlecenie A6, plan w `zrodla/plany/A6-zapis-planow-i-treningow.md`): `data/state` w układzie v3 (mapy `pm`/`cm` po id z czasem `u`, kolejność `po`/`co`,
+  nagrobki `pt`/`ct`, znacznik `full`, lustro `plans`/`custom`/`settings` w starym układzie dla starych kart). `persist()` porównuje stan z poprzednim i wpisuje zmiany do kolejki
+  (`Z.q`, localStorage `dz.f.<konto>.zq`); `flushFire()` zapisuje kolejkę jedną transakcją (A6f): odczyt dokumentu, `ZP.txPlan` (scalanie + tylko pozycje, usunięcia i nagrobki nowsze niż w bazie; zmienione pola przez
+  `mergeFields`, migracja i naprawa po starej karcie w tej samej transakcji), po zatwierdzeniu `ZP.settleTx`; bez sieci nic nie wysyła (kolejka czeka w localStorage). Transakcja idzie przez `zRun` z limitem czasu `ZTX_MS` (A6g: zawieszona zwalnia blokadę, spóźniony wynik tylko rozlicza kolejkę). Nie dodawaj `setDoc`/`updateDoc` na `data/state`
+  (pilnuje test 33, limit czasu – 33b). Nasłuch w `openFolder` scala (`ZP.merge`, zrodla/src/zapis.js). Kolejkę (`.zq`) i stan (`.state`) konta wolno zapisywać do localStorage tylko przez `ZP.store` / `ZP.settle` / `ZP.settleTx` (łączą się z zapisem drugiej karty). Pilnują tego dwa testy: test 31 (statyczny, w `test_zapis.js`) szuka w `app.html` bezpośrednich `LS.set` z `lsKey('state')`, `ZP.stateKey`, `ZP.zKey` i `zKey`, także przez zmienną (nie zobaczy klucza zbudowanego inaczej),
+  a krok dymny „zapis: dwie karty…” łapie w czasie działania każdy zapis klucza `.zq`/`.state` poza `ZP.store` / `ZP.settle` / `ZP.settleTx`.
+  Treningi: lista niewysłanych `dz.f.<konto>.unsent` (`sessMark`/`sessUnmark`/`sessSend`/`sessResend`, `ZP.mergeSessions`).
 - Widoki: `render()` → `vHome`, `vPlans`, `vExercises`, `vHistory`; trening to nakładka `renderWorkout()`.
 - Arkusze od dołu: `SHEETS[typ]`, otwieranie `openSheet({type, ...})`, odświeżenie `renderSheet()`.
 - Kliknięcia: `data-act="x"` → `ACT.x(el)`. Pola: `data-bind="x"` → `BIND.x(t)`.

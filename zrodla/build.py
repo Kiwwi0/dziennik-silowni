@@ -22,8 +22,9 @@ def inject_anim(tpl):
     src = os.path.join(HERE, 'src')
     css = open(os.path.join(src, 'anim.css'), encoding='utf-8').read()
     js = open(os.path.join(src, 'anim.js'), encoding='utf-8').read() + '\n' + open(os.path.join(src, 'anim_ex.js'), encoding='utf-8').read() + '\n' + open(os.path.join(src, 'muscles.js'), encoding='utf-8').read() + '\n' + open(os.path.join(src, 'anim_body.js'), encoding='utf-8').read()
-    assert tpl.count('/*__ANIM_CSS__*/') == 1 and tpl.count('/*__ANIM_JS__*/') == 1
-    return tpl.replace('/*__ANIM_CSS__*/', css).replace('/*__ANIM_JS__*/', js.replace('</script', '<\\/script'))
+    assert tpl.count('/*__ANIM_CSS__*/') == 1 and tpl.count('/*__ANIM_JS__*/') == 1 and tpl.count('/*__ZAPIS_JS__*/') == 1
+    zapis = open(os.path.join(src, 'zapis.js'), encoding='utf-8').read()   # logika zapisu planów i treningów (A6), ta sama co w testach Node
+    return tpl.replace('/*__ANIM_CSS__*/', css).replace('/*__ANIM_JS__*/', js.replace('</script', '<\\/script')).replace('/*__ZAPIS_JS__*/', zapis.replace('</script', '<\\/script'))
 tpl = inject_anim(tpl)
 data = json.load(open(os.path.join(HERE, 'dist', 'exercises.json'), encoding='utf-8'))
 js = json.dumps(data, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')

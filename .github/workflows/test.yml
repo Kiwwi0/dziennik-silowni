@@ -49,6 +49,8 @@ jobs:
             echo "::error::Budowanie utworzyło pliki spoza repozytorium w web/. Zatwierdź je albo usuń ze źródeł."
             exit 1
           fi
+      - name: Test logiki zapisu planów i treningów (Node, bez przeglądarki)
+        run: node testy/zapis/test_zapis.js
       - name: Test dymny (Chromium i WebKit)
         run: python3 testy/dymny/dymny.py --silniki chromium,webkit --zrzuty testy/dymny/zrzuty
       - name: Zrzuty ekranu z testu

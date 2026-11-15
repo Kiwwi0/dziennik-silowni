@@ -12,10 +12,14 @@ Po każdym kroku sprawdza: brak błędów strony (pageerror), brak przewijania w
 brak „NaN” i „undefined” na ekranie i w polach input/textarea, brak prób połączenia z Firebase (w konfiguracji web/ tylko
 zliczane); na końcu jeszcze raz strażnicy po krótkim odczekaniu (późny pageerror). Zrzuty ekranu idą do katalogu zrzuty/ (artefakt w Actions).
 
+Kroki „zapis: …” (A6) podstawiają sztuczny Firebase (zapis scalający, kolejka, nieudany zapis treningu, stara karta); krok „kopia zapasowa”
+porównuje eksport i import z plikiem testy/zapis/kopia_przed.json (eksport wykonany kodem z `main` @ e82b8c6 na stanie z kopia_stan.json).
+
 Nowy błąd = nowy krok w tym teście. Błąd samej aplikacji, którego nie naprawiamy od razu, wpisz do ZNANE_BLEDY
 (krok, kod kontroli → numer i opis); taki krok kończy się „ZNANY BŁĄD” zamiast czerwonego wyniku.
 """
 import argparse
+import json
 import mimetypes
 import os
 import re
@@ -40,6 +44,73 @@ SZKIELET = ('<!doctype html><html lang="pl"><head><meta charset="utf-8">'
 
 # Znane błędy aplikacji: (nazwa kroku, kod kontroli) → "numer: opis". Kody: krok, pageerror, przewijanie, napis, firebase.
 ZNANE_BLEDY = {}
+
+
+# Sztuczny Firebase dla kroków „zapis: …”: dokument stanu, treningi, zapis scalający (mergeFields + deleteField), transakcja, nasłuchy.
+# Nic nie wychodzi do sieci. Prawdziwej bazy (SDK, pamięć podręczna, tryb samolotowy) ten test NIE sprawdza.
+SZTUCZNY_FIREBASE = r"""() => {
+  const cl = v => JSON.parse(JSON.stringify(v));
+  const sorted = v => Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.keys(v).sort().reduce((o, k) => (o[k] = sorted(v[k]), o), {}) : v;
+  const DEL = {__fdel:true};
+  const sv = window.__sv = {doc:null, sess:{}, st:[], se:[], fail:false, log:[], delay:5, zawies:false, wstrzymane:[]};
+  const setPath = (obj, parts, val) => { for (let i = 0; i < parts.length - 1; i++){ if (!obj[parts[i]] || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {}; obj = obj[parts[i]]; } const k = parts[parts.length - 1]; if (val === DEL) delete obj[k]; else obj[k] = cl(val); };
+  const snapOf = () => ({exists:() => !!sv.doc, data:() => sorted(cl(sv.doc)), metadata:{fromCache:false, hasPendingWrites:false}});
+  Object.assign(FB, {
+    db:{fake:true}, uid:'u1',
+    doc:(db, ...p) => ({kind:'doc', path:p.join('/')}), collection:(db, ...p) => ({kind:'col', path:p.join('/')}),
+    query:c => ({kind:'query', path:c.path}), orderBy:() => 0, limit:() => 0, where:() => 0, startAt:() => 0, endAt:() => 0,
+    deleteField:() => DEL, serverTimestamp:() => 0, increment:() => 0,
+    setDoc:(ref, data, opts) => new Promise((res, rej) => setTimeout(() => {
+      if (sv.fail) return rej(new Error('sztuczny błąd zapisu'));
+      try {
+        if (/\/data\/state$/.test(ref.path)){
+          sv.log.push('SETDOC');   // A6f: aplikacja nie może zapisywać data/state przez setDoc (bez warunku) – kroki „zapis: …” sprawdzają, że tego wpisu nie ma
+          if (opts && opts.mergeFields){ if (!sv.doc) sv.doc = {}; for (const f of opts.mergeFields){ let v = data; for (const q of f.split('.')) v = v == null ? undefined : v[q]; if (v === undefined) throw new Error('brak wartości dla ' + f); setPath(sv.doc, f.split('.'), v); } }
+          else sv.doc = cl(data);
+        } else if (/\/sessions\/[^/]+$/.test(ref.path)) sv.sess[ref.path.split('/').pop()] = cl(data);
+        res();
+      } catch (e){ rej(e); }
+    }, sv.delay)),
+    writeBatch:() => ({delete(){}, commit:async () => {}}),
+    deleteDoc:ref => Promise.resolve().then(() => { if (/\/sessions\//.test(ref.path)) delete sv.sess[ref.path.split('/').pop()]; }),
+    getDocs:async () => ({docs:[], empty:true}), getDoc:async () => ({exists:() => false}),
+    // Transakcja jak w SDK: odczyt, funkcja, zatwierdzenie po sv.delay ms; jeśli dokument zmienił się w tym czasie (sv.konflikt – „inny zapis” wstrzyknięty przez test),
+    // funkcja jest wywoływana ponownie na świeżym dokumencie (do 5 razy). tx.set z {mergeFields} zapisuje tylko wskazane pola (deleteField usuwa), bez opcji – cały dokument.
+    // sv.zawies = true (A6g): transakcja wisi (nie kończy się ani błędem, ani wynikiem), dopóki test nie wywoła jej z sv.wstrzymane.
+    runTransaction:(db, fn) => sv.zawies ? new Promise((res, rej) => sv.wstrzymane.push(() => sv.wykonaj(fn).then(res, rej))) : sv.wykonaj(fn),
+  });
+  sv.wykonaj = fn => new Promise(async (res, rej) => {
+      for (let proba = 0; proba < 5; proba++){
+        if (sv.fail) return rej(new Error('sztuczny brak sieci'));
+        const przed = JSON.stringify(sv.doc), pend = [], tx = {get:async () => snapOf(), set:(ref, data, opts) => pend.push({set:data, opts}), update:(ref, data) => pend.push({upd:data})};
+        let r; try { r = await fn(tx); } catch (e){ return rej(e); }
+        await new Promise(ok => setTimeout(ok, sv.delay));
+        if (sv.konflikt){ const k = sv.konflikt; sv.konflikt = null; k(); }
+        if (JSON.stringify(sv.doc) !== przed){ sv.log.push('tx-retry'); continue; }
+        try {
+          for (const d of pend){
+            if (d.set && d.opts && d.opts.mergeFields){ if (!sv.doc) sv.doc = {}; for (const f of d.opts.mergeFields){ let v = d.set; for (const q of f.split('.')) v = v == null ? undefined : v[q]; if (v === undefined) throw new Error('brak wartości dla ' + f); setPath(sv.doc, f.split('.'), v); } sv.log.push('tx:mf'); }
+            else if (d.set){ sv.doc = cl(d.set); sv.log.push('tx'); }
+            else { for (const [k, v] of Object.entries(d.upd)) setPath(sv.doc, k.split('.'), v); sv.log.push('txu'); }
+          }
+        } catch (e){ return rej(e); }
+        return res(r);
+      }
+      rej(new Error('sztuczna transakcja: za dużo konfliktów'));
+    });
+  Object.assign(FB, {
+    onSnapshot:(target, ...a) => {
+      const cb = a.find(x => typeof x === 'function'), e = {target, cb};
+      const list = target.kind === 'doc' && /\/data\/state$/.test(target.path) ? sv.st : target.kind === 'query' && /\/sessions$/.test(target.path) ? sv.se : [];
+      list.push(e); return () => { const i = list.indexOf(e); if (i >= 0) list.splice(i, 1); };
+    },
+  });
+  sv.emit = () => {
+    for (const e of sv.st.slice()) e.cb(snapOf());
+    for (const e of sv.se.slice()) e.cb({empty:!Object.keys(sv.sess).length, docs:Object.entries(sv.sess).map(([id, d]) => ({id, data:() => cl(d), metadata:{hasPendingWrites:false}})), metadata:{fromCache:false, hasPendingWrites:false}});
+  };
+  return true;
+}"""
 
 MOTYWY = {'jasny': 'light', 'ciemny': 'dark'}
 FIREBASE = re.compile(r'firebase|firestore|identitytoolkit|securetoken|googleapis\.com/(?!css)', re.I)
@@ -393,6 +464,295 @@ def scenariusz(r):
         assert page.locator('.dt-sum .dt-meter:not(.sm) i').first.evaluate('e => e.style.width') == '18%', 'pasek kcal: 350/2000 powinno dać 18%'
         expect(page.locator('.dt-sum .dt-left')).to_contain_text(re.compile(r'zostało\s*100\s*g'))
     r.krok('Dieta: ustawienie celu (paski, „zostało”)', dieta_cele, 'dieta-cele')
+
+    # ---- A6: zapis planów i treningów (sztuczny Firebase) ----
+    def zapis_scalanie():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.evaluate(SZTUCZNY_FIREBASE)
+        w = page.evaluate(r"""async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          const P = (id, name) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:'', sets:[{reps:8, kg:40}]}]});
+          store.mode = 'fire'; FOLDER = {id:'t1', name:'Test'};
+          sv.doc = {v:2, plans:[P('P1', 'Plan A'), P('P2', 'Plan B')], custom:[], settings:{...DEF_SETTINGS}};
+          LS.set('dz.state', sv.doc); LS.del('dz.f.t1.zq'); LS.del('dz.f.t1.unsent');
+          openFolder(FOLDER); sv.emit(); await sleep(60);
+          out.start = S.plans.map(p => p.name);
+          // 1. pierwsza zmiana na starym układzie = migracja (transakcja), plany tablicą
+          S.plans[0].name = 'Telefon A'; persist(); await sleep(1000); sv.emit(); await sleep(60);
+          out.mig = {v:sv.doc.v, full:!!sv.doc.full, p1:sv.doc.pm.P1.name, u2:sv.doc.pm.P2.u, po:sv.doc.po, mirror:sv.doc.plans.map(p => p.name), log:sv.log.slice(), tablica:Array.isArray(S.plans), bezU:S.plans.every(p => !('u' in p))};
+          // 2. zapis się nie udaje, w tym czasie drugie urządzenie zmienia INNY plan; zmiana z drugiego urządzenia nie może zginąć (E1-09)
+          sv.fail = true; S.plans[0].name = 'Telefon A2'; persist(); await sleep(900);
+          out.kolejka = Object.keys(Z.q.p);
+          sv.doc.pm.P2 = {...sv.doc.pm.P2, name:'Laptop B', u:Date.now() + 5}; sv.doc.plans = sv.doc.plans.map(p => p.id === 'P2' ? {...p, name:'Laptop B'} : p);
+          sv.emit(); await sleep(60);
+          out.polaczone = S.plans.map(p => p.name);
+          sv.fail = false; clearTimeout(zRetryT); flushFire(); await sleep(200); sv.emit(); await sleep(60);
+          out.serwer = [sv.doc.pm.P1.name, sv.doc.pm.P2.name]; out.kolejkaPo = Object.keys(Z.q.p).length;
+          // 3. stara karta zapisuje cały dokument w starym układzie (zmienia P1, dodaje P3, nie ma nowych pól)
+          sv.doc = {v:2, plans:[{...P('P1', 'A ze starej karty')}, P('P2', 'Laptop B'), P('P3', 'Plan ze starej karty')], custom:[], settings:{...DEF_SETTINGS}};
+          sv.emit(); await sleep(1200); sv.emit(); await sleep(100);
+          out.stara = {v:sv.doc.v, full:!!sv.doc.full, ids:S.plans.map(p => p.id), p1:byId1(), serwerIds:Object.keys(sv.doc.pm || {}).sort()};
+          function byId1(){ const p = S.plans.find(x => x.id === 'P1'); return p && p.name; }
+          // 4. trening: zapis się nie udaje → zostaje w historii po odczycie z bazy i jest wysyłany ponownie (E1-10)
+          const T = (id, d) => ({id, date:d, dur:60, planId:null, planName:'', dayId:null, dayName:'Trening', ex:[{exId:EX[0].id, name:'x', mode:'reps', sets:[{reps:8, kg:40, done:true}]}]});
+          sv.fail = true; await saveSession(T('Tnew1', '2026-11-13T10:00:00.000Z')); await sleep(60);
+          out.niewyslane1 = sessUnsent('t1').slice();
+          sv.emit(); await sleep(60);
+          out.historiaPoOdczycie = SESS.map(x => x.id);
+          sv.fail = false; clearTimeout(sessRetryT); sessResend('t1'); await sleep(100);
+          out.niewyslane2 = sessUnsent('t1').slice(); out.naSerwerze = Object.keys(sv.sess);
+          sv.emit(); await sleep(60); out.historia2 = SESS.map(x => x.id);
+          // 5. usunięty trening nie wraca
+          sv.fail = true; await saveSession(T('Tdel1', '2026-11-13T11:00:00.000Z')); await sleep(60);
+          out.przedUsunieciem = sessUnsent('t1').slice();
+          await deleteSession('Tdel1'); sv.emit(); await sleep(60);
+          out.poUsunieciu = {lista:sessUnsent('t1').slice(), historia:SESS.map(x => x.id)};
+          sv.fail = false; clearTimeout(sessRetryT);
+          // 6. zamknięcie karty z niewysłaną zmianą: kolejka i stan z pamięci przeglądarki, po ponownym otwarciu zmiana idzie do bazy
+          sv.fail = true; S.plans.find(p => p.id === 'P2').name = 'po zamknięciu'; persist(); await sleep(900);
+          out.zapisana = Object.keys(LS.get('dz.f.t1.zq', {q:{p:{}}}).q.p);
+          sv.fail = false; clearTimeout(zRetryT); zBusy.free('t1');
+          openFolder(FOLDER); sv.emit(); await sleep(500); sv.emit(); await sleep(60);
+          out.poOtwarciu = {serwer:sv.doc.pm.P2.name, lokalnie:S.plans.find(p => p.id === 'P2').name};
+          out.setDoc = sv.log.filter(x => x === 'SETDOC').length;
+          return out;
+        }""")
+        assert w['start'] == ['Plan A', 'Plan B'], f"stan startowy: {w['start']}"
+        m = w['mig']
+        assert m['v'] == 3 and m['full'] and m['p1'] == 'Telefon A' and m['u2'] == 0 and m['po'] == ['P1', 'P2'], f'migracja do v3: {m}'
+        assert m['mirror'] == ['Telefon A', 'Plan B'] and 'tx' in m['log'], f'lustro starego układu / migracja transakcją: {m}'
+        assert m['tablica'] and m['bezU'], f'S.plans ma zostać tablicą bez pola u: {m}'
+        assert w['kolejka'] == ['P1'], f"nieudany zapis ma zostać w kolejce: {w['kolejka']}"
+        assert w['polaczone'] == ['Telefon A2', 'Laptop B'], f"zmiana planu B z drugiego urządzenia zginęła albo nadpisała lokalną: {w['polaczone']}"
+        assert w['serwer'] == ['Telefon A2', 'Laptop B'] and w['kolejkaPo'] == 0, f"po ponowieniu baza ma mieć obie zmiany: {w['serwer']}, kolejka {w['kolejkaPo']}"
+        st = w['stara']
+        assert st['v'] == 3 and st['full'] and st['ids'] == ['P1', 'P2', 'P3'] and st['p1'] == 'A ze starej karty' and st['serwerIds'] == ['P1', 'P2', 'P3'], f'naprawa po starej karcie: {st}'
+        assert w['niewyslane1'] == ['Tnew1'], f"trening po nieudanym zapisie ma być na liście niewysłanych: {w['niewyslane1']}"
+        assert 'Tnew1' in w['historiaPoOdczycie'], f"trening niewysłany zniknął z historii po odczycie z bazy (E1-10): {w['historiaPoOdczycie']}"
+        assert w['niewyslane2'] == [] and 'Tnew1' in w['naSerwerze'] and 'Tnew1' in w['historia2'], f"ponowna wysyłka treningu: {w['niewyslane2']} {w['naSerwerze']} {w['historia2']}"
+        assert w['przedUsunieciem'] == ['Tdel1'] and w['poUsunieciu']['lista'] == [] and 'Tdel1' not in w['poUsunieciu']['historia'], f"usunięty trening wrócił: {w['poUsunieciu']}"
+        assert w['zapisana'] == ['P2'], f"kolejka nie zapisała się w pamięci przeglądarki: {w['zapisana']}"
+        assert w['poOtwarciu'] == {'serwer':'po zamknięciu', 'lokalnie':'po zamknięciu'}, f"zmiana z zamkniętej karty nie trafiła do bazy: {w['poOtwarciu']}"
+        assert w['setDoc'] == 0, f"zapis data/state przez setDoc (bez warunku) – ma być tylko transakcja: {w['setDoc']}"
+    r.krok('zapis: scalanie planów, kolejka, nieudany zapis treningu, stara karta (sztuczny Firebase)', zapis_scalanie)
+
+    # ---- A6c: dwie karty, konto zamknięte w trakcie wysyłki, usunięcie konta, dokument nieznanego kształtu, rozmiar (sztuczny Firebase) ----
+    def zapis_a6c():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.evaluate(SZTUCZNY_FIREBASE)
+        w = page.evaluate(r"""async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          // ===== strażnik A6d: zapis klucza .zq / .state konta do localStorage wolno wykonać tylko wewnątrz ZP.store / ZP.settle / ZP.settleTx (jedno miejsce zapisu); zbieramy naruszenia i sprawdzamy na końcu kroku =====
+          const g = {w:0, bledy:[], klucze:/^dz\.f\..+\.(zq|state)$/}, lsSet = LS.set.bind(LS);
+          LS.set = (k, v) => { if (g.klucze.test(String(k)) && !g.w) g.bledy.push(String(k) + ' ← ' + (new Error().stack || '').split('\n').slice(2, 5).join(' | ')); return lsSet(k, v); };
+          for (const nazwa of ['store', 'settle', 'settleTx']){ const o = ZP[nazwa]; ZP[nazwa] = (...a) => { g.w++; try { return o(...a); } finally { g.w--; } }; }
+          const zasiej = (k, v) => { g.w++; try { LS.set(k, v); } finally { g.w--; } };   // przygotowanie danych testu (nie kod aplikacji)
+          const P = (id, name, note) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:note || '', sets:[{reps:8, kg:40}]}]});
+          const v3 = (plans, extra) => ({v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:plans.map(p => p.id), pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[], ...(extra || {})});
+          const kq = id => Object.keys((LS.get(ZP.zKey(id), {q:{p:{}}}).q || {p:{}}).p).sort();
+          const kst = id => (LS.get(ZP.stateKey(id), {plans:[]}).plans || []).map(p => p.name);
+          // ===== dwie karty tej samej przeglądarki (A = ta strona, B = druga karta, ten sam kod ZP.store co w persist) =====
+          store.mode = 'fire'; FOLDER = {id:'t2', name:'Dwie'};
+          sv.doc = v3([P('P1', 'Plan A'), P('P2', 'Plan B')]);
+          zasiej('dz.f.t2.state', {v:2, plans:[P('P1', 'Plan A'), P('P2', 'Plan B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t2.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80);
+          const B = {S:LS.get(ZP.stateKey('t2'), null), z:ZP.fixZ(LS.get(ZP.zKey('t2'), null))}; B.last = ZP.snap(B.S);   // druga karta otwarta na tym samym stanie
+          sv.fail = true;                                                                                                  // zapisy do bazy nie idą: wpisy zostają w kolejce
+          B.S.plans.find(p => p.id === 'P2').name = 'B: edycja P2'; B.last = ZP.diff(B.last, B.S, B.z.q, Date.now() + 5, B.z.kn); ZP.store(LS, 't2', B.z, B.z, B.S);
+          S.plans.find(p => p.id === 'P1').name = 'A: edycja P1'; persist();   // A zapisuje OSTATNIA: nie może nadpisać stanu drugiej karty
+          out.poZapisach = {kolejka:kq('t2'), stan:kst('t2')};
+          sv.emit(); await sleep(80);                                                                                       // ścieżka odczytu z bazy (handler w openFolder) u karty A
+          out.poOdczycie = {kolejka:kq('t2'), stan:kst('t2')};
+          sv.fail = false; clearTimeout(zRetryT); zRetryN = 0; zBusy.free('t2'); flushFire(); await sleep(300);   // transakcja karty A (bez migawki po błędzie: czyta dokument sama)
+          out.poTx = {kolejka:kq('t2'), stan:kst('t2'), serwer:[sv.doc.pm.P1.name, sv.doc.pm.P2.name]};
+          openFolder(FOLDER); sv.emit(); await sleep(700); sv.emit(); await sleep(80);                                     // odświeżenie strony: kolejka i stan z localStorage
+          out.poOdswiezeniu = {kolejka:kq('t2'), serwer:[sv.doc.pm.P1.name, sv.doc.pm.P2.name], lokalnie:S.plans.map(p => p.name)};
+          // ===== konto zamknięte i otwarte od nowa w trakcie wysyłki: stare Z nie nadpisuje zapisanej kolejki nowego (Z === z) =====
+          sv.delay = 250; S.plans.find(p => p.id === 'P1').name = 'A: druga edycja'; persist(); clearTimeout(store.t);
+          zBusy.free('t2'); flushFire(); await sleep(40);
+          openFolder(FOLDER); sv.emit();                                                                                   // nowe Z, wysyłka starego jeszcze trwa
+          await sleep(310);                                                                                                // stara wysyłka skończona, nowa jeszcze w drodze
+          out.staleW = kq('t2');
+          await sleep(500); out.staleKoniec = kq('t2'); sv.delay = 5;
+          // ===== dokument nieznanego kształtu (bez plans i pm): plany lokalne zostają, komunikat, po kolejnym odczycie migracja rusza =====
+          FOLDER = {id:'t4', name:'Nieznany'}; sv.doc = {settings:{restSet:45}};
+          zasiej('dz.f.t4.state', {v:2, plans:[P('P1', 'lokalny A'), P('P2', 'lokalny B')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t4.zq');
+          openFolder(FOLDER); S.plans[0].name = 'zmiana czeka'; persist(); sv.emit(); await sleep(80);
+          out.holdPlany = S.plans.map(p => p.name); out.holdToast = document.querySelector('#toast').textContent; out.holdKolejka = kq('t4');
+          await sleep(900); out.holdSerwer = JSON.stringify(sv.doc);
+          sv.doc = {v:2, plans:[P('P1', 'lokalny A'), P('P2', 'lokalny B')], custom:[], settings:{...DEF_SETTINGS}}; sv.emit(); await sleep(1300); sv.emit(); await sleep(80);
+          out.holdPo = {v:sv.doc.v, p1:sv.doc.pm && sv.doc.pm.P1.name, p2:sv.doc.pm && sv.doc.pm.P2.name, plany:S.plans.map(p => p.name)};
+          // ===== rozmiar przy zwykłym zapisie: dokument blisko limitu ostrzega =====
+          FOLDER = {id:'t5', name:'Duże'}; sv.doc = v3([P('P1', 'duży', 'x'.repeat(951000)), P('P2', 'mały')]);
+          zasiej('dz.f.t5.state', {v:2, plans:[P('P1', 'duży', 'x'.repeat(951000)), P('P2', 'mały')], custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t5.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80);
+          const toasty = [], toastOrg = toast; toast = m => { toasty.push(m); toastOrg(m); };                              // toasty zasłaniają się nawzajem: zbieramy wszystkie
+          S.plans.find(p => p.id === 'P2').name = 'mały zmieniony'; persist(); await sleep(900);
+          toast = toastOrg; out.rozmiarToast = toasty.join(' | ');
+          // ===== usunięcie konta czyści jego kolejkę i listę niewysłanych treningów, cudze klucze zostają =====
+          for (const id of ['t3', 't6']){ zasiej('dz.f.' + id + '.zq', {q:{p:{P1:5}}}); LS.set('dz.f.' + id + '.unsent', ['T1']); zasiej('dz.f.' + id + '.state', {plans:[]}); }
+          FOLDER = {id:'t3', name:'Trzy'}; openFolder(FOLDER);
+          await ACT.folderDeleteGo({id:'t3', name:'Trzy'});
+          const has = k => localStorage.getItem(k) !== null;
+          out.usuniete = {zq:has('dz.f.t3.zq'), unsent:has('dz.f.t3.unsent'), state:has('dz.f.t3.state'), cudzeZq:has('dz.f.t6.zq'), cudzeUnsent:has('dz.f.t6.unsent')};
+          // strażnik musi działać: zapis klucza .state wprost, poza ZP.store, zostaje wykryty (probe kasujemy z listy i z pamięci)
+          const przed = g.bledy.length; LS.set('dz.f.sonda.state', {}); out.straznikDziala = g.bledy.length === przed + 1; g.bledy.splice(przed); localStorage.removeItem('dz.f.sonda.state');
+          out.straznik = g.bledy; out.setDoc = sv.log.filter(x => x === 'SETDOC').length;
+          return out;
+        }""")
+        assert w['straznikDziala'], 'strażnik zapisu (.zq/.state poza ZP.store/ZP.settle) nie wykrył zapisu próbnego'
+        assert w['straznik'] == [], f"zapis klucza .zq/.state do localStorage poza ZP.store / ZP.settle: {w['straznik']}"
+        assert w['poZapisach'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"zapisy dwóch kart (kolejka i stan): {w['poZapisach']}"
+        assert w['poOdczycie'] == {'kolejka':['P1', 'P2'], 'stan':['A: edycja P1', 'B: edycja P2']}, f"odczyt z bazy u karty A nadpisał kolejkę albo stan drugiej karty: {w['poOdczycie']}"
+        assert w['poTx']['kolejka'] == ['P2'] and w['poTx']['stan'] == ['A: edycja P1', 'B: edycja P2'] and w['poTx']['serwer'] == ['A: edycja P1', 'Plan B'], f"transakcja karty A (wpis drugiej karty zostaje w kolejce i w stanie): {w['poTx']}"
+        assert w['poOdswiezeniu']['serwer'] == ['A: edycja P1', 'B: edycja P2'] and w['poOdswiezeniu']['lokalnie'] == ['A: edycja P1', 'B: edycja P2'] and w['poOdswiezeniu']['kolejka'] == [], f"po odświeżeniu zmiana drugiej karty ma trafić do bazy: {w['poOdswiezeniu']}"
+        assert 'P1' in w['staleW'], f"stare Z (konto otwarte od nowa w trakcie wysyłki) zdjęło wpis z zapisanej kolejki nowego Z: {w['staleW']}"
+        assert w['staleKoniec'] == [], f"po wysyłce nowego Z kolejka ma być pusta: {w['staleKoniec']}"
+        assert w['holdPlany'] == ['zmiana czeka', 'lokalny B'], f"plany lokalne zniknęły z widoku przy nieznanym kształcie dokumentu: {w['holdPlany']}"
+        assert 'nieznany układ' in w['holdToast'], f"brak komunikatu o wstrzymanej migracji: {w['holdToast']}"
+        assert w['holdKolejka'] == ['P1'] and json.loads(w['holdSerwer']) == {'settings':{'restSet':45}}, f"dokument nieznanego kształtu ma zostać nietknięty, zmiana w kolejce: {w['holdKolejka']} {w['holdSerwer']}"
+        assert w['holdPo']['v'] == 3 and w['holdPo']['p1'] == 'zmiana czeka' and w['holdPo']['plany'] == ['zmiana czeka', 'lokalny B'], f"po kolejnym odczycie migracja ma ruszyć: {w['holdPo']}"
+        assert 'limitu rozmiaru' in w['rozmiarToast'], f"brak ostrzeżenia o rozmiarze przy zwykłym zapisie: {w['rozmiarToast']}"
+        assert w['usuniete'] == {'zq':False, 'unsent':False, 'state':False, 'cudzeZq':True, 'cudzeUnsent':True}, f"usunięcie konta: {w['usuniete']}"
+        assert w['setDoc'] == 0, f"zapis data/state przez setDoc (bez warunku) – ma być tylko transakcja: {w['setDoc']}"
+    r.krok('zapis: dwie karty, konto zamknięte w trakcie wysyłki, nieznany kształt dokumentu, rozmiar, usunięcie konta (sztuczny Firebase)', zapis_a6c)
+
+    # ---- A6f: zapis kolejki transakcją (tylko nowsze niż w bazie), bez sieci nic nie wysyła, konflikt = ponowienie (sztuczny Firebase) ----
+    def zapis_a6f():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.evaluate(SZTUCZNY_FIREBASE)
+        w = page.evaluate(r"""async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          const P = (id, name) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:'', sets:[{reps:8, kg:40}]}]});
+          const plans = [P('P1', 'Plan A'), P('P2', 'Plan B')];
+          let online = true; Object.defineProperty(navigator, 'onLine', {configurable:true, get:() => online});
+          const toasty = [], toastOrg = toast; toast = m => { toasty.push(m); toastOrg(m); };
+          const nazwa = id => S.plans.find(p => p.id === id).name, kq = () => Object.keys(LS.get(ZP.zKey('t7'), {q:{p:{}}}).q.p).sort();
+          store.mode = 'fire'; FOLDER = {id:'t7', name:'A6f'};
+          sv.doc = {v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[]};
+          LS.set('dz.f.t7.state', {v:2, plans, custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t7.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80); sv.log.length = 0;
+          // 1. zwykła zmiana: transakcja z mergeFields (+ transakcja lustra), żadnego setDoc
+          S.plans[0].name = 'A: edycja'; persist(); await sleep(900); sv.emit(); await sleep(60);
+          out.zwykla = {log:sv.log.slice(), p1:sv.doc.pm.P1.name, p2u:sv.doc.pm.P2.u, kolejka:kq(), lustro:sv.doc.plans.map(p => p.name)};
+          // 2. bez sieci: nic nie trafia do bazy (ani teraz, ani „później z SDK”), kolejka w localStorage; po powrocie sieci jeden zapis
+          sv.log.length = 0; online = false;
+          S.plans[1].name = 'B: offline'; persist(); await sleep(900);
+          out.offline = {log:sv.log.slice(), p2:sv.doc.pm.P2.name, kolejka:kq()};
+          online = true; window.dispatchEvent(new Event('online')); await sleep(300); sv.emit(); await sleep(60);
+          out.poPowrocie = {log:sv.log.slice(), p2:sv.doc.pm.P2.name, kolejka:kq(), lokalnie:nazwa('P2')};
+          // 3. przebieg 42: karta bez świeżej migawki ma STARSZĄ zmianę niż baza – transakcja jej nie zapisuje, migawka daje wersję z bazy
+          sv.log.length = 0; online = false;
+          S.plans[0].name = 'A: starsza lokalna'; persist(); await sleep(700);
+          sv.doc.pm.P1 = {...sv.doc.pm.P1, name:'inne urządzenie: nowsza', u:Date.now() + 60000};   // inne urządzenie zapisało później (nasłuch tej karty jeszcze o tym nie wie)
+          online = true; window.dispatchEvent(new Event('online')); await sleep(300);
+          out.starsza = {log:sv.log.slice(), p1:sv.doc.pm.P1.name, kolejka:kq(), toast:toasty.some(t => /była nowsza/.test(t))};
+          sv.emit(); await sleep(60); out.starsza.lokalnie = nazwa('P1');
+          // 4. konflikt: dokument zmienia się między odczytem a zatwierdzeniem – SDK powtarza funkcję na świeżym dokumencie, nowsza zmiana z bazy wygrywa
+          sv.log.length = 0;
+          S.plans[1].name = 'B: ta karta'; persist();
+          sv.konflikt = () => { sv.doc.pm.P2 = {...sv.doc.pm.P2, name:'B: konflikt (nowszy)', u:Date.now() + 120000}; };
+          await sleep(900); sv.emit(); await sleep(60);
+          out.konflikt = {log:sv.log.slice(), p2:sv.doc.pm.P2.name, kolejka:kq(), lokalnie:nazwa('P2')};
+          // 5. konto przełączone W TRAKCIE transakcji, SDK ją powtarza (konflikt): zapis liczy się ze stanu i kolejki z chwili wysyłki, nie ze stanu nowego konta
+          sv.log.length = 0; sv.delay = 150; const rest7 = S.settings.restSet === 45 ? 50 : 45;
+          S.settings.restSet = rest7; persist(); clearTimeout(store.t); flushFire(); await sleep(20);
+          sv.konflikt = () => { sv.doc.pm.P1 = {...sv.doc.pm.P1, u:sv.doc.pm.P1.u + 1}; };          // wymusza ponowienie funkcji transakcji
+          LS.set('dz.f.t8.state', {v:2, plans:[P('X1', 'inne konto')], custom:[], settings:{...DEF_SETTINGS, restSet:15}}); LS.del('dz.f.t8.zq');
+          FOLDER = {id:'t8', name:'Inne'}; openFolder(FOLDER);                                          // nowe konto: inne S i Z (bez migawki)
+          await sleep(500); sv.delay = 5;
+          out.przelaczenie = {log:sv.log.slice(), rest:sv.doc.settings.restSet, oczekiwane:rest7, planyT8wBazie:Object.keys(sv.doc.pm).filter(id => id === 'X1')};
+          toast = toastOrg; delete navigator.onLine;
+          out.setDoc = sv.log.filter(x => x === 'SETDOC').length;
+          return out;
+        }""")
+        z = w['zwykla']
+        assert z['p1'] == 'A: edycja' and z['p2u'] == 1 and z['kolejka'] == [] and z['lustro'] == ['A: edycja', 'Plan B'], f'zwykły zapis transakcją: {z}'
+        assert z['log'][:1] == ['tx:mf'] and 'SETDOC' not in z['log'], f'zapis ma iść transakcją z mergeFields, nie setDoc: {z["log"]}'
+        o = w['offline']
+        assert o['log'] == [] and o['p2'] == 'Plan B' and o['kolejka'] == ['P2'], f'bez sieci nic nie może trafić do bazy, kolejka w localStorage: {o}'
+        p = w['poPowrocie']
+        assert p['log'].count('tx:mf') == 1 and p['p2'] == 'B: offline' and p['kolejka'] == [] and p['lokalnie'] == 'B: offline', f'po powrocie sieci jeden zapis: {p}'
+        s_ = w['starsza']
+        assert s_['p1'] == 'inne urządzenie: nowsza' and 'tx:mf' not in s_['log'] and s_['kolejka'] == [], f'starsza zmiana nie może nadpisać nowszej w bazie: {s_}'
+        assert s_['toast'] and s_['lokalnie'] == 'inne urządzenie: nowsza', f'komunikat i wersja z bazy po migawce: {s_}'
+        k = w['konflikt']
+        assert 'tx-retry' in k['log'] and k['p2'] == 'B: konflikt (nowszy)' and k['kolejka'] == [] and k['lokalnie'] == 'B: konflikt (nowszy)', f'konflikt w transakcji: {k}'
+        pk = w['przelaczenie']
+        assert 'tx-retry' in pk['log'] and pk['rest'] == pk['oczekiwane'] and pk['planyT8wBazie'] == [], f'ponowiona transakcja po przełączeniu konta zapisała stan innego konta: {pk}'
+        assert w['setDoc'] == 0, f"zapis data/state przez setDoc: {w['setDoc']}"
+    r.krok('zapis: transakcja (tylko nowsze niż w bazie), bez sieci nic, konflikt (sztuczny Firebase, A6f)', zapis_a6f)
+
+    # ---- A6g: zawieszona transakcja nie blokuje synchronizacji (limit czasu ZTX_MS), spóźniony wynik nie zwalnia blokady nowszej transakcji ----
+    def zapis_a6g_limit():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.evaluate(SZTUCZNY_FIREBASE)
+        w = page.evaluate(r"""async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms)), sv = window.__sv, out = {};
+          const P = (id, name) => ({id, name, items:[{id:'i-' + id, exId:EX[0].id, mode:'reps', rest:90, restAfter:120, note:'', sets:[{reps:8, kg:40}]}]});
+          const plans = [P('P1', 'Plan A'), P('P2', 'Plan B')];
+          const toasty = [], toastOrg = toast; toast = m => { toasty.push(m); toastOrg(m); };
+          const kq = () => Object.keys(LS.get(ZP.zKey('t9'), {q:{p:{}}}).q.p).sort(), wolna = () => { const ok = zBusy.take('t9'); if (ok) zBusy.free('t9'); return ok; };
+          store.mode = 'fire'; FOLDER = {id:'t9', name:'A6g'}; ZTX_MS = 300;
+          sv.doc = {v:3, full:1, pm:Object.fromEntries(plans.map(p => [p.id, {...p, u:1}])), po:['P1', 'P2'], pos:0, cm:{}, co:[], cos:0, pt:{}, ct:{}, settings:{...DEF_SETTINGS}, plans, custom:[]};
+          LS.set('dz.f.t9.state', {v:2, plans, custom:[], settings:{...DEF_SETTINGS}}); LS.del('dz.f.t9.zq');
+          openFolder(FOLDER); sv.emit(); await sleep(80); sv.log.length = 0;
+          // 1. transakcja wisi: po limicie czasu blokada wolna, zmiana czeka w kolejce localStorage, w bazie nic, komunikat
+          sv.zawies = true; S.plans[0].name = 'A: po zawieszeniu'; persist(); clearTimeout(store.t); flushFire(); await sleep(100);
+          out.wTrakcie = {wolna:wolna(), kolejka:kq()};
+          await sleep(350); clearTimeout(zRetryT);
+          out.poLimicie = {wolna:wolna(), kolejka:kq(), p1:sv.doc.pm.P1.name, toast:toasty.some(t => /Nie udało się zapisać/.test(t)), wiszace:sv.wstrzymane.length};
+          // 2. następne wyzwolenie (tu: kolejna zmiana) – nowa transakcja też wisi; spóźniona PIERWSZA kończy się w jej trakcie i nie zwalnia jej blokady
+          S.plans[1].name = 'B: druga'; persist(); clearTimeout(store.t); flushFire(); await sleep(30);
+          if (sv.wstrzymane.length !== 2){ sv.zawies = false; sv.wstrzymane.splice(0).forEach(f => f()); toast = toastOrg; ZTX_MS = 20000; return out; }   // blokada nie zwolniona: asercje niżej to pokażą
+          const [pierwsza, druga] = sv.wstrzymane.splice(0); sv.zawies = false;
+          pierwsza(); await sleep(60);
+          out.spozniona = {wolna:wolna(), p1:sv.doc.pm.P1.name, kolejka:kq()};
+          druga(); await sleep(80); sv.emit(); await sleep(60);
+          out.koniec = {wolna:wolna(), p1:sv.doc.pm.P1.name, p2:sv.doc.pm.P2.name, kolejka:kq(), lokalnie:S.plans.map(p => p.name)};
+          // 3. bez zawieszenia wszystko jak zwykle
+          sv.log.length = 0; S.plans[0].name = 'A: zwykły'; persist(); await sleep(900); sv.emit(); await sleep(60);
+          out.zwykly = {p1:sv.doc.pm.P1.name, kolejka:kq(), log:sv.log.slice()};
+          toast = toastOrg; ZTX_MS = 20000; clearTimeout(zRetryT);
+          return out;
+        }""")
+        t = w['wTrakcie']
+        assert t['wolna'] is False and t['kolejka'] == ['P1'], f'w trakcie transakcji blokada zajęta, zmiana w kolejce: {t}'
+        p = w['poLimicie']
+        assert p['wolna'] is True and p['kolejka'] == ['P1'] and p['p1'] == 'Plan A' and p['toast'] and p['wiszace'] == 1, f'po limicie czasu blokada ma być wolna, zmiana w kolejce localStorage: {p}'
+        s_ = w['spozniona']
+        assert s_['wolna'] is False and s_['p1'] == 'A: po zawieszeniu', f'spóźniona transakcja zapisuje, ale nie zwalnia blokady nowszej: {s_}'
+        k = w['koniec']
+        assert k['wolna'] is True and k['p1'] == 'A: po zawieszeniu' and k['p2'] == 'B: druga' and k['kolejka'] == [] and k['lokalnie'] == ['A: po zawieszeniu', 'B: druga'], f'po obu transakcjach: {k}'
+        z = w['zwykly']
+        assert z['p1'] == 'A: zwykły' and z['kolejka'] == [] and 'tx:mf' in z['log'], f'zwykły zapis po wszystkim: {z}'
+    r.krok('zapis: zawieszona transakcja – limit czasu, spóźniony wynik (sztuczny Firebase, A6g)', zapis_a6g_limit)
+
+    def kopia_przed_i_po():
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        stan = json.loads((REPO / 'testy' / 'zapis' / 'kopia_stan.json').read_text(encoding='utf-8'))
+        przed = json.loads((REPO / 'testy' / 'zapis' / 'kopia_przed.json').read_text(encoding='utf-8'))
+        page.evaluate('(fx) => { S = normalize(fx.state); SESS = sortSess(fx.sessions); render(); }', stan)
+        r.klik('[data-act="openSettings"]')
+        r.klik('[data-act="exportPrep"]')
+        page.wait_for_function("document.querySelector('#exp') && document.querySelector('#exp').value.length > 10")
+        po = json.loads(page.input_value('#exp')); po.pop('exported')
+        assert json.dumps(po, sort_keys=True, ensure_ascii=False) == json.dumps(przed, sort_keys=True, ensure_ascii=False), 'eksport kopii różni się od eksportu z main'
+        # import kopii z main do pustego stanu: ten sam stan i historia
+        page.evaluate('() => { S = blankState(); SESS = []; }')   # arkusz Ustawień zostaje otwarty (ma pole „Przywróć z kopii”)
+        page.fill('#imp', json.dumps({**przed, 'exported':'2026-11-14T00:00:00.000Z'}, ensure_ascii=False))
+        r.klik('[data-act="importAsk"]')
+        r.klik('[data-act="confirmOk"]')
+        page.wait_for_function("SESS.length === 2")
+        wynik = page.evaluate('() => ({plany:S.plans.map(p => p.id), custom:S.custom.map(c => c.id), ust:S.settings, sesje:SESS.map(s => s.id), tab:Array.isArray(S.plans), bezU:S.plans.every(p => !("u" in p))})')
+        assert wynik['plany'] == [p['id'] for p in przed['state']['plans']] and wynik['custom'] == ['cx1'] and sorted(wynik['sesje']) == ['s1', 's2'], f'import kopii: {wynik}'
+        assert wynik['ust'] == przed['state']['settings'] and wynik['tab'] and wynik['bezU'], f'import kopii (ustawienia/tablica): {wynik}'
+    r.krok('kopia zapasowa: eksport i import jak przed zmianą (porównanie z main)', kopia_przed_i_po, 'kopia-po-imporcie')
 
     # ---- na koniec: krótkie odczekanie i jeszcze raz strażnicy (późny pageerror) ----
     def pozno():

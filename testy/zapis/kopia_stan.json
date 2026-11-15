@@ -1,0 +1,184 @@
+{
+ "state": {
+  "v": 2,
+  "plans": [
+   {
+    "id": "plA",
+    "name": "Dzień A",
+    "items": [
+     {
+      "id": "i1",
+      "exId": "Barbell_Bench_Press_-_Medium_Grip",
+      "mode": "reps",
+      "rest": 90,
+      "restAfter": 120,
+      "note": "",
+      "sets": [
+       {
+        "reps": 8,
+        "kg": 40
+       },
+       {
+        "reps": 8,
+        "kg": 40
+       }
+      ]
+     },
+     {
+      "id": "i2",
+      "exId": "Barbell_Incline_Bench_Press_-_Medium_Grip",
+      "mode": "reps",
+      "rest": 90,
+      "restAfter": 120,
+      "note": "",
+      "sets": [
+       {
+        "reps": 10,
+        "kg": 20
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "plB",
+    "name": "Dzień B",
+    "items": [
+     {
+      "id": "i3",
+      "exId": "Decline_Barbell_Bench_Press",
+      "mode": "reps",
+      "rest": 90,
+      "restAfter": 120,
+      "note": "",
+      "sets": [
+       {
+        "reps": 12,
+        "kg": 0
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "old1",
+    "name": "Stary plan",
+    "days": [
+     {
+      "id": "d1",
+      "name": "Dzień 1",
+      "items": [
+       {
+        "id": "i4",
+        "exId": "Dumbbell_Bench_Press",
+        "mode": "reps",
+        "rest": 90,
+        "restAfter": 120,
+        "note": "",
+        "sets": [
+         {
+          "reps": 5,
+          "kg": 60
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "d2",
+      "name": "Dzień 2",
+      "items": [
+       {
+        "id": "i5",
+        "exId": "Barbell_Bench_Press_-_Medium_Grip",
+        "mode": "reps",
+        "rest": 90,
+        "restAfter": 120,
+        "note": "",
+        "sets": [
+         {
+          "reps": 6,
+          "kg": 45
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "custom": [
+   {
+    "id": "cx1",
+    "name": "Moje ćwiczenie",
+    "group": "Plecy",
+    "equipment": "Hantle",
+    "mode": "reps",
+    "steps": [
+     "krok"
+    ],
+    "tips": [],
+    "primary": [],
+    "secondary": [],
+    "custom": true,
+    "level": ""
+   }
+  ],
+  "settings": {
+   "restSet": 75,
+   "restEx": 150,
+   "autoRest": true,
+   "sound": false,
+   "bar": 15,
+   "perWeek": 4
+  }
+ },
+ "sessions": [
+  {
+   "id": "s2",
+   "date": "2026-11-10T17:30:00.000Z",
+   "dur": 3600,
+   "planId": "plA",
+   "planName": "Dzień A",
+   "dayId": null,
+   "dayName": "Dzień A",
+   "ex": [
+    {
+     "exId": "Barbell_Bench_Press_-_Medium_Grip",
+     "name": "A",
+     "mode": "reps",
+     "sets": [
+      {
+       "reps": 8,
+       "kg": 40,
+       "done": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s1",
+   "date": "2026-11-03T17:00:00.000Z",
+   "dur": 3000,
+   "planId": "plB",
+   "planName": "Dzień B",
+   "dayId": null,
+   "dayName": "Dzień B",
+   "ex": [
+    {
+     "exId": "Decline_Barbell_Bench_Press",
+     "name": "B",
+     "mode": "reps",
+     "sets": [
+      {
+       "reps": 12,
+       "kg": 0,
+       "done": true
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
