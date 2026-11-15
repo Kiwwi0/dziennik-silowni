@@ -732,6 +732,167 @@ def scenariusz(r):
         assert z['p1'] == 'A: zwykły' and z['kolejka'] == [] and 'tx:mf' in z['log'], f'zwykły zapis po wszystkim: {z}'
     r.krok('zapis: zawieszona transakcja – limit czasu, spóźniony wynik (sztuczny Firebase, A6g)', zapis_a6g_limit)
 
+    # ---- B1: pola kg / powtórzeń w serii i zapis treningu do planu (E2-01, E2-02, E2-03, E2-09, E3-02) ----
+    def nowy_trening(plan, start=True):
+        """Czysta strona, jeden plan `plan` = lista ćwiczeń [{'sets': [(powt, kg), ...], 'mode': 'reps'|'time'}], start treningu."""
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.reload(wait_until='load')
+        page.evaluate("""(items) => {
+          S.plans = [{id:'PT', name:'Plan B1', items:items.map((it, n) => ({id:'it' + n, exId:EX[n].id, mode:it.mode || 'reps', rest:60, restAfter:90, note:'',
+            sets:it.sets.map(([r, k]) => it.mode === 'time' ? {sec:r, kg:k} : {reps:r, kg:k})}))}];
+          render(); if (%s) startWorkoutFrom(S.plans[0]);
+        }""" % ('true' if start else 'false'), plan)
+        if start:
+            expect(page.locator('#workout .wex').first).to_be_visible()
+
+    def pole(j, f='kg', root='#workout'):
+        return page.locator(f'{root} input[data-bind="wset"][data-j="{j}"][data-f="{f}"]')
+
+    def stuknij_obok():
+        r.klik('#workout .srow .n')   # stuknięcie w numer serii: nie jest polem, więc pole traci fokus
+
+    def serie(f):
+        return page.evaluate("(f) => ACTIVE.ex[0].sets.map(s => s[f])", f)
+
+    def wartosci(j_od, f='kg'):
+        return [pole(j, f).input_value() for j in range(j_od)]
+
+    def b1_stuknij_i_wyjdz():
+        # E2-01: samo stuknięcie w pole i wyjście niczego nie zmienia; wpisana wartość kopiuje się tylko do serii o tej samej wartości
+        nowy_trening([{'sets': [(12, 60), (10, 70), (8, 80)]}])
+        for f in ('kg', 'reps'):
+            r.klik(pole(0, f)); expect(pole(0, f)).to_be_focused()
+            stuknij_obok(); expect(pole(0, f)).not_to_be_focused()
+        assert serie('kg') == [60, 70, 80] and serie('reps') == [12, 10, 8], f'stuknięcie i wyjście zmieniło serie: {serie("kg")} {serie("reps")}'
+        assert wartosci(3, 'kg') == ['60', '70', '80'] and wartosci(3, 'reps') == ['12', '10', '8'], 'pola po wyjściu bez wpisania'
+        r.klik(pole(0, 'kg')); page.keyboard.type('65'); stuknij_obok()
+        assert serie('kg') == [65, 70, 80], f'plan 60/70/80, wpisane 65 w serii 1: {serie("kg")}'
+        assert wartosci(3, 'kg') == ['65', '70', '80'], 'pola po wpisaniu 65'
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        r.klik(pole(0, 'kg')); page.keyboard.type('62,5'); stuknij_obok()
+        assert serie('kg') == [62.5] * 3 and wartosci(3, 'kg') == ['62,5'] * 3, f'plan 60/60/60, wpisane 62,5: {serie("kg")} {wartosci(3, "kg")}'
+        # odhaczona seria nigdy się nie zmienia
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        r.klik('#workout .chk[data-j="1"][data-act="toggleSet"]'); expect(page.locator('#workout .chk[data-j="1"][aria-pressed="true"]')).to_have_count(1)
+        r.klik(pole(0, 'kg')); page.keyboard.type('62,5'); stuknij_obok()
+        assert serie('kg') == [62.5, 60, 62.5], f'odhaczona seria 2 ma zostać 60: {serie("kg")}'
+    r.krok('pola serii: stuknięcie i wyjście nic nie zmienia, kopiowanie w dół tylko do serii o tej samej wartości (E2-01)', b1_stuknij_i_wyjdz, 'pola-e2-01')
+
+    def b1_kasowanie():
+        # E2-03 (trening): Backspace w opróżnionym polu zostawia puste pole; stuknięcie bez klawisza przywraca starą wartość
+        nowy_trening([{'sets': [(10, 10), (10, 10), (10, 10)]}])
+        r.klik(pole(0, 'kg')); page.keyboard.press('Backspace'); stuknij_obok()
+        assert serie('kg')[0] is None and pole(0, 'kg').input_value() == '', f'skasowany ciężar ma zostać pusty: {serie("kg")} {pole(0, "kg").input_value()!r}'
+        assert serie('kg') == [None] * 3, f'puste pole kopiuje się w dół jak wpisana wartość (serie z tą samą wartością): {serie("kg")}'
+        r.klik(pole(0, 'kg')); stuknij_obok()
+        assert serie('kg')[0] is None and pole(0, 'kg').input_value() == '', 'puste pole po ponownym stuknięciu i wyjściu ma zostać puste'
+        nowy_trening([{'sets': [(10, 10), (10, 25), (10, 30)]}])
+        r.klik(pole(1, 'kg')); stuknij_obok()
+        assert serie('kg') == [10, 25, 30] and wartosci(3, 'kg') == ['10', '25', '30'], 'stuknięcie bez klawisza ma przywrócić wartość'
+        r.klik(pole(1, 'kg')); page.keyboard.type('0'); stuknij_obok()
+        assert serie('kg') == [10, None, 30], f'0 kg = puste pole (masa ciała): {serie("kg")}'
+        r.klik(pole(1, 'reps')); page.keyboard.press('Backspace'); stuknij_obok()
+        assert serie('reps')[1] is None and pole(1, 'reps').input_value() == '', f'skasowane powtórzenia zostają puste: {serie("reps")}'
+        # Backspace w polu z wpisaną cyfrą (zdarzenie input) też daje puste pole
+        r.klik(pole(2, 'kg')); page.keyboard.type('7'); page.keyboard.press('Backspace'); stuknij_obok()
+        assert serie('kg')[2] is None and pole(2, 'kg').input_value() == '', f'wpisz i skasuj: {serie("kg")}'
+    r.krok('pola serii: skasowanie ciężaru i powtórzeń zostawia puste pole, 0 kg = puste, stuknięcie bez klawisza przywraca (trening, E2-03)', b1_kasowanie, 'pola-e2-03-trening')
+
+    def b1_kasowanie_plan_i_edycja():
+        # E2-03 w edytorze planu i w edycji zapisanego treningu
+        nowy_trening([{'sets': [(8, 10), (8, 10), (8, 10)]}], start=False)
+        zakladka('plany'); r.klik('[data-act="editPlan"]'); r.klik('[data-act="toggleItem"]')
+        kg = lambda j: page.locator(f'#view input[data-bind="pset"][data-i="{j}"][data-f="kg"]')
+        expect(kg(0)).to_have_value('10')
+        r.klik(kg(0)); expect(kg(0)).to_be_focused(); r.klik('#view .prow .sn'); expect(kg(0)).to_have_value('10')
+        assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [10, 10, 10], 'plan: stuknięcie bez klawisza nie zmienia ciężaru'
+        r.klik(kg(0)); page.keyboard.press('Backspace'); r.klik('#view .prow .sn')
+        assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [None, 10, 10] and kg(0).input_value() == '', 'plan: skasowany ciężar ma zostać pusty (bez kopiowania w dół)'
+        # edycja zapisanego treningu
+        page.evaluate("""() => { SESS = [{id:'sB1', date:new Date(Date.now() - 3600e3).toISOString(), dur:1800, planId:'PT', planName:'Plan B1', dayId:'PT', dayName:'Plan B1',
+          ex:[{exId:EX[0].id, name:EX[0].name, mode:'reps', sets:[{reps:8, kg:10}, {reps:8, kg:10}]}]}]; render(); }""")
+        zakladka('historia'); r.klik('[data-act="hist"][data-v="treningi"]'); r.klik('[data-act="sessOpen"]'); r.klik('[data-act="sedOpen"]')
+        sed = lambda j, f: page.locator(f'#sheet input[data-bind="sedSet"][data-i="0"][data-j="{j}"][data-f="{f}"]')
+        expect(sed(0, 'kg')).to_have_value('10')
+        r.klik(sed(0, 'kg')); r.klik('#sheet .sed-row.head'); expect(sed(0, 'kg')).to_have_value('10')
+        assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [10, 10], 'edycja treningu: stuknięcie bez klawisza nie zmienia ciężaru'
+        r.klik(sed(0, 'kg')); page.keyboard.press('Backspace'); r.klik('#sheet .sed-row.head')
+        assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [None, 10] and sed(0, 'kg').input_value() == '', 'edycja treningu: skasowany ciężar ma zostać pusty'
+        r.klik(sed(1, 'reps')); page.keyboard.type('8,5'); r.klik('#sheet .sed-row.head')
+        assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.reps)') == [8, 9] and sed(1, 'reps').input_value() == '9', 'edycja treningu: powtórzenia do całości'
+        r.klik('[data-act="sedSave"]')
+        assert page.evaluate('() => SESS[0].ex[0].sets.map(s => [s.reps, s.kg ?? null])') == [[8, None], [9, 10]], 'zapis edycji treningu: pusty ciężar zostaje pusty'
+    r.krok('pola serii: skasowanie ciężaru w planie i w edycji zapisanego treningu (E2-03)', b1_kasowanie_plan_i_edycja, 'pola-e2-03-plan-edycja')
+
+    def b1_zapis_do_planu():
+        # E2-02: tylko odhaczone serie, na swoich pozycjach; plan nie traci serii
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        r.klik(pole(0, 'kg')); page.keyboard.type('62,5'); stuknij_obok()
+        r.klik(pole(1, 'reps')); page.keyboard.type('8'); stuknij_obok()
+        for j in (0, 1):
+            r.klik(f'#workout .chk[data-j="{j}"][data-act="toggleSet"]'); expect(page.locator(f'#workout .chk[data-j="{j}"][aria-pressed="true"]')).to_have_count(1)
+        r.klik('#workout [data-act="finishOpen"]')
+        expect(page.locator('#sheet .toggle')).to_contain_text('Zapisz dzisiejsze ciężary i powtórzenia w planie')
+        assert 'jako nowe wartości' not in page.locator('#sheet .toggle').inner_text(), 'napis opcji ma być skrócony'
+        r.klik('#fin-upd'); expect(page.locator('#fin-upd')).to_be_checked()
+        r.klik('#sheet [data-act="finishSave"]')
+        page.wait_for_function('SESS.length === 1 && !ACTIVE')
+        plan = page.evaluate('() => S.plans[0].items[0].sets.map(s => [s.reps, s.kg])')
+        assert plan == [[10, 62.5], [8, 62.5], [10, 60]], f'plan po zapisie: 3 serie, ciężary 62,5/62,5/60, powtórzenia 10/8/10: {plan}'
+    r.krok('zapis do planu: tylko odhaczone serie, na swoich pozycjach, plan ma nadal 3 serie (E2-02)', b1_zapis_do_planu, 'plan-e2-02')
+
+    def b1_zapis_do_planu_zamiennik():
+        # E3-02: ćwiczenie zamienione w treningu i dodane w trakcie są pomijane; zwykłe ćwiczenie się aktualizuje, seria czasowa analogicznie (sekundy)
+        nowy_trening([{'sets': [(8, 100), (8, 100)]}, {'sets': [(10, 20), (10, 20)]}, {'mode': 'time', 'sets': [(30, None), (30, None)]}])
+        przed = page.evaluate('() => JSON.stringify(S.plans[0].items)')
+        r.klik('#workout [data-act="wMenu"][data-i="0"]'); r.klik('#workout [data-act="wSwap"][data-i="0"]')
+        r.klik('#sheet [data-act="swapDo"]'); expect(page.locator('#sheet-wrap')).to_be_hidden()
+        assert page.evaluate('() => ACTIVE.ex[0].exId !== S.plans[0].items[0].exId'), 'zamiennik nie został wybrany'
+        page.evaluate("""() => {
+          ACTIVE.ex[0].sets.forEach(s => { s.kg = 55; s.reps = 5; s.done = true; });                       // zamiennik
+          ACTIVE.ex[1].sets[0].kg = 22.5; ACTIVE.ex[1].sets[0].reps = 9; ACTIVE.ex[1].sets[0].done = true; // zwykłe ćwiczenie, jedna seria zrobiona
+          ACTIVE.ex[2].sets[1].sec = 41; ACTIVE.ex[2].sets[1].done = true;                                  // seria na czas
+          const d = newWorkoutEx(EX[5].id); d.sets.forEach(s => { s.kg = 15; s.reps = 12; s.done = true; }); ACTIVE.ex.push(d); // dodane w trakcie
+          saveActive(); renderWorkout();
+        }""")
+        r.klik('#workout [data-act="finishOpen"]'); r.klik('#fin-upd'); r.klik('#sheet [data-act="finishSave"]')
+        page.wait_for_function('SESS.length === 1 && !ACTIVE')
+        po = page.evaluate('() => S.plans[0].items.map(i => i.sets.map(s => i.mode === "time" ? [s.sec, s.kg ?? null] : [s.reps, s.kg ?? null]))')
+        assert page.evaluate('() => S.plans[0].items.length') == 3, 'liczba ćwiczeń w planie się zmieniła'
+        assert json.loads(przed)[0]['sets'] == page.evaluate('() => S.plans[0].items[0].sets') and page.evaluate('() => S.plans[0].items[0].exId === EX[0].id'), 'przysiad zamieniony w treningu ma zostać w planie bez zmian'
+        assert po[1] == [[9, 22.5], [10, 20]] and po[2] == [[30, None], [41, None]], f'zwykłe ćwiczenie i seria na czas: {po}'
+    r.krok('zapis do planu: zamiennik i ćwiczenie dodane w trakcie są pomijane, seria na czas analogicznie (E3-02)', b1_zapis_do_planu_zamiennik, 'plan-e3-02')
+
+    def b1_puste_powtorzenia():
+        # E2-09: odhaczenie serii z pustym polem powtórzeń → pole podświetlone, seria nieodhaczona; powtórzenia do całości
+        nowy_trening([{'sets': [(None, 40), (None, 40)]}])
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]')
+        expect(pole(0, 'reps')).to_have_class(re.compile(r'\bbad\b')); expect(pole(0, 'reps')).to_be_focused()
+        assert page.evaluate('() => ACTIVE.ex[0].sets[0].done') is False, 'seria z pustymi powtórzeniami nie może się odhaczyć'
+        expect(page.locator('#workout .chk[data-j="0"]')).to_have_attribute('aria-pressed', 'false')
+        page.keyboard.type('8,5'); stuknij_obok()
+        assert serie('reps')[0] == 9 and pole(0, 'reps').input_value() == '9', f'8,5 powtórzenia → liczba całkowita: {serie("reps")} {pole(0, "reps").input_value()!r}'
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]'); expect(page.locator('#workout .chk[data-j="0"][aria-pressed="true"]')).to_have_count(1)
+        assert page.evaluate('() => buildSession().ex[0].sets.map(s => s.reps)') == [9], 'zapisane powtórzenia całkowite'
+        # wypełnianie pustego pola powtórzeń celem z planu zostaje (nie ruszamy)
+        nowy_trening([{'sets': [(12, 40), (12, 40)]}])
+        r.klik(pole(0, 'reps')); page.keyboard.press('Backspace'); stuknij_obok()
+        assert serie('reps')[0] is None, 'skasowane powtórzenia'
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]'); expect(page.locator('#workout .chk[data-j="0"][aria-pressed="true"]')).to_have_count(1)
+        assert serie('reps')[0] == 12, 'puste pole powtórzeń przy odhaczaniu wypełnia się celem z planu'
+    r.krok('odhaczanie serii z pustym polem powtórzeń: podświetlenie bez odhaczenia, powtórzenia do całości (E2-09)', b1_puste_powtorzenia, 'pola-e2-09')
+
+    def b1_czcionka_pol():
+        nowy_trening([{'sets': [(10, 20)]}])
+        przed = page.evaluate("() => [...document.querySelectorAll('#workout input[data-bind=\"wset\"]')].map(e => parseFloat(getComputedStyle(e).fontSize))")
+        assert przed and min(przed) >= 16, f'czcionka pól serii w treningu < 16 px: {przed}'
+        page.evaluate("() => { ACTIVE = null; saveActive(); ui.showWorkout = false; render(); renderWorkout(); }")
+        zakladka('plany'); r.klik('[data-act="editPlan"]'); r.klik('[data-act="toggleItem"]')
+        pl_ = page.evaluate("() => [...document.querySelectorAll('#view input[data-bind=\"pset\"]')].map(e => parseFloat(getComputedStyle(e).fontSize))")
+        assert pl_ and min(pl_) >= 16, f'czcionka pól serii w planie < 16 px: {pl_}'
+    r.krok('pola serii: czcionka co najmniej 16 px (trening, plan)', b1_czcionka_pol)
+
     def kopia_przed_i_po():
         page.goto(BASE + '/', wait_until='load')
         page.evaluate('() => localStorage.clear()')
