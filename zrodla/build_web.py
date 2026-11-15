@@ -195,6 +195,7 @@ self.addEventListener('fetch', (event) => {{
     return;
   }}
   if (url.hostname.endsWith('openfoodfacts.org')) return;   // odpowiedzi API nigdy nie trafiają do pamięci podręcznej
+  if ((url.hostname === 'www.google.com' || url.hostname === 'www.gstatic.com') && url.pathname.startsWith('/recaptcha/')) return;   // skrypt reCAPTCHA (App Check) zawsze z sieci, nigdy z pamięci podręcznej
   if ((url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/')) || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/@zxing/library@'))) {{
     // Biblioteka bazy danych: wersja w adresie się nie zmienia, więc wystarczy pamięć podręczna.
     event.respondWith((async () => {{

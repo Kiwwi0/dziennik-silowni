@@ -805,6 +805,8 @@ function importSanitize(rawState, rawSessions){
 }
 const FIREBASE_CONFIG = /*__FIREBASE_CONFIG__*/null;
 const FIRE = !!FIREBASE_CONFIG;
+// Klucz witryny reCAPTCHA Enterprise dla App Check (jawny, nie jest tajemnicą; działa tylko z adresu strony). Zlecenie A7.
+const APPCHECK_SITE_KEY = '6Lcr4CAuAAAAAIERbAK_BIMB6WkvJnKHypxY0CS4';
 let FOLDER = FIRE ? LS.get('dz.folder', null) : null;
 let FOLDERS = [];
 const lsKey = k => FIRE ? (FOLDER ? `dz.f.${FOLDER.id}.${k}` : null) : 'dz.' + k;
@@ -1051,8 +1053,13 @@ const FB = {};
 let unsubState = null, unsubSess = null;
 async function initFirebase(){
   const v = '10.14.1', base = `https://www.gstatic.com/firebasejs/${v}/`;
-  const [appMod, fs, au] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-firestore.js'), import(base + 'firebase-auth.js')]);
+  // App Check (A7) jest dodatkiem: brak modułu (np. start offline u kogoś, kto jeszcze go nie pobrał) nie może zatrzymać aplikacji.
+  const [appMod, fs, au, ac] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-firestore.js'), import(base + 'firebase-auth.js'),
+    import(base + 'firebase-app-check.js').catch(() => null)]);
   const app = appMod.initializeApp(FIREBASE_CONFIG);
+  // App Check musi ruszyć zaraz po utworzeniu aplikacji, przed pierwszym użyciem logowania i bazy. Błąd tokenu albo skryptu reCAPTCHA
+  // (brak sieci, blokada) SDK tylko zapisuje w konsoli i wysyła zapytanie bez tokenu; tu łapiemy resztę, żeby użytkownik nic nie zauważył.
+  if (ac){ try { ac.initializeAppCheck(app, {provider:new ac.ReCaptchaEnterpriseProvider(APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled:true}); } catch {} }
   // Anonimowe konto urządzenia: baza wpuszcza do folderu tylko urządzenia, które podały jego PIN.
   const auth = au.getAuth(app);
   FB.uid = await new Promise(res => { const off = au.onAuthStateChanged(auth, u => { off(); res(u ? u.uid : null); }); });
