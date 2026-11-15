@@ -40,6 +40,7 @@ const MUSCLE_EX = {
   Pushups:{p:['chestL'], s:['chestU','deltA','triceps','serratus','abs']},
   'Dips_-_Chest_Version':{p:['chestL'], s:['triceps','deltA']},
   'Straight-Arm_Dumbbell_Pullover':{p:['chestL','lats'], s:['triLong','teres','serratus']},
+  Smith_Machine_Incline_Bench_Press:{p:['chestU'], s:['chestL','deltA','triceps']},
   // plecy
   Pullups:{p:['lats'], s:['teres','trapsM','trapsL','biceps','brachialis','brachiorad']},
   'Chin-Up':{p:['lats','biceps'], s:['brachialis','teres','trapsL','brachiorad']},
@@ -62,6 +63,13 @@ const MUSCLE_EX = {
   Hyperextensions_Back_Extensions:{p:['erectors'], s:['gluteMax','hams']},
   Barbell_Shrug:{p:['trapsU'], s:['trapsM','flexors']},
   Dumbbell_Shrug:{p:['trapsU'], s:['trapsM','flexors']},
+  Unilateral_Chest_Supported_Lat_Pulldown:{p:['lats'], s:['teres','trapsL','biceps','brachiorad']},
+  Head_Supported_DB_Row:{p:['trapsM','lats'], s:['deltP','infra','teres','biceps']},
+  Kroc_Row:{p:['lats'], s:['teres','trapsM','deltP','biceps','flexors','erectors']},
+  Wide_Grip_Machine_Row:{p:['trapsM'], s:['lats','deltP','infra','teres','biceps']},
+  Cable_One_Arm_Row:{p:['lats','trapsM'], s:['teres','deltP','biceps','brachiorad']},
+  Cable_Pullover:{p:['lats'], s:['teres','triLong','abs']},
+  Kelso_Shrug:{p:['trapsM'], s:['trapsL','deltP']},
   // barki
   Standing_Military_Press:{p:['deltA'], s:['deltL','triceps','trapsU','chestU']},
   Seated_Dumbbell_Press:{p:['deltA'], s:['deltL','triceps','trapsU']},
@@ -76,6 +84,8 @@ const MUSCLE_EX = {
   Upright_Barbell_Row:{p:['deltL','trapsU'], s:['deltA','biceps','brachiorad']},
   Band_Pull_Apart:{p:['deltP'], s:['trapsM','infra']},
   External_Rotation_with_Cable:{p:['infra'], s:['deltP']},
+  'One-Arm_Incline_Lateral_Raise':{p:['deltL'], s:['deltA','trapsU']},
+  Single_Arm_Reverse_Butterfly:{p:['deltP'], s:['trapsM','infra']},
   // biceps
   Barbell_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors','deltA']},
   'EZ-Bar_Curl':{p:['biceps'], s:['brachialis','brachiorad','flexors']},
@@ -85,6 +95,9 @@ const MUSCLE_EX = {
   Preacher_Curl:{p:['biceps','brachialis'], s:['brachiorad']},
   Concentration_Curls:{p:['biceps'], s:['brachialis','brachiorad']},
   Standing_Biceps_Cable_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors']},
+  Single_Arm_Machine_Preacher_Curl:{p:['biceps','brachialis'], s:['brachiorad']},
+  Arnold_Curl:{p:['biceps'], s:['brachialis','brachiorad','flexors']},
+  Elbow_Supported_Biceps_Curl:{p:['biceps'], s:['brachialis','brachiorad']},
   // triceps
   Triceps_Pushdown:{p:['triLat','triMed'], s:['triLong']},
   'Triceps_Pushdown_-_Rope_Attachment':{p:['triLat','triMed'], s:['triLong']},
@@ -95,6 +108,8 @@ const MUSCLE_EX = {
   'Dips_-_Triceps_Version':{p:['triceps'], s:['chestL','deltA']},
   Bench_Dips:{p:['triceps'], s:['deltA','chestL']},
   Tricep_Dumbbell_Kickback:{p:['triLat','triLong'], s:['triMed','deltP']},
+  Unilateral_Rope_Triceps_Pushdown:{p:['triLat','triMed'], s:['triLong']},
+  Smith_JM_Press:{p:['triceps'], s:['chestL','deltA']},
   // przód uda
   Barbell_Squat:{p:['quads'], s:['gluteMax','adductors','hams','erectors','soleus']},
   Front_Barbell_Squat:{p:['quads'], s:['gluteMax','adductors','erectors','abs','trapsU']},
@@ -109,12 +124,17 @@ const MUSCLE_EX = {
   Dumbbell_Rear_Lunge:{p:['gluteMax','quads'], s:['hams','gluteMed','adductors']},
   Dumbbell_Step_Ups:{p:['quads','gluteMax'], s:['gluteMed','hams','gastro']},
   Leg_Extensions:{p:['quads'], s:[]},
+  'Smith_Single-Leg_Split_Squat':{p:['quads','gluteMax'], s:['gluteMed','adductors','hams']},
+  Landmine_Sissy_Squat:{p:['quadRF'], s:['quadVL','quadVM','abs']},
+  Split_Squat_Isometric_Hold:{p:['quads','gluteMax'], s:['gluteMed','adductors','hams']},
+  Zercher_Box_Squat:{p:['quads','gluteMax'], s:['adductors','hams','erectors','abs']},
   // tył uda
   Romanian_Deadlift:{p:['hams'], s:['gluteMax','erectors','adductors','flexors']},
   'Stiff-Legged_Dumbbell_Deadlift':{p:['hams'], s:['gluteMax','erectors','flexors']},
   Lying_Leg_Curls:{p:['hams'], s:['gastro']},
   Seated_Leg_Curl:{p:['hams'], s:['gastro']},
   Good_Morning:{p:['hams','erectors'], s:['gluteMax','adductors']},
+  'Landmine_B-Stance_RDL':{p:['hams'], s:['gluteMax','erectors','adductors']},
   // pośladki
   Barbell_Hip_Thrust:{p:['gluteMax'], s:['hams','gluteMed','adductors','erectors']},
   Barbell_Glute_Bridge:{p:['gluteMax'], s:['hams','gluteMed']},
@@ -122,6 +142,9 @@ const MUSCLE_EX = {
   'One-Legged_Cable_Kickback':{p:['gluteMax'], s:['hams','gluteMed']},
   Thigh_Abductor:{p:['gluteMed'], s:['gluteMax']},
   Thigh_Adductor:{p:['adductors'], s:[]},
+  Single_Leg_Hip_Thrust:{p:['gluteMax'], s:['hams','gluteMed']},
+  Unilateral_Hyperextension:{p:['erectors'], s:['gluteMax','hams']},
+  Copenhagen_Plank_Weighted:{p:['adductors'], s:['obliques','abs','gluteMed']},
   // łydki
   Standing_Calf_Raises:{p:['gastro'], s:['soleus']},
   Seated_Calf_Raise:{p:['soleus'], s:['gastro']},
@@ -140,6 +163,7 @@ const MUSCLE_EX = {
   Dead_Bug:{p:['abs'], s:['obliques','quadRF']},
   Pallof_Press:{p:['obliques'], s:['abs','gluteMed']},
   Mountain_Climbers:{p:['abs'], s:['obliques','quadRF','deltA']},
+  Incline_Bench_Leg_Raise:{p:['abs'], s:['obliques','quadRF']},
   // całe ciało i cardio
   'One-Arm_Kettlebell_Swings':{p:['gluteMax','hams'], s:['erectors','quads','deltA','abs','flexors']},
   Farmers_Walk:{p:['flexors','trapsU'], s:['obliques','abs','erectors','gastro']},

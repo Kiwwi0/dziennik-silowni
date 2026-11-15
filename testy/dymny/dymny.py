@@ -309,6 +309,61 @@ def scenariusz(r):
         expect(page.locator('#exlist .exrow').first).to_be_visible()
     r.krok('zakładka Ćwiczenia', cwiczenia, 'cwiczenia')
 
+    # ---- B2: 30 ćwiczeń z planów (24 siłowe + 6 w grupie Rozgrzewka) ----
+    B2_ID = ['Smith_Machine_Incline_Bench_Press', 'Unilateral_Chest_Supported_Lat_Pulldown', 'Head_Supported_DB_Row', 'Kroc_Row', 'Wide_Grip_Machine_Row',
+             'Cable_One_Arm_Row', 'Cable_Pullover', 'Kelso_Shrug', 'One-Arm_Incline_Lateral_Raise', 'Single_Arm_Reverse_Butterfly',
+             'Single_Arm_Machine_Preacher_Curl', 'Arnold_Curl', 'Elbow_Supported_Biceps_Curl', 'Unilateral_Rope_Triceps_Pushdown', 'Smith_JM_Press',
+             'Smith_Single-Leg_Split_Squat', 'Landmine_Sissy_Squat', 'Split_Squat_Isometric_Hold', 'Zercher_Box_Squat', 'Landmine_B-Stance_RDL',
+             'Single_Leg_Hip_Thrust', 'Unilateral_Hyperextension', 'Copenhagen_Plank_Weighted', 'Incline_Bench_Leg_Raise',
+             'Inchworm_Worlds_Greatest_Stretch', 'Cat_Cow', 'Shin_Box_Get_Up', 'Eccentric_Split_Squat', 'Dynamic_Push_Ups', 'Inverted_Row_Drop_Catch']
+
+    def b2_cwiczenia():
+        assert len(B2_ID) == 30 and len(set(B2_ID)) == 30
+        brak = page.evaluate('(ids) => ids.filter(id => !EXMAP.has(id))', B2_ID)
+        assert not brak, f'brak w EX: {brak}'
+        zakladka('cwiczenia')
+        # chip „Rozgrzewka” filtruje dokładnie 6 ćwiczeń, a „Wszystkie” pokazuje całą bazę
+        r.klik('[data-act="exGroup"][data-g="Rozgrzewka"]')
+        expect(page.locator('#exlist .exrow')).to_have_count(6)
+        r.klik('[data-act="exGroup"][data-g=""]')
+        # wyszukiwarka: nazwa angielska z planu i polska
+        for q, nazwa in (('kroc row', 'Kroc'), ('kelso', 'Kelso'), ('underhand pullup', 'podchwytem')):
+            page.fill('#exq', q)
+            expect(page.locator('#exlist .exrow').first).to_contain_text(nazwa)
+        page.fill('#exq', '')
+        # karta każdego z 30 ćwiczeń otwiera się (pageerror łapią strażnicy), tytuł się zgadza, nie ma prób wczytania img/
+        for i in B2_ID:
+            page.evaluate('(id) => openSheet({type:"ex", id})', i)
+            nazwa = page.evaluate('(id) => EXMAP.get(id).name', i)
+            expect(page.locator('#sheet .ex-title')).to_have_text(nazwa)
+            assert page.locator('#sheet .steps li').count() >= 3 and page.locator('#sheet .tips li').count() >= 1, f'{i}: brak technika/uwagi na karcie'
+            assert page.locator('#sheet img[src^="img/"]').count() == 0, f'{i}: karta próbuje wczytać img/'
+            assert page.locator('#sheet .ph-big').count() == 0, f'{i}: karta pokazuje pustą ramkę z literą'
+            if not page.evaluate('(id) => !!YTV[id]', i):   # bez filmu i bez animacji: żadnej ramki mediów
+                assert page.locator('#sheet figure.media').count() == 0, f'{i}: karta bez filmu pokazuje ramkę mediów'
+            page.evaluate('() => { closeSheet(); }')
+        assert page.locator('#exlist img[src^="img/"]').count() == 0, 'lista próbuje wczytać img/'
+    r.krok('B2: 30 ćwiczeń w bazie, chip Rozgrzewka (6), wyszukiwanie, karty bez błędów', b2_cwiczenia, 'b2-cwiczenia')
+
+    def b2_rozgrzewka_w_planie():
+        w = page.evaluate("""() => {
+          const p = S.plans[0], pr = () => JSON.stringify(programSets().map(q => [q.name, q.sets, q.target]));
+          const przed = pr(), n0 = p.items.length;
+          const rozg = EX.filter(e => e.group === 'Rozgrzewka').map(e => e.id);
+          rozg.forEach(id => p.items.push(newItem(id)));
+          const po = pr(), ord = p.items.map(i => exOrd(getEx(i.exId))), sug = suggestOrder(p).sorted.slice(0, 6).map(x => x.it.exId);
+          const zam = swapCandidates('Cat_Cow').map(e => e.group), zam2 = swapCandidates('Barbell_Squat', 40).map(e => e.group);
+          const rev = planReview(p).issues.length, tw = weekStats().length;
+          p.items.length = n0; render();
+          return {przed, po, ord, sug, rozg, zam, zam2, rev, tw, nPo:planReview(p).issues.length};
+        }""")
+        assert w['przed'] == w['po'], 'ćwiczenia z rozgrzewki zmieniły pokrycie programu'
+        assert len(w['rozg']) == 6 and all(o == -10 for o in w['ord'][-6:]), f'kolejność rozgrzewki: {w["ord"]}'
+        assert sorted(w['sug']) == sorted(w['rozg']), f'rozgrzewka nie jest na początku sugerowanej kolejności: {w["sug"]}'
+        assert w['zam'] and set(w['zam']) == {'Rozgrzewka'}, f'zamienniki rozgrzewki: {w["zam"]}'
+        assert 'Rozgrzewka' not in w['zam2'], 'rozgrzewka jako zamiennik ćwiczenia siłowego'
+    r.krok('B2: rozgrzewka w planie nie zmienia pokrycia, idzie na początek, zamienniki tylko w jej grupie', b2_rozgrzewka_w_planie)
+
     def historia_pusta():
         zakladka('historia')
         expect(page.locator('#view')).to_contain_text('Jeszcze pusto')
