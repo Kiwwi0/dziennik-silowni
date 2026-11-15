@@ -1828,6 +1828,15 @@ addYT('P', {
   Running_Treadmill:'jckRarSPT-U', Bicycling_Stationary:'lLv-dGP14Cw', Rowing_Stationary:'k4rwI18ggLE', Elliptical_Trainer:'Gi-qefDEAmA',
   Rope_Jumping:'4Op28LaWlZ4',
 });
+// B2 (ćwiczenia z planów): tylko filmy, których tytuł jednoznacznie pokazuje to samo ćwiczenie; reszta bez filmu (Kamil dopisze linki).
+addYT('S', {'One-Arm_Incline_Lateral_Raise':'kfplmjHLRGc'});
+addYT('D', {Arnold_Curl:'IbY1DUaRpA4'});
+addYT('P', {
+  Smith_Machine_Incline_Bench_Press:'ZN-368AyYZk', Cable_One_Arm_Row:'FiZ6aflkRpw', Elbow_Supported_Biceps_Curl:'h5XUSLda2Mw',
+  Unilateral_Rope_Triceps_Pushdown:'aqnwnrZKyvg', 'Smith_Single-Leg_Split_Squat':'li7w6qJvvEU', Split_Squat_Isometric_Hold:'dk1fqGYN4Es',
+  Single_Leg_Hip_Thrust:'oNeu1cJAyBw', Unilateral_Hyperextension:'5IbYVPHOwWg', Copenhagen_Plank_Weighted:'4_8WHLbucf8',
+  Incline_Bench_Leg_Raise:'RVXvGhlFDt4', Cat_Cow:'jdkszEAYHoE',
+});
 const ytWatch = v => `https://www.youtube.com/watch?v=${v}`;
 function mediaHTML(id){
   if (YTV[id] && !ytBroken) return ytFigure(id);
