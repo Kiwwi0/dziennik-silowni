@@ -2879,7 +2879,7 @@ function syncWorkout(){
 // ćwiczenie „otwarte” = nie pominięte i ma niezrobione serie; „zakończone” = pominięte albo wszystkie serie zrobione
 const exOpen = x => !!x && !x.skip && x.sets.some(s => !s.done);
 const exFin = x => !!x && (x.skip || (x.sets.length > 0 && x.sets.every(s => s.done)));
-// czeka pytanie o zapas po ostatniej serii: karta zostaje na miejscu i rozwinięta, aż padnie odpowiedź albo następna seria
+// czeka pytanie o zapas po ostatniej serii: karta zostaje na swoim miejscu na liście (zwinięta od B1b), aż padnie odpowiedź albo następna seria
 const rirPending = x => !x.skip && ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key && x.sets[ACTIVE.rirAsk.j] && x.sets[ACTIVE.rirAsk.j].done && x.sets[ACTIVE.rirAsk.j].rir == null;
 // zakończone ćwiczenia (całe superserie razem) na górę listy, reszta w dotychczasowej kolejności.
 // Zmienia kolejność w ACTIVE.ex, więc indeksy minutnika przeliczamy po kluczach. Zwraca true, gdy coś się przesunęło.
@@ -2962,10 +2962,11 @@ function wCard(x, i, cur, curR){
   const last = lastFor(x.exId); const t = x.mode === 'time';
   const W = ACTIVE.timer && ACTIVE.timer.kind === 'work' && !ACTIVE.timer.fired ? ACTIVE.timer : null;
   const sp = ssPos(ACTIVE.ex, i);
-  // rozwinięte jest tylko bieżące ćwiczenie (cała bieżąca superseria), otwarte ręcznie („Pokaż”) i to, które czeka na pytanie o zapas;
+  // rozwinięte jest tylko bieżące ćwiczenie (cała bieżąca superseria) i otwarte ręcznie („Pokaż”); ćwiczenie z wszystkimi seriami odhaczonymi zwija się od razu,
+  // także przy nieodpowiedzianym pytaniu o zapas (po „Pokaż” pytanie nadal czeka przy ostatniej serii);
   // reszta zwinięta do jednej linii: zrobione ze skrótem serii, niezrobione z planem serii
   const isCur = curR && i >= curR[0] && i <= curR[1] && exOpen(x), manual = !!(ui.wOpen && ui.wOpen[x.key]);
-  if (!isCur && !manual && !rirPending(x)){
+  if (!isCur && !manual){
     const fin = exFin(x), setTxt = s => t ? (s.sec ?? s.tSec ?? '–') + ' s' : ((s.kg ?? s.tKg) != null ? fmtN(s.kg ?? s.tKg) + '×' : '') + (s.reps ?? s.tReps ?? '–');
     const sum = (fin ? x.sets.filter(s => s.done) : x.sets).map(setTxt).join(' · ');
     const meta = x.skip ? 'Pominięte' + (doneN ? ` · ${doneN} z ${x.sets.length} serii` : '') : fin ? `${svg('check','i s')} ${esc(sum)}` : `${doneN} z ${x.sets.length} · ${esc(sum)}`;
@@ -3710,14 +3711,34 @@ const ACT = {
     // ćwiczenie szukamy po kluczu w chwili potwierdzenia (lista mogła się przestawić); gdy go już nie ma, nic się nie dzieje
     confirmBox('Usunąć ćwiczenie z treningu?', name + ' zniknie z dzisiejszego treningu. Plan się nie zmieni.', 'Usuń', () => {
       if (!ACTIVE) return; const i = ACTIVE.ex.findIndex(q => q.key === key); if (i < 0) return; const x = ACTIVE.ex[i];
-      ssUnlink(ACTIVE.ex, i); ACTIVE.ex.splice(i, 1); ACTIVE.timer = null; ui.wMenu = null; if (ui.wOpen) delete ui.wOpen[x.key]; if (ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key) ACTIVE.rirAsk = null; if (ACTIVE.focusKey === x.key) ACTIVE.focusKey = null;
+      // timer: usunięcie ćwiczenia, którego nie dotyczy, nie rusza odliczania; numery w timerze przestawiamy po kluczu ćwiczenia (jak w wMove)
+      const T = ACTIVE.timer, fKey = T && T.focus != null ? ACTIVE.ex[T.focus]?.key : null, wKey = T && T.kind === 'work' ? ACTIVE.ex[T.i]?.key : null;
+      ssUnlink(ACTIVE.ex, i); ACTIVE.ex.splice(i, 1);
+      if (T){
+        if (wKey === x.key) ACTIVE.timer = null;   // seria na czas usuwanego ćwiczenia: stop
+        else {
+          if (wKey) T.i = ACTIVE.ex.findIndex(y => y.key === wKey);
+          if (fKey === x.key){   // przerwa przed usuniętym ćwiczeniem: idzie dalej z następnym niezrobionym, a gdy go nie ma – koniec
+            let k = ACTIVE.ex.findIndex((y, n) => n >= i && exOpen(y)); if (k < 0) k = ACTIVE.ex.findIndex(y => exOpen(y));
+            if (k < 0) ACTIVE.timer = null; else T.focus = k;
+          } else if (fKey) T.focus = ACTIVE.ex.findIndex(y => y.key === fKey);
+        }
+      }
+      ui.wMenu = null; if (ui.wOpen) delete ui.wOpen[x.key]; if (ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key) ACTIVE.rirAsk = null; if (ACTIVE.focusKey === x.key) ACTIVE.focusKey = null;
       saveActive(); renderWorkout(); toast(name + ': usunięte z treningu.'); }); },
   wAddEx(){ openSheet({type:'pick', target:{kind:'workout'}, q:'', group:'', sel:[]}); },
   tbStart(){ audioUnlock(); const i = Math.max(0, curIndex()); const x = ACTIVE.ex[i]; startTimer('rest', x ? x.rest : S.settings.restSet, 'Przerwa między seriami', i); saveActive(); updateTimer(); },
   tbAdj(el){ const T = ACTIVE.timer; if (!T) return; T.endsAt += +el.dataset.d * 1000; T.total = Math.max(1, T.total + +el.dataset.d); if (T.endsAt <= Date.now()){ T.fired = true; ACTIVE.timer = null; } saveActive(); updateTimer(); },
   tbSkip(){ const T = ACTIVE.timer; ACTIVE.timer = null; saveActive(); renderWorkout(); if (T){ const x = ACTIVE.ex[T.focus]; const c = x && $('#wex-' + x.key); if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); } },
 };
-let WSET_ED = null;   // bieżąca edycja pola serii w treningu: {el, key, j, f, ks – serie, do których kopiować w dół}; zerowana przy focusin
+// zmiana w serii idzie do WSZYSTKICH serii niżej (nie do wyższych): plan 60/70/80, wpisane 65 w serii 1 → 65/65/65, wpisane 75 w serii 2 → 65/75/75.
+// `fill(k)` zwraca true, gdy serię k wolno nadpisać (w treningu odhaczone zostają); `put(k, v)` ustawia wartość serii; pole w DOM odświeża `inp(k)`
+function fillDown(n, j, f, v, put, inp, can){
+  for (let k = j + 1; k < n; k++){
+    if (can && !can(k)) continue;
+    put(k, v); const el = inp(k); if (el && el !== document.activeElement) el.value = f === 'kg' ? fmtN(v) : (v ?? '');
+  }
+}
 function limitInput(t){
   const f = t.dataset.f, v = num(t.value); let c = clampV(f, v);
   if (v != null && c !== v){ t.value = fmtN(c); toast(f === 'kg' ? `Maksymalnie ${LIM.kg} kg.` : f === 'sec' ? `Maksymalnie ${LIM.sec} s.` : `Maksymalnie ${LIM.reps} powtórzeń.`); }
@@ -3730,26 +3751,22 @@ const BIND = {
   exeq(t){ ui.exEquip = t.value; fillExList(); },
   pickq(t){ topSheet().q = t.value; fillPickList(); },
   planName(t){ const p = planById(t.dataset.plan); if (p){ p.name = t.value; persist(); } },
-  pset(t){ const {it} = itemRef(t); if (!it) return; it.sets[+t.dataset.i][t.dataset.f] = limitInput(t); persist();
+  pset(t){ const {it} = itemRef(t); if (!it) return; const si = +t.dataset.i, f = t.dataset.f, v = limitInput(t); it.sets[si][f] = v;
+    fillDown(it.sets.length, si, f, v, (k, w) => { it.sets[k][f] = w; }, k => document.getElementById(`ps-${it.id}-${k}-${f}`)); persist();
     const m = $(`.item-h[data-item="${CSS.escape(String(it.id))}"] .meta`); if (m) m.textContent = setsSummary(it); },
   note(t){ const {it} = itemRef(t); if (it){ it.note = t.value; persist(); } },
-  sedSet(t){ const q = topSheet()?.edit?.ex[+t.dataset.i]?.sets[+t.dataset.j]; if (q) q[t.dataset.f] = limitInput(t); },
+  sedSet(t){ const e = topSheet()?.edit?.ex[+t.dataset.i], j = +t.dataset.j, f = t.dataset.f; if (!e || !e.sets[j]) return; const v = limitInput(t); e.sets[j][f] = v;
+    fillDown(e.sets.length, j, f, v, (k, w) => { e.sets[k][f] = w; }, k => document.querySelector(`input[data-bind="sedSet"][data-i="${t.dataset.i}"][data-j="${k}"][data-f="${f}"]`)); },
   sedNote(t){ const e = topSheet()?.edit?.ex[+t.dataset.i]; if (e) e.note = t.value.trim(); },
   sedMeta(t){ const d = topSheet()?.edit; if (!d) return;
     if (t.dataset.f === 'date'){ const v = new Date(t.value); if (!isNaN(v)) d.date = v.toISOString(); }
     else { const m = num(t.value); if (m != null) d.dur = Math.max(0, Math.min(600, Math.round(m))) * 60; } },
   wnote(t){ const x = ACTIVE?.ex[+t.dataset.i]; if (!x) return; x.wnote = t.value; saveActive(); },
   wset(t){ const i = +t.dataset.i; const s = ACTIVE?.ex[i]?.sets[+t.dataset.j]; if (!s) return; const f = t.dataset.f, x = ACTIVE.ex[i], j = +t.dataset.j;
-    // ciężar / powtórzenia / sekundy od razu w kolejnych, jeszcze niezrobionych seriach, ale tylko w tych, które przed edycją pola miały tę samą wartość
-    // co zmieniana seria (plan 60/70/80: wpisz 65 w serii 1 → 65/70/80; plan 60/60/60: 62,5 → 62,5 we wszystkich trzech).
-    // Lista tych serii powstaje przy pierwszej zmianie po wejściu w pole, a nie przy każdym znaku: poprawienie literówki (12/10/8: „8”, Backspace, „10”)
-    // ani wartość pośrednia przy pisaniu („7” w drodze do „75”) nie mogą nadpisać serii o innej wartości.
-    if (!WSET_ED || WSET_ED.el !== t || WSET_ED.key !== x.key || WSET_ED.j !== j || WSET_ED.f !== f){
-      const was = s[f] ?? null;
-      WSET_ED = {el:t, key:x.key, j, f, ks:x.sets.map((q, k) => k > j && !q.done && (q[f] ?? null) === was ? k : -1).filter(k => k >= 0)};
-    }
+    // ciężar / powtórzenia / sekundy od razu we WSZYSTKICH kolejnych, jeszcze niezrobionych seriach (zmiana w serii 1 → zmienia się wszystko niżej;
+    // zmiana w serii 2 nie rusza serii 1). Odhaczone serie zostają, jak były, także gdy zmieniasz serię już odhaczoną.
     s[f] = limitInput(t); saveActive();
-    if (!s.done){ for (const k of WSET_ED.ks){ const q = x.sets[k]; if (!q || q.done) continue; q[f] = s[f]; const inp = $(`#w-${x.key}-${k}-${f}`); if (inp && inp !== document.activeElement) inp.value = f === 'kg' ? fmtN(s[f]) : (s[f] ?? ''); } saveActive(); }
+    fillDown(x.sets.length, j, f, s[f], (k, w) => { x.sets[k][f] = w; }, k => $(`#w-${x.key}-${k}-${f}`), k => !x.sets[k].done); saveActive();
     // pasek „Szybka zmiana” pokazuje najbliższą niezrobioną serię: odśwież liczbę na bieżąco
     const nj = x.sets.findIndex(q => !q.done), qb = $(`#wex-${x.key} .qstep [data-qf="${f}"]`);
     if (qb && nj >= 0){ const v = x.sets[nj][f] ?? (f === 'reps' ? x.sets[nj].tReps : f === 'sec' ? x.sets[nj].tSec : null); qb.textContent = v != null ? (f === 'kg' ? fmtN(v) : v) : '–'; }
@@ -3817,7 +3834,6 @@ document.addEventListener('change', onBind);
 // input (nic się nie zmienia, także w kolejnych seriach). Skasowanie (był klawisz, pole puste) zostawia puste pole = brak ciężaru / powtórzeń.
 const CLEAR_SEL = 'input[data-bind="wset"], input[data-bind="pset"], input[data-bind="sedSet"]';
 document.addEventListener('focusin', e => {
-  WSET_ED = null;   // nowe wejście w pole = nowa edycja (BIND.wset liczy od nowa, do których serii kopiować w dół)
   const t = e.target; if (!t.matches || !t.matches(CLEAR_SEL) || t.dataset.old != null || t.value === '') return;
   t.dataset.old = t.value; t.dataset.ph = t.placeholder; t.placeholder = t.value; t.value = ''; delete t.dataset.typed;
 });
