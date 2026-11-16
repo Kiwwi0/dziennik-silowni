@@ -914,6 +914,18 @@ def scenariusz(r):
         page.evaluate("() => { document.dispatchEvent(new Event('keydown')); }")
     r.krok('pola serii: poprawka literówki i wartość pośrednia nie kopiują się do serii o innej wartości; keydown bez klawisza', b1_poprawka_literowki, 'pola-literowka')
 
+    def b1_zmiana_po_odhaczeniu():
+        # zmiana w serii już odhaczonej też idzie do kolejnych niezrobionych serii o tej samej wartości; odhaczone serie zostają
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60), (10, 60)]}])
+        for j in (0, 1):
+            r.klik(f'#workout .chk[data-j="{j}"][data-act="toggleSet"]'); expect(page.locator(f'#workout .chk[data-j="{j}"][aria-pressed="true"]')).to_have_count(1)
+        r.klik(pole(0, 'kg')); page.keyboard.type('62,5'); stuknij_obok()
+        assert serie('kg') == [62.5, 60, 62.5, 62.5], f'zmiana kg w odhaczonej serii 1: serie 3 i 4 idą za nią, odhaczona 2 zostaje: {serie("kg")}'
+        r.klik(pole(1, 'reps')); page.keyboard.type('8'); stuknij_obok()
+        assert serie('reps') == [10, 8, 8, 8], f'zmiana powtórzeń w odhaczonej serii 2: serie 3 i 4 idą za nią, seria 1 bez zmian: {serie("reps")}'
+        assert wartosci(4, 'kg') == ['62,5', '60', '62,5', '62,5'] and wartosci(4, 'reps') == ['10', '8', '8', '8'], 'pola po zmianach'
+    r.krok('pola serii: zmiana w odhaczonej serii idzie do kolejnych niezrobionych', b1_zmiana_po_odhaczeniu, 'pola-po-odhaczeniu')
+
     def b1_zapis_do_planu_pozycje():
         def zakoncz_z_planem():
             r.klik('#workout [data-act="finishOpen"]'); r.klik('#fin-upd'); expect(page.locator('#fin-upd')).to_be_checked()

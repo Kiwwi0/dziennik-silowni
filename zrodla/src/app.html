@@ -3697,7 +3697,8 @@ const BIND = {
       WSET_ED = {el:t, key:x.key, j, f, ks:x.sets.map((q, k) => k > j && !q.done && (q[f] ?? null) === was ? k : -1).filter(k => k >= 0)};
     }
     s[f] = limitInput(t); saveActive();
-    if (!s.done){ for (const k of WSET_ED.ks){ const q = x.sets[k]; if (!q || q.done) continue; q[f] = s[f]; const inp = $(`#w-${x.key}-${k}-${f}`); if (inp && inp !== document.activeElement) inp.value = f === 'kg' ? fmtN(s[f]) : (s[f] ?? ''); } saveActive(); }
+    // także gdy zmieniana seria jest już odhaczona (poprawka po fakcie: kolejne niezrobione serie nadal idą za nią); odhaczone serie zostają, jak były
+    if (WSET_ED.ks.length){ for (const k of WSET_ED.ks){ const q = x.sets[k]; if (!q || q.done) continue; q[f] = s[f]; const inp = $(`#w-${x.key}-${k}-${f}`); if (inp && inp !== document.activeElement) inp.value = f === 'kg' ? fmtN(s[f]) : (s[f] ?? ''); } saveActive(); }
     // pasek „Szybka zmiana” pokazuje najbliższą niezrobioną serię: odśwież liczbę na bieżąco
     const nj = x.sets.findIndex(q => !q.done), qb = $(`#wex-${x.key} .qstep [data-qf="${f}"]`);
     if (qb && nj >= 0){ const v = x.sets[nj][f] ?? (f === 'reps' ? x.sets[nj].tReps : f === 'sec' ? x.sets[nj].tSec : null); qb.textContent = v != null ? (f === 'kg' ? fmtN(v) : v) : '–'; }
