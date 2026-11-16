@@ -2960,10 +2960,11 @@ function wCard(x, i, cur, curR){
   const last = lastFor(x.exId); const t = x.mode === 'time';
   const W = ACTIVE.timer && ACTIVE.timer.kind === 'work' && !ACTIVE.timer.fired ? ACTIVE.timer : null;
   const sp = ssPos(ACTIVE.ex, i);
-  // rozwinięte jest tylko bieżące ćwiczenie (cała bieżąca superseria), otwarte ręcznie („Pokaż”) i to, które czeka na pytanie o zapas;
+  // rozwinięte jest tylko bieżące ćwiczenie (cała bieżąca superseria) i otwarte ręcznie („Pokaż”); ćwiczenie z wszystkimi seriami odhaczonymi zwija się od razu,
+  // także przy nieodpowiedzianym pytaniu o zapas (po „Pokaż” pytanie nadal czeka przy ostatniej serii);
   // reszta zwinięta do jednej linii: zrobione ze skrótem serii, niezrobione z planem serii
   const isCur = curR && i >= curR[0] && i <= curR[1] && exOpen(x), manual = !!(ui.wOpen && ui.wOpen[x.key]);
-  if (!isCur && !manual && !rirPending(x)){
+  if (!isCur && !manual){
     const fin = exFin(x), setTxt = s => t ? (s.sec ?? s.tSec ?? '–') + ' s' : ((s.kg ?? s.tKg) != null ? fmtN(s.kg ?? s.tKg) + '×' : '') + (s.reps ?? s.tReps ?? '–');
     const sum = (fin ? x.sets.filter(s => s.done) : x.sets).map(setTxt).join(' · ');
     const meta = x.skip ? 'Pominięte' + (doneN ? ` · ${doneN} z ${x.sets.length} serii` : '') : fin ? `${svg('check','i s')} ${esc(sum)}` : `${doneN} z ${x.sets.length} · ${esc(sum)}`;
