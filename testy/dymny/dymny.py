@@ -773,8 +773,10 @@ def scenariusz(r):
         assert serie('kg') == [60, 70, 80] and serie('reps') == [12, 10, 8], f'stuknięcie i wyjście zmieniło serie: {serie("kg")} {serie("reps")}'
         assert wartosci(3, 'kg') == ['60', '70', '80'] and wartosci(3, 'reps') == ['12', '10', '8'], 'pola po wyjściu bez wpisania'
         r.klik(pole(0, 'kg')); page.keyboard.type('65'); stuknij_obok()
-        assert serie('kg') == [65, 70, 80], f'plan 60/70/80, wpisane 65 w serii 1: {serie("kg")}'
-        assert wartosci(3, 'kg') == ['65', '70', '80'], 'pola po wpisaniu 65'
+        assert serie('kg') == [65, 65, 65], f'plan 60/70/80, wpisane 65 w serii 1: zmienia się wszystko niżej: {serie("kg")}'
+        assert wartosci(3, 'kg') == ['65', '65', '65'], 'pola po wpisaniu 65'
+        r.klik(pole(1, 'kg')); page.keyboard.type('75'); stuknij_obok()
+        assert serie('kg') == [65, 75, 75] and wartosci(3, 'kg') == ['65', '75', '75'], f'zmiana w serii 2 zmienia serię 3, ale nie serię 1: {serie("kg")}'
         nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
         r.klik(pole(0, 'kg')); page.keyboard.type('62,5'); stuknij_obok()
         assert serie('kg') == [62.5] * 3 and wartosci(3, 'kg') == ['62,5'] * 3, f'plan 60/60/60, wpisane 62,5: {serie("kg")} {wartosci(3, "kg")}'
@@ -783,7 +785,7 @@ def scenariusz(r):
         r.klik('#workout .chk[data-j="1"][data-act="toggleSet"]'); expect(page.locator('#workout .chk[data-j="1"][aria-pressed="true"]')).to_have_count(1)
         r.klik(pole(0, 'kg')); page.keyboard.type('62,5'); stuknij_obok()
         assert serie('kg') == [62.5, 60, 62.5], f'odhaczona seria 2 ma zostać 60: {serie("kg")}'
-    r.krok('pola serii: stuknięcie i wyjście nic nie zmienia, kopiowanie w dół tylko do serii o tej samej wartości (E2-01)', b1_stuknij_i_wyjdz, 'pola-e2-01')
+    r.krok('pola serii: stuknięcie i wyjście nic nie zmienia, zmiana w serii zmienia wszystkie niżej, nie te wyżej (E2-01)', b1_stuknij_i_wyjdz, 'pola-e2-01')
 
     def b1_kasowanie():
         # E2-03 (trening): Backspace w opróżnionym polu zostawia puste pole; stuknięcie bez klawisza przywraca starą wartość
@@ -797,7 +799,7 @@ def scenariusz(r):
         r.klik(pole(1, 'kg')); stuknij_obok()
         assert serie('kg') == [10, 25, 30] and wartosci(3, 'kg') == ['10', '25', '30'], 'stuknięcie bez klawisza ma przywrócić wartość'
         r.klik(pole(1, 'kg')); page.keyboard.type('0'); stuknij_obok()
-        assert serie('kg') == [10, None, 30], f'0 kg = puste pole (masa ciała): {serie("kg")}'
+        assert serie('kg') == [10, None, None], f'0 kg = puste pole (masa ciała), idzie w dół jak każda zmiana: {serie("kg")}'
         r.klik(pole(1, 'reps')); page.keyboard.press('Backspace'); stuknij_obok()
         assert serie('reps')[1] is None and pole(1, 'reps').input_value() == '', f'skasowane powtórzenia zostają puste: {serie("reps")}'
         # Backspace w polu z wpisaną cyfrą (zdarzenie input) też daje puste pole
@@ -814,7 +816,7 @@ def scenariusz(r):
         r.klik(kg(0)); expect(kg(0)).to_be_focused(); wyjdz('#view .prow .sn'); expect(kg(0)).to_have_value('10')
         assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [10, 10, 10], 'plan: stuknięcie bez klawisza nie zmienia ciężaru'
         r.klik(kg(0)); page.keyboard.press('Backspace'); wyjdz('#view .prow .sn')
-        assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [None, 10, 10] and kg(0).input_value() == '', 'plan: skasowany ciężar ma zostać pusty (bez kopiowania w dół)'
+        assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [None, None, None] and kg(0).input_value() == '' and kg(2).input_value() == '', 'plan: skasowany ciężar ma zostać pusty i pójść w dół jak każda zmiana'
         # edycja zapisanego treningu
         page.evaluate("""() => { SESS = [{id:'sB1', date:new Date(Date.now() - 3600e3).toISOString(), dur:1800, planId:'PT', planName:'Plan B1', dayId:'PT', dayName:'Plan B1',
           ex:[{exId:EX[0].id, name:EX[0].name, mode:'reps', sets:[{reps:8, kg:10}, {reps:8, kg:10}]}]}]; render(); }""")
@@ -824,12 +826,33 @@ def scenariusz(r):
         r.klik(sed(0, 'kg')); wyjdz('#sheet .sed-row.head'); expect(sed(0, 'kg')).to_have_value('10')
         assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [10, 10], 'edycja treningu: stuknięcie bez klawisza nie zmienia ciężaru'
         r.klik(sed(0, 'kg')); page.keyboard.press('Backspace'); wyjdz('#sheet .sed-row.head')
-        assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [None, 10] and sed(0, 'kg').input_value() == '', 'edycja treningu: skasowany ciężar ma zostać pusty'
+        assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [None, None] and sed(0, 'kg').input_value() == '' and sed(1, 'kg').input_value() == '', 'edycja treningu: skasowany ciężar ma zostać pusty i pójść w dół'
         r.klik(sed(1, 'reps')); page.keyboard.type('8,5'); wyjdz('#sheet .sed-row.head')
         assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.reps)') == [8, 9] and sed(1, 'reps').input_value() == '9', 'edycja treningu: powtórzenia do całości'
         r.klik('[data-act="sedSave"]')
-        assert page.evaluate('() => SESS[0].ex[0].sets.map(s => [s.reps, s.kg ?? null])') == [[8, None], [9, 10]], 'zapis edycji treningu: pusty ciężar zostaje pusty'
+        assert page.evaluate('() => SESS[0].ex[0].sets.map(s => [s.reps, s.kg ?? null])') == [[8, None], [9, None]], 'zapis edycji treningu: pusty ciężar zostaje pusty'
     r.krok('pola serii: skasowanie ciężaru w planie i w edycji zapisanego treningu (E2-03)', b1_kasowanie_plan_i_edycja, 'pola-e2-03-plan-edycja')
+
+    def b1_w_dol_plan_i_edycja():
+        # zmiana w serii idzie do wszystkich niżej (nie do wyższych) także w edytorze planu i w edycji zapisanego treningu
+        nowy_trening([{'sets': [(10, 60), (10, 70), (10, 80)]}], start=False)
+        zakladka('plany'); r.klik('[data-act="editPlan"]'); r.klik('[data-act="toggleItem"]')
+        pf = lambda j, f='kg': page.locator(f'#view input[data-bind="pset"][data-i="{j}"][data-f="{f}"]')
+        r.klik(pf(0)); page.keyboard.type('65'); wyjdz('#view .prow .sn')
+        assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [65, 65, 65] and [pf(j).input_value() for j in range(3)] == ['65'] * 3, 'plan: zmiana w serii 1 zmienia wszystko niżej'
+        r.klik(pf(1)); page.keyboard.type('75'); wyjdz('#view .prow .sn')
+        assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.kg)') == [65, 75, 75] and [pf(j).input_value() for j in range(3)] == ['65', '75', '75'], 'plan: zmiana w serii 2 nie rusza serii 1'
+        r.klik(pf(0, 'reps')); page.keyboard.type('12'); wyjdz('#view .prow .sn')
+        assert page.evaluate('() => S.plans[0].items[0].sets.map(s => s.reps)') == [12, 12, 12], 'plan: powtórzenia też idą w dół'
+        page.evaluate("""() => { SESS = [{id:'sB1', date:new Date(Date.now() - 3600e3).toISOString(), dur:1800, planId:'PT', planName:'Plan B1', dayId:'PT', dayName:'Plan B1',
+          ex:[{exId:EX[0].id, name:EX[0].name, mode:'reps', sets:[{reps:8, kg:10}, {reps:8, kg:20}, {reps:8, kg:30}]}]}]; render(); }""")
+        zakladka('historia'); r.klik('[data-act="hist"][data-v="treningi"]'); r.klik('[data-act="sessOpen"]'); r.klik('[data-act="sedOpen"]')
+        sed = lambda j, f: page.locator(f'#sheet input[data-bind="sedSet"][data-i="0"][data-j="{j}"][data-f="{f}"]')
+        r.klik(sed(1, 'kg')); page.keyboard.type('25'); wyjdz('#sheet .sed-row.head')
+        assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.kg)') == [10, 25, 25] and [sed(j, 'kg').input_value() for j in range(3)] == ['10', '25', '25'], 'edycja treningu: zmiana w serii 2 zmienia serię 3, nie serię 1'
+        r.klik(sed(0, 'reps')); page.keyboard.type('10'); wyjdz('#sheet .sed-row.head')
+        assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.reps)') == [10, 10, 10], 'edycja treningu: powtórzenia w serii 1 zmieniają wszystko niżej'
+    r.krok('pola serii: zmiana w dół także w edytorze planu i w edycji zapisanego treningu', b1_w_dol_plan_i_edycja, 'pola-w-dol-plan-edycja')
 
     def b1_zapis_do_planu():
         # E2-02: tylko odhaczone serie, na swoich pozycjach; plan nie traci serii
@@ -899,21 +922,25 @@ def scenariusz(r):
     r.krok('odhaczanie serii z pustym polem powtórzeń: podświetlenie bez odhaczenia, powtórzenia do całości (E2-09)', b1_puste_powtorzenia, 'pola-e2-09')
 
     def b1_poprawka_literowki():
-        # kopiowanie w dół liczone od wartości sprzed edycji pola, nie od wartości sprzed każdego znaku
+        # poprawka literówki i wartość pośrednia: zmiana w serii zawsze kończy się wartością końcową we wszystkich seriach niżej
         nowy_trening([{'sets': [(12, 60), (10, 60), (8, 60)]}])
         r.klik(pole(0, 'reps')); page.keyboard.type('8'); page.keyboard.press('Backspace'); page.keyboard.type('10'); stuknij_obok()
-        assert serie('reps') == [10, 10, 8], f'piramida 12/10/8, w serii 1: 8, Backspace, 10 – seria 3 ma zostać 8: {serie("reps")}'
+        assert serie('reps') == [10, 10, 10], f'12/10/8, w serii 1: 8, Backspace, 10 – wszystkie niżej mają 10: {serie("reps")}'
         nowy_trening([{'sets': [(10, 60), (10, 70), (10, 7)]}])
         r.klik(pole(0, 'kg')); page.keyboard.type('75'); stuknij_obok()
-        assert serie('kg') == [75, 70, 7], f'60/70/7, wpisane 75 w serii 1 – pośrednie „7” nie może trafić do serii 3: {serie("kg")}'
-        # kolejna edycja tego samego pola liczy listę od nowa (60/60/60 → 65 → potem 70: wszystkie trzy)
+        assert serie('kg') == [75, 75, 75], f'60/70/7, wpisane 75 w serii 1 – pośrednie „7” nie zostaje: {serie("kg")}'
+        # zmiana w serii niższej nie rusza wyższych
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
+        r.klik(pole(2, 'kg')); page.keyboard.type('70'); stuknij_obok()
+        assert serie('kg') == [60, 60, 70], f'zmiana w ostatniej serii nie rusza poprzednich: {serie("kg")}'
+        # kolejne edycje tego samego pola (60/60/60 → 65 → potem 70: wszystkie trzy)
         nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
         r.klik(pole(0, 'kg')); page.keyboard.type('65'); stuknij_obok()
         r.klik(pole(0, 'kg')); page.keyboard.type('70'); stuknij_obok()
         assert serie('kg') == [70, 70, 70], f'dwie kolejne edycje serii 1: {serie("kg")}'
         # keydown bez klawisza (autouzupełnianie Chrome) nie może rzucić błędu strony (pilnuje strażnik pageerror po kroku)
         page.evaluate("() => { document.dispatchEvent(new Event('keydown')); }")
-    r.krok('pola serii: poprawka literówki i wartość pośrednia nie kopiują się do serii o innej wartości; keydown bez klawisza', b1_poprawka_literowki, 'pola-literowka')
+    r.krok('pola serii: poprawka literówki i wartość pośrednia, zmiana niżej nie rusza wyższych; keydown bez klawisza', b1_poprawka_literowki, 'pola-literowka')
 
     def b1_zwiniecie_po_ostatniej_serii():
         # ćwiczenie z wszystkimi seriami odhaczonymi zwija się od razu, bez odpowiedzi na pytanie o zapas i bez startu następnego ćwiczenia
