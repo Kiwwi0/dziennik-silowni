@@ -334,7 +334,8 @@ def scenariusz(r):
         def serie():
             for i in range(4):
                 r.klik('#workout .chk[data-act="toggleSet"][aria-pressed="false"]')
-                expect(page.locator('#workout .chk[data-act="toggleSet"][aria-pressed="true"]')).to_have_count(i + 1)
+                # liczymy w stanie treningu: ukończone ćwiczenie zwija się, więc jego przyciski znikają z widoku
+                page.wait_for_function('(n) => ACTIVE.ex.flatMap(x => x.sets).filter(s => s.done).length === n', arg=i + 1)
         r.krok(f'trening {nr}: odhaczenie 4 serii', serie, f'trening{nr}-serie')
 
         def zakoncz():
@@ -913,6 +914,19 @@ def scenariusz(r):
         # keydown bez klawisza (autouzupełnianie Chrome) nie może rzucić błędu strony (pilnuje strażnik pageerror po kroku)
         page.evaluate("() => { document.dispatchEvent(new Event('keydown')); }")
     r.krok('pola serii: poprawka literówki i wartość pośrednia nie kopiują się do serii o innej wartości; keydown bez klawisza', b1_poprawka_literowki, 'pola-literowka')
+
+    def b1_zwiniecie_po_ostatniej_serii():
+        # ćwiczenie z wszystkimi seriami odhaczonymi zwija się od razu, bez odpowiedzi na pytanie o zapas i bez startu następnego ćwiczenia
+        nowy_trening([{'sets': [(10, 60), (10, 60)]}, {'sets': [(10, 40), (10, 40)]}])
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]'); expect(page.locator('#workout .wex').first.locator('.rir')).to_have_count(1)
+        assert page.locator('#workout .wex.mini').count() == 1, 'po pierwszej z dwóch serii pierwsze ćwiczenie ma zostać rozwinięte (zwinięte jest tylko drugie)'
+        r.klik('#workout .wex:not(.mini) .chk[data-j="1"][data-act="toggleSet"]')
+        expect(page.locator('#workout .wex.mini.alldone')).to_have_count(1)
+        assert page.evaluate('() => ACTIVE.ex[0].sets.every(s => s.done)') is True and page.evaluate('() => ACTIVE.ex[1].sets.some(s => s.done)') is False, 'pierwsze zrobione, drugie nietknięte'
+        # „Pokaż” rozwija kartę, a pytanie o zapas przy ostatniej serii nadal czeka
+        r.klik('#workout .wex.mini.alldone [data-act="wOpenCard"]')
+        expect(page.locator('#workout .rir')).to_have_count(1)
+    r.krok('trening: ćwiczenie zwija się od razu po odhaczeniu wszystkich serii (bez odpowiedzi na pytanie o zapas)', b1_zwiniecie_po_ostatniej_serii, 'zwiniecie-po-ostatniej')
 
     def b1_zmiana_po_odhaczeniu():
         # zmiana w serii już odhaczonej też idzie do kolejnych niezrobionych serii o tej samej wartości; odhaczone serie zostają
