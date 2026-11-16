@@ -99,6 +99,11 @@ SONDA = """async () => {
   r.kolejka = Object.keys(((qq || {}).q || {}).p || {}).length > 0; r.stan = (localStorage.getItem('dz.f.f1.state') || '').includes('ZMIENIONY-OFFLINE');
   await saveSession({id:'s2', date:new Date().toISOString(), dur:60, planId:null, planName:'TRENING-OFFLINE-2', dayId:null, dayName:'D', ex:[]});
   r.trening = (localStorage.getItem('dz.f.f1.sessions') || '').includes('TRENING-OFFLINE-2'); r.niewyslany = (localStorage.getItem('dz.f.f1.unsent') || '').includes('s2');
+  // diagnostyka (niestabilny krok w WebKit): co było tuż po zapisie i sekundę później
+  r.diag = {tryb: store.mode, konto: FOLDER && FOLDER.id, sessMem: SESS.some(x => x.id === 's2'), unsent: localStorage.getItem('dz.f.f1.unsent'),
+            klucze: Object.keys(localStorage).filter(k => k.startsWith('dz.')).sort()};
+  await new Promise(x => setTimeout(x, 1000));
+  r.diag.po1s = {trening: (localStorage.getItem('dz.f.f1.sessions') || '').includes('TRENING-OFFLINE-2'), unsent: localStorage.getItem('dz.f.f1.unsent'), sessMem: SESS.some(x => x.id === 's2')};
   return r; }"""
 
 
@@ -177,7 +182,7 @@ def scenariusz(silnik, nazwa, cfg, web, sdk, bledy):
             r = page.evaluate(SONDA)
             if not cfg.get('tylko_dane'): sprawdz(not r['fireError'], '(c) bez błędu połączenia z bazą')
             sprawdz(r['historia'], '(c) zapisany trening widoczny w historii'); sprawdz(r['stan'] and r['kolejka'], '(d) zmiana planu: stan i kolejka w localStorage')
-            sprawdz(r['trening'] and r['niewyslany'], '(d) trening: zapisany lokalnie i na liście niewysłanych')
+            sprawdz(r['trening'] and r['niewyslany'], '(d) trening: zapisany lokalnie i na liście niewysłanych' + ('' if r['trening'] and r['niewyslany'] else f" [trening={r['trening']} niewysłany={r['niewyslany']} diag={r.get('diag')}]"))
             if not cfg['usun_z_libs']: sprawdz(not bl, 'brak błędów skryptu strony' + (f' ({bl[:2]})' if bl else ''))   # moduł usunięty celowo: WebKit zgłasza nieudany import() jako błąd strony ("Load failed"), choć aplikacja go łapie
             b.close()
     finally:

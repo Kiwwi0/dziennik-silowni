@@ -1032,6 +1032,127 @@ def scenariusz(r):
         assert pl_ and min(pl_) >= 16, f'czcionka pól serii w planie < 16 px: {pl_}'
     r.krok('pola serii: czcionka co najmniej 16 px (trening, plan)', b1_czcionka_pol)
 
+    # ---- B2: odporność trybu treningu (E2-06, E6-09b, E2-07, E2-08, E2-11, E2-12) ----
+    def klucze():
+        return page.evaluate('() => ACTIVE.ex.map(x => x.key)')
+
+    def b2_usuniecie_po_kluczu():
+        # E2-06 / E6-09b: potwierdzenie usunięcia pamięta ćwiczenie (klucz), nie numer pozycji
+        nowy_trening([{'sets': [(10, 20), (10, 20)]}, {'mode': 'time', 'sets': [(1, None)]}, {'sets': [(10, 30), (10, 30)]}])
+        k = klucze()
+        r.klik('#workout [data-act="wMenu"][data-i="0"]'); r.klik('#workout [data-act="wDelEx"][data-i="0"]')
+        expect(page.locator('#sheet [data-act="confirmOk"]')).to_be_visible()
+        # w tle kończy się seria na czas w ćwiczeniu B: zrobione ćwiczenie wędruje na górę, A przesuwa się na pozycję 1
+        page.evaluate("() => { ACT.startWork({dataset:{i:'1', j:'0'}}); ACTIVE.timer.endsAt = Date.now() - 1; }")
+        page.wait_for_function("() => ACTIVE.ex[0].sets[0].done === true && ACTIVE.ex.length === 3")
+        assert klucze()[0] == k[1] and klucze()[1] == k[0], f'lista miała się przestawić: {klucze()} / {k}'
+        r.klik('#sheet [data-act="confirmOk"]')
+        assert klucze() == [k[1], k[2]], f'ma zniknąć A (nie B): {klucze()} / {k}'
+        assert page.evaluate('() => ACTIVE.ex[0].sets[0].done') is True, 'odhaczona seria B ma zostać'
+        # to samo, gdy ćwiczenie zniknęło w międzyczasie (np. zmiana z drugiego urządzenia): nic się nie dzieje
+        r.klik('#workout [data-act="wMenu"][data-i="1"]'); r.klik('#workout [data-act="wDelEx"][data-i="1"]')
+        page.evaluate("(key) => { ACTIVE.ex = ACTIVE.ex.filter(x => x.key !== key); saveActive(); renderWorkout(); }", k[2])
+        r.klik('#sheet [data-act="confirmOk"]')
+        assert klucze() == [k[1]], f'ćwiczenia już nie było, nic nie miało zniknąć: {klucze()}'
+        # przyciski nakładki działają po kluczu, nie po numerze zapisanym w przycisku
+        nowy_trening([{'sets': [(10, 20), (10, 20)]}, {'sets': [(10, 30), (10, 30)]}])
+        k = klucze()
+        page.evaluate("() => { const b = document.querySelector('#workout [data-act=\"wAddSet\"][data-i=\"0\"]'); b.dataset.i = '1'; }")
+        r.klik('#workout [data-act="wAddSet"][data-i="1"]')
+        assert page.evaluate('() => ACTIVE.ex.map(x => x.sets.length)') == [3, 2], 'przycisk ćwiczenia A ma działać na A, mimo błędnego numeru'
+    r.krok('trening: usunięcie ćwiczenia po kluczu, gdy lista się przestawiła (E2-06, E6-09b)', b2_usuniecie_po_kluczu, 'trening-e2-06')
+
+    def b2_seria_na_czas():
+        # E2-07: „Usuń serię” i „Zamień” w trakcie odliczania zatrzymują odliczanie tej serii
+        nowy_trening([{'mode': 'time', 'sets': [(40, None), (40, None)]}])
+        r.klik('#workout .chk[data-act="startWork"][data-j="1"]')
+        assert page.evaluate("() => ACTIVE.timer && ACTIVE.timer.kind") == 'work', 'odliczanie serii nie ruszyło'
+        r.klik('#workout [data-act="wDelSet"][data-i="0"]')
+        assert page.evaluate('() => ACTIVE.timer') is None and page.evaluate('() => ACTIVE.ex[0].sets.length') == 1, 'usunięcie serii ma zatrzymać odliczanie'
+        expect(page.locator('#tbar')).to_have_class(re.compile(r'\bidle\b'))
+        expect(page.locator('#tbar [data-act="stopWork"]')).to_have_count(0)
+        page.evaluate("() => ACT.stopWork()")   # stary przycisk „Zakończ serię” nie może nic zepsuć
+        assert page.evaluate('() => ACTIVE.ex[0].sets.every(s => !s.done)'), 'stopWork bez odliczania nie odhacza serii'
+        # stopWork sprawdza, czy seria nadal istnieje
+        page.evaluate("() => { ACT.startWork({dataset:{i:'0', j:'0'}}); ACTIVE.ex[0].sets.length = 0; ACT.stopWork(); }")
+        assert page.evaluate('() => ACTIVE.timer') is None, 'seria zniknęła: pasek ma zniknąć bez błędu'
+        # „Zamień” w trakcie odliczania
+        nowy_trening([{'mode': 'time', 'sets': [(40, None), (40, None)]}])
+        r.klik('#workout .chk[data-act="startWork"][data-j="0"]')
+        r.klik('#workout [data-act="wMenu"][data-i="0"]'); r.klik('#workout [data-act="wSwap"][data-i="0"]')
+        r.klik('#sheet [data-act="swapDo"]'); expect(page.locator('#sheet-wrap')).to_be_hidden()
+        assert page.evaluate('() => ACTIVE.timer') is None, 'zamiana ma zatrzymać odliczanie starego ćwiczenia'
+        page.evaluate("() => { ACTIVE.ex[0].sets[0].sec = 1; }")
+        page.wait_for_timeout(1500)
+        assert page.evaluate('() => ACTIVE.ex[0].sets.every(s => !s.done)'), 'zamiennik nie może mieć odhaczonej serii'
+    r.krok('seria na czas: „Usuń serię” i „Zamień” w trakcie odliczania (E2-07)', b2_seria_na_czas, 'trening-e2-07')
+
+    def b2_zapomniany_trening():
+        # E2-08: wznowienie po ponad 2 godzinach bez serii: pytanie; przerwa nie wlicza się do czasu
+        def zawies():
+            nowy_trening([{'sets': [(10, 20), (10, 20), (10, 20)]}])
+            r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]')
+            page.evaluate("() => { const t = Date.now() - 26 * 3600e3; ACTIVE.startedAt = t - 600e3; ACTIVE.lastSetAt = t; ACTIVE.ex[0].firstAt = t; ACTIVE.timer = null; saveActive(); }")
+            page.wait_for_selector('#sheet [data-act="finishSave"]')   # istniejące pytanie o zakończenie po 2 godzinach bez serii
+            page.evaluate('() => closeSheet()')
+            expect(page.locator('#sheet-wrap')).to_be_hidden()
+        zawies()
+        r.klik('#workout .chk[data-j="1"][data-act="toggleSet"]')
+        expect(page.locator('#sheet [data-act="confirmOk2"]')).to_be_visible()
+        assert page.evaluate('() => ACTIVE.ex[0].sets[1].done') is False, 'do odpowiedzi seria nie może się odhaczyć'
+        r.klik('#sheet [data-act="confirmOk"]')   # Dokończ tamten
+        assert page.evaluate('() => ACTIVE.ex[0].sets[1].done') is True, 'po „Dokończ tamten” seria ma się odhaczyć'
+        dur = page.evaluate('() => buildSession().dur')
+        assert 590 <= dur <= 720, f'czas ma być bez przerwy 26 godzin (około 10 min): {dur} s'
+        zawies()
+        r.klik('#workout .chk[data-j="1"][data-act="toggleSet"]')
+        r.klik('#sheet [data-act="confirmOk2"]')   # Zapisz tamten i zacznij nowy
+        page.wait_for_function('() => SESS.length === 1 && ACTIVE && ACTIVE.planId === "PT" && ACTIVE.ex[0].sets.every(s => !s.done)')
+        sd = page.evaluate('() => SESS[0].dur')
+        assert 590 <= sd <= 620 and page.evaluate('() => SESS[0].ex[0].sets.length') == 1, f'zapisany tamten trening: {sd} s'
+    r.krok('zapomniany trening: pytanie po 2 godzinach bez serii, czas bez przerwy (E2-08)', b2_zapomniany_trening, 'trening-e2-08')
+
+    def b2_pytanie_o_zapas():
+        # E2-11: pytanie o zapas znika po cofnięciu odhaczenia i po serii na czas; kolejność w zapisie = kolejność wykonania
+        nowy_trening([{'sets': [(10, 20)]}, {'mode': 'time', 'sets': [(30, None)]}, {'sets': [(10, 30), (10, 30)]}])
+        e = page.evaluate('() => ACTIVE.ex.map(x => x.exId)')
+        r.klik('#workout .chk[data-act="toggleSet"][data-i="0"][data-j="0"]')
+        # ostatnia seria ćwiczenia: karta zwija się od razu (B1b), pytanie czeka; „Pokaż” je odsłania
+        assert page.evaluate('() => ACTIVE.rirAsk && ACTIVE.rirAsk.j') == 0, 'po odhaczeniu pytanie o zapas czeka'
+        r.klik('#workout .wex.mini.alldone [data-act="wOpenCard"]')
+        expect(page.locator('#workout .rir')).to_have_count(1)
+        r.klik('#workout .chk[data-act="toggleSet"][data-i="0"][data-j="0"]')   # cofnięcie
+        expect(page.locator('#workout .rir')).to_have_count(0)
+        assert page.evaluate('() => ACTIVE.rirAsk') is None, 'cofnięcie odhaczenia ma zdjąć pytanie o zapas'
+        page.evaluate("() => ACT.toggleSet({dataset:{i:'0', j:'0'}})")   # znów odhaczone, bez odpowiedzi (karta A jest zwinięta, bo przerwa wskazuje B)
+        page.evaluate("() => { ACT.startWork({dataset:{i:'1', j:'0'}}); ACT.stopWork(); }")   # seria na czas w drugim ćwiczeniu
+        assert page.evaluate('() => ACTIVE.rirAsk') is None, 'po serii na czas pytanie ma zniknąć'
+        order = page.evaluate('() => buildSession().ex.map(x => x.exId)')
+        assert order == [e[0], e[1]], f'kolejność w zapisie ma być wykonana (A, potem B): {order}'
+        # kolejność z pierwszej odhaczonej serii także wtedy, gdy lista została przestawiona
+        page.evaluate("() => { ACTIVE.ex.reverse(); }")
+        assert page.evaluate('() => buildSession().ex.map(x => x.exId)') == [e[0], e[1]], 'zapis ma iść według pierwszej odhaczonej serii'
+    r.krok('pytanie o zapas: znika przy cofnięciu i po serii na czas, kolejność w zapisie (E2-11)', b2_pytanie_o_zapas, 'trening-e2-11')
+
+    def b2_start_innego_planu():
+        # E2-12: start innego planu przy treningu w toku z odhaczonymi seriami: trzy wyjścia
+        nowy_trening([{'sets': [(10, 20), (10, 20)]}])
+        page.evaluate("() => { S.plans.push({id:'PT2', name:'Plan drugi', items:[{id:'z0', exId:EX[3].id, mode:'reps', rest:60, restAfter:90, note:'', sets:[{reps:8, kg:10}]}]}); commit(); }")
+        page.evaluate("() => ACT.startPlan({dataset:{plan:'PT2'}})")
+        assert page.locator('#sheet [data-act="confirmOk2"]').count() == 0, 'bez odhaczonych serii nie ma „Zapisz tamten”'
+        page.evaluate('() => closeSheet()')
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]')
+        page.evaluate("() => ACT.startPlan({dataset:{plan:'PT2'}})")
+        expect(page.locator('#sheet .sheet-f [data-act="closeSheet"]')).to_be_visible()
+        expect(page.locator('#sheet [data-act="confirmOk"]')).to_have_text('Odrzuć i zacznij nowy')
+        expect(page.locator('#sheet [data-act="confirmOk2"]')).to_have_text('Zapisz tamten i zacznij nowy')
+        r.klik('#sheet [data-act="confirmOk2"]')
+        page.wait_for_function('() => SESS.length === 1 && ACTIVE && ACTIVE.planId === "PT2"')
+        assert page.evaluate('() => SESS[0].planId') == 'PT' and page.evaluate('() => SESS[0].ex[0].sets.length') == 1, 'pierwszy trening ma być w historii z jedną serią'
+        assert page.evaluate('() => ACTIVE.ex.length') == 1, 'nowy trening z planu drugiego'
+        page.evaluate("() => { ACTIVE = null; saveActive(); ui.showWorkout = false; render(); renderWorkout(); }")   # kolejne kroki zaczynają bez treningu w toku
+    r.krok('start innego planu przy treningu w toku: „Zapisz tamten i zacznij nowy” (E2-12)', b2_start_innego_planu, 'trening-e2-12')
+
     def kopia_przed_i_po():
         page.goto(BASE + '/', wait_until='load')
         page.evaluate('() => localStorage.clear()')
