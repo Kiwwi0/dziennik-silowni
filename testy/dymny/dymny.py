@@ -854,6 +854,31 @@ def scenariusz(r):
         assert page.evaluate('() => topSheet().edit.ex[0].sets.map(s => s.reps)') == [10, 10, 10], 'edycja treningu: powtórzenia w serii 1 zmieniają wszystko niżej'
     r.krok('pola serii: zmiana w dół także w edytorze planu i w edycji zapisanego treningu', b1_w_dol_plan_i_edycja, 'pola-w-dol-plan-edycja')
 
+    def b1_timer_po_usunieciu():
+        # usunięcie ćwiczenia nie zeruje timera przerwy, gdy dotyczy innego ćwiczenia; przerwa przed usuniętym idzie dalej z następnym
+        nowy_trening([{'sets': [(10, 60), (10, 60)]}, {'sets': [(10, 40), (10, 40)]}, {'sets': [(10, 20), (10, 20)]}])
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]')
+        page.wait_for_function('() => ACTIVE.timer && ACTIVE.timer.kind === "rest"')
+        t0 = page.evaluate('() => ACTIVE.timer.endsAt')
+        def usun(i):
+            # rozwinięta karta ma „Usuń” w menu „…”, zwinięta – od razu
+            if not page.locator(f'#workout [data-act="wDelEx"][data-i="{i}"]').first.is_visible():
+                r.klik(f'#workout [data-act="wMenu"][data-i="{i}"]')
+            r.klik(f'#workout [data-act="wDelEx"][data-i="{i}"]'); r.klik('[data-act="confirmOk"]')
+        usun(2)
+        page.wait_for_function('() => ACTIVE.ex.length === 2')
+        assert page.evaluate('() => ACTIVE.timer && ACTIVE.timer.endsAt') == t0 and page.evaluate('() => ACTIVE.timer.focus') == 0, 'usunięcie innego ćwiczenia (poniżej) nie rusza timera'
+        # usunięcie ćwiczenia powyżej tego, którego dotyczy przerwa: timer idzie dalej, indeks przestawiony po kluczu
+        page.evaluate('() => { ACTIVE.timer.focus = 1; saveActive(); renderWorkout(); }')
+        usun(0)
+        page.wait_for_function('() => ACTIVE.ex.length === 1')
+        assert page.evaluate('() => ACTIVE.timer && ACTIVE.timer.endsAt') == t0 and page.evaluate('() => ACTIVE.timer.focus') == 0, 'usunięcie ćwiczenia powyżej: timer dalej, focus przestawiony na 0'
+        # przerwa dotyczy usuwanego ćwiczenia, a innego niezrobionego nie ma: timer się kończy
+        usun(0)
+        page.wait_for_function('() => ACTIVE.ex.length === 0')
+        assert page.evaluate('() => ACTIVE.timer') is None, 'brak ćwiczeń: timer zatrzymany'
+    r.krok('trening: usunięcie ćwiczenia nie zeruje timera, gdy dotyczy innego ćwiczenia', b1_timer_po_usunieciu, 'timer-po-usunieciu')
+
     def b1_zapis_do_planu():
         # E2-02: tylko odhaczone serie, na swoich pozycjach; plan nie traci serii
         nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60)]}])
