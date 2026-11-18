@@ -207,6 +207,7 @@
    }
   ],
   "settings": {
+   "askRir": true,
    "autoRest": true,
    "bar": 15,
    "perWeek": 4,

@@ -14,6 +14,7 @@ zliczane); na końcu jeszcze raz strażnicy po krótkim odczekaniu (późny page
 
 Kroki „zapis: …” (A6) podstawiają sztuczny Firebase (zapis scalający, kolejka, nieudany zapis treningu, stara karta); krok „kopia zapasowa”
 porównuje eksport i import z plikiem testy/zapis/kopia_przed.json (eksport wykonany kodem z `main` @ e82b8c6 na stanie z kopia_stan.json).
+Od B3 plik ma też `settings.askRir: true` (nowe ustawienie „Pytaj o zapas powtórzeń”, domyślnie włączone; świadoma zmiana formatu kopii).
 
 Nowy błąd = nowy krok w tym teście. Błąd samej aplikacji, którego nie naprawiamy od razu, wpisz do ZNANE_BLEDY
 (krok, kod kontroli → numer i opis); taki krok kończy się „ZNANY BŁĄD” zamiast czerwonego wyniku.
@@ -970,14 +971,16 @@ def scenariusz(r):
     def b1_zwiniecie_po_ostatniej_serii():
         # ćwiczenie z wszystkimi seriami odhaczonymi zwija się od razu, bez odpowiedzi na pytanie o zapas i bez startu następnego ćwiczenia
         nowy_trening([{'sets': [(10, 60), (10, 60)]}, {'sets': [(10, 40), (10, 40)]}])
-        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]'); expect(page.locator('#workout .wex').first.locator('.rir')).to_have_count(1)
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]'); expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)   # B3: pytanie o zapas jest w pasku na dole
         assert page.locator('#workout .wex.mini').count() == 1, 'po pierwszej z dwóch serii pierwsze ćwiczenie ma zostać rozwinięte (zwinięte jest tylko drugie)'
         r.klik('#workout .wex:not(.mini) .chk[data-j="1"][data-act="toggleSet"]')
         expect(page.locator('#workout .wex.mini.alldone')).to_have_count(1)
         assert page.evaluate('() => ACTIVE.ex[0].sets.every(s => s.done)') is True and page.evaluate('() => ACTIVE.ex[1].sets.some(s => s.done)') is False, 'pierwsze zrobione, drugie nietknięte'
-        # „Pokaż” rozwija kartę, a pytanie o zapas przy ostatniej serii nadal czeka
+        # „Pokaż” rozwija kartę, a pytanie o zapas przy ostatniej serii nadal czeka (w pasku, B3)
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)
         r.klik('#workout .wex.mini.alldone [data-act="wOpenCard"]')
-        expect(page.locator('#workout .rir')).to_have_count(1)
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)
+        expect(page.locator('#workout .wex .rir')).to_have_count(0)
     r.krok('trening: ćwiczenie zwija się od razu po odhaczeniu wszystkich serii (bez odpowiedzi na pytanie o zapas)', b1_zwiniecie_po_ostatniej_serii, 'zwiniecie-po-ostatniej')
 
     def b1_zmiana_po_odhaczeniu():
@@ -1117,12 +1120,13 @@ def scenariusz(r):
         nowy_trening([{'sets': [(10, 20)]}, {'mode': 'time', 'sets': [(30, None)]}, {'sets': [(10, 30), (10, 30)]}])
         e = page.evaluate('() => ACTIVE.ex.map(x => x.exId)')
         r.klik('#workout .chk[data-act="toggleSet"][data-i="0"][data-j="0"]')
-        # ostatnia seria ćwiczenia: karta zwija się od razu (B1b), pytanie czeka; „Pokaż” je odsłania
+        # ostatnia seria ćwiczenia: karta zwija się od razu (B1b), pytanie czeka w pasku na dole (B3), także po „Pokaż”
         assert page.evaluate('() => ACTIVE.rirAsk && ACTIVE.rirAsk.j') == 0, 'po odhaczeniu pytanie o zapas czeka'
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)
         r.klik('#workout .wex.mini.alldone [data-act="wOpenCard"]')
-        expect(page.locator('#workout .rir')).to_have_count(1)
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)
         r.klik('#workout .chk[data-act="toggleSet"][data-i="0"][data-j="0"]')   # cofnięcie
-        expect(page.locator('#workout .rir')).to_have_count(0)
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(0)
         assert page.evaluate('() => ACTIVE.rirAsk') is None, 'cofnięcie odhaczenia ma zdjąć pytanie o zapas'
         page.evaluate("() => ACT.toggleSet({dataset:{i:'0', j:'0'}})")   # znów odhaczone, bez odpowiedzi (karta A jest zwinięta, bo przerwa wskazuje B)
         page.evaluate("() => { ACT.startWork({dataset:{i:'1', j:'0'}}); ACT.stopWork(); }")   # seria na czas w drugim ćwiczeniu
@@ -1133,6 +1137,143 @@ def scenariusz(r):
         page.evaluate("() => { ACTIVE.ex.reverse(); }")
         assert page.evaluate('() => buildSession().ex.map(x => x.exId)') == [e[0], e[1]], 'zapis ma iść według pierwszej odhaczonej serii'
     r.krok('pytanie o zapas: znika przy cofnięciu i po serii na czas, kolejność w zapisie (E2-11)', b2_pytanie_o_zapas, 'trening-e2-11')
+
+    # ---- B3 (segment 2, wygoda jedną ręką): E5-01, E5-02, E5-03, E5-05, E5-14, E1-13, wyłącznik zapasu (P5) ----
+    def b3_zapas_w_pasku():
+        # E5-01: po odhaczeniu serii 1 nic nie przesuwa serii 2; stuknięcie w miejsce jej ✓ odhacza serię 2 i nie wybiera zapasu;
+        # przez 0,4 s po pojawieniu pytanie ignoruje stuknięcia, potem zapis działa
+        nowy_trening([{'sets': [(10, 60), (10, 60), (10, 60), (10, 60)]}])   # 4 serie: ostatnia seria otwierałaby arkusz „Zakończ trening”
+        c2 = page.locator('#workout .chk[data-act="toggleSet"][data-j="1"]').first
+        c2.scroll_into_view_if_needed()
+        b0 = c2.bounding_box()
+        r.klik('#workout .chk[data-act="toggleSet"][data-j="0"]')
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)
+        b1 = c2.bounding_box()
+        assert abs(b1['y'] - b0['y']) < 0.6 and abs(b1['x'] - b0['x']) < 0.6, f'✓ serii 2 nie może się ruszyć po odhaczeniu serii 1: {b0} → {b1}'
+        page.touchscreen.tap(b0['x'] + b0['width'] / 2, b0['y'] + b0['height'] / 2)   # drugie stuknięcie w to samo miejsce
+        page.wait_for_function('() => ACTIVE.ex[0].sets[1].done === true')
+        assert page.evaluate('() => ACTIVE.ex[0].sets.every(s => s.rir == null)'), 'zapas nie może zostać wybrany drugim stuknięciem'
+        assert page.evaluate('() => ACTIVE.rirAsk.j') == 1, 'pytanie dotyczy teraz serii 2'
+        # okno ochronne: stuknięcie przycisku zapasu w tej samej chwili, w której pojawiło się pytanie, jest ignorowane
+        page.evaluate("() => { ACT.toggleSet({dataset:{i:'0', j:'2'}}); document.querySelector('#tb-rirbox button[data-v=\"3\"]').click(); }")
+        assert page.evaluate('() => ACTIVE.ex[0].sets[2].done') is True and page.evaluate('() => ACTIVE.ex[0].sets[2].rir') is None, 'stuknięcie w oknie 0,4 s ma być zignorowane'
+        page.wait_for_timeout(500)
+        r.klik('#tb-rirbox button[data-v="3"]')
+        assert page.evaluate('() => ACTIVE.ex[0].sets[2].rir') == 3, 'po 0,4 s zapas się zapisuje'
+        expect(page.locator('#tb-rirbox button[data-v="3"]')).to_have_attribute('aria-pressed', 'true')
+    r.krok('pytanie o zapas: w pasku na dole, nic się nie przesuwa, 0,4 s ignoruje stuknięcia (E5-01)', b3_zapas_w_pasku, 'trening-e5-01')
+
+    def b3_pola_dotyku():
+        # E5-02: żaden przycisk w nakładce treningu nie ma pola dotyku poniżej 44 px; brak przewijania w bok
+        nowy_trening([{'sets': [(10, 60), (10, 60)]}, {'sets': [(10, 40), (10, 40)]}, {'mode': 'time', 'sets': [(30, None)]}])
+        r.klik('#workout .chk[data-act="toggleSet"][data-j="0"]')
+        r.klik('#workout .wex:not(.mini) .chk[data-act="toggleSet"][data-j="1"]')
+        expect(page.locator('#workout .wex.mini.alldone')).to_have_count(1)
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)
+        r.klik('#workout .wex:not(.mini) [data-act="wMenu"]')
+        expect(page.locator('#workout .wex:not(.mini) [data-act="wDelEx"]')).to_be_visible()
+        mierz = """() => [...document.querySelectorAll('#workout button, #workout a, #workout [role=button], #workout input, #workout select')]
+          .filter(e => e.getClientRects().length).map(e => { const b = e.getBoundingClientRect();
+            return {t:(e.dataset.act || e.className || e.tagName) + ' "' + (e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 24) + '"', w:Math.round(b.width * 10) / 10, h:Math.round(b.height * 10) / 10}; })"""
+        wszystkie = page.evaluate(mierz)
+        assert len(wszystkie) > 25, f'za mało zmierzonych elementów: {len(wszystkie)}'
+        zle = [o for o in wszystkie if o['w'] < 44 or o['h'] < 44]
+        assert not zle, 'pole dotyku poniżej 44 px: ' + '; '.join(f"{o['t']} {o['w']}×{o['h']}" for o in zle[:8])
+        # inne stany paska: przerwa w toku, koniec przerwy, seria na czas w toku
+        for stan in ('rest', 'over', 'work'):
+            page.evaluate("""(k) => { ACTIVE.timer = k === 'work' ? {kind:'work', total:30, endsAt:Date.now() + 20000, label:'Seria w toku', focus:2, fired:false, i:2, j:0}
+              : {kind:'rest', total:90, endsAt:Date.now() + (k === 'rest' ? 60000 : -5000), label:'Przerwa', focus:1, fired:k === 'over'}; tbState = ''; updateTimer(); }""", stan)
+            zle = [o for o in page.evaluate(mierz) if o['w'] < 44 or o['h'] < 44]
+            assert not zle, f'pasek ({stan}): pole dotyku poniżej 44 px: ' + '; '.join(f"{o['t']} {o['w']}×{o['h']}" for o in zle[:8])
+        sz = page.evaluate("() => { const w = document.getElementById('workout'); return [w.scrollWidth, w.clientWidth, document.documentElement.scrollWidth]; }")
+        assert sz[0] <= sz[1] and sz[2] <= page.viewport_size['width'], f'przewijanie w bok w nakładce: {sz}'
+    r.krok('nakładka treningu: pola dotyku co najmniej 44 × 44 px, bez przewijania w bok (E5-02)', b3_pola_dotyku, 'trening-e5-02')
+
+    def b3_napisy():
+        # E5-03: nagłówek i pasek przerwy mieszczą się bez ucinania przy 21 seriach; skrócone napisy
+        nowy_trening([{'sets': [(10, 60)] * 3} for _ in range(7)])
+        r.klik('#workout .chk[data-act="toggleSet"][data-j="0"]')
+        tekst = page.locator('#workout .wo-p').inner_text()
+        assert re.fullmatch(r'1/21 serii · ~[0-9]+( h [0-9]+)?( min)?', tekst), f'nagłówek: {tekst!r}'
+        mieści = "(sel) => { const e = document.querySelector(sel); return e.scrollWidth <= e.clientWidth; }"
+        assert page.evaluate(mieści, '#workout .wo-p'), f'nagłówek się ucina: {tekst!r}'
+        assert page.locator('#tb-lbl').inner_text() == 'Przerwa', 'pasek przerwy ma pokazywać samo „Przerwa”'
+        assert page.evaluate(mieści, '#tb-lbl'), 'napis w pasku przerwy się ucina'
+        # pozostałe stany paska nie mogą się ucinać
+        for stan in ('idle', 'soon', 'over', 'work'):
+            page.evaluate("""(k) => { ACTIVE.timer = k === 'idle' ? null : k === 'work' ? {kind:'work', total:30, endsAt:Date.now() + 20000, label:'', focus:0, fired:false, i:0, j:1}
+              : {kind:'rest', total:90, endsAt:Date.now() + (k === 'soon' ? 6000 : -5000), label:'Przerwa', focus:0, fired:k === 'over'}; tbState = ''; updateTimer(); }""", stan)
+            assert page.evaluate(mieści, '#tb-lbl'), f'napis w pasku ({stan}) się ucina: {page.locator("#tb-lbl").inner_text()!r}'
+    r.krok('nagłówek i pasek przerwy mieszczą się przy 21 seriach: „1/21 serii · ~49 min”, „Przerwa” (E5-03)', b3_napisy, 'trening-e5-03')
+
+    def b3_seria_na_czas_po_blokadzie():
+        # E5-05: seria na czas skończona przy zablokowanym ekranie: przerwa liczona od planowanego końca serii, po powrocie widać, ile minęło.
+        # E1-13: błysk i duży napis na koniec przerwy
+        nowy_trening([{'mode': 'time', 'sets': [(30, None), (30, None)]}])
+        page.evaluate("() => { ACTIVE.ex[0].rest = 120; }")
+        r.klik('#workout .chk[data-act="startWork"][data-j="0"]')
+        assert page.evaluate("() => ACTIVE.timer.kind") == 'work'
+        page.evaluate("() => { ACTIVE.timer.endsAt = Date.now() - 60000; }")   # koniec serii był 60 s temu (telefon był zablokowany)
+        page.wait_for_function('() => ACTIVE.timer && ACTIVE.timer.kind === "rest"')
+        up = page.evaluate("() => (Date.now() - (ACTIVE.timer.endsAt - ACTIVE.timer.total * 1000)) / 1000")
+        assert 59.5 <= up <= 62, f'przerwa ma pokazywać ok. 60 s upływu, jest {up:.1f} s'
+        assert page.evaluate("() => ACTIVE.timer.late === true && ACTIVE.timer.fired === false"), 'przerwa jeszcze trwa (120 s − 60 s)'
+        assert re.fullmatch(r'Przerwa · minęło 1:0[0-3]', page.locator('#tb-lbl').inner_text()), page.locator('#tb-lbl').inner_text()
+        assert 56 <= page.evaluate("() => (ACTIVE.timer.endsAt - Date.now()) / 1000") <= 61, 'zostało ok. 60 s'
+        # seria odhaczona w chwili planowanego końca, nie teraz
+        assert page.evaluate("() => Date.now() - ACTIVE.lastSetAt") > 55000, 'lastSetAt = planowany koniec serii'
+        # normalny przebieg (bez blokady): bez „minęło”
+        page.evaluate("() => { ACTIVE.timer = null; ACT.startWork({dataset:{i:'0', j:'1'}}); ACTIVE.timer.endsAt = Date.now() - 100; }")
+        page.wait_for_function('() => ACTIVE.ex[0].sets[1].done === true')
+        assert page.evaluate("() => ACTIVE.timer === null || !ACTIVE.timer.late"), 'bez blokady ekranu przerwa nie jest „nadrobiona”'
+        # przerwa, która skończyła się w całości przy zablokowanym ekranie: od razu „koniec” z dużym napisem i błyskiem
+        nowy_trening([{'mode': 'time', 'sets': [(30, None), (30, None)]}])
+        r.klik('#workout .chk[data-act="startWork"][data-j="0"]')
+        page.evaluate("() => { ACTIVE.timer.endsAt = Date.now() - 300000; }")
+        page.wait_for_function('() => ACTIVE.timer && ACTIVE.timer.kind === "rest" && ACTIVE.timer.fired === true')
+        expect(page.locator('#tbar')).to_have_class(re.compile(r'\bover\b'))
+        expect(page.locator('#tbar')).to_have_class(re.compile(r'\bflash\b'))
+        assert page.locator('#tb-lbl').inner_text() == 'Koniec przerwy!'
+        assert float(page.evaluate("() => parseFloat(getComputedStyle(document.getElementById('tb-lbl')).fontSize)")) >= 20, 'duży napis na koniec przerwy'
+        assert page.evaluate("() => document.getElementById('tb-lbl').scrollWidth <= document.getElementById('tb-lbl').clientWidth"), 'duży napis się ucina'
+        # E1-13: po powrocie do karty dźwięk jest odblokowywany
+        page.evaluate("() => { AC = null; document.dispatchEvent(new Event('visibilitychange')); }")
+        assert page.evaluate("() => !!AC"), 'powrót do karty ma odblokować dźwięk (AudioContext)'
+    r.krok('seria na czas po zablokowanym ekranie: przerwa od planowanego końca, „minęło”, błysk i duży napis, dźwięk po powrocie (E5-05, E1-13)', b3_seria_na_czas_po_blokadzie, 'trening-e5-05')
+
+    def b3_ujemne():
+        # E5-14: liczba poniżej zera ma własny komunikat, powyżej limitu dalej „Maksymalnie 100 powtórzeń”
+        nowy_trening([{'sets': [(10, 60), (10, 60)]}])
+        r.klik(pole(0, 'reps')); page.keyboard.type('-5')
+        expect(page.locator('#toast')).to_contain_text('nie może być ujemna')
+        assert 'Maksymalnie' not in page.locator('#toast').inner_text(), page.locator('#toast').inner_text()
+        stuknij_obok()
+        r.klik(pole(0, 'reps')); page.keyboard.type('150')
+        expect(page.locator('#toast')).to_contain_text('Maksymalnie 100 powtórzeń')
+        stuknij_obok()
+    r.krok('liczba ujemna w polu powtórzeń: osobny komunikat, limit 100 bez zmian (E5-14)', b3_ujemne, 'pola-e5-14')
+
+    def b3_wylacznik_zapasu():
+        # P5: Ustawienia „Pytaj o zapas powtórzeń” (domyślnie włączone) wyłącza pytanie i zapisuje się po przeładowaniu; zdanie o dźwięku (E1-13)
+        nowy_trening([{'sets': [(10, 60), (10, 60)]}], start=False)
+        assert page.evaluate('() => S.settings.askRir') is True, 'domyślnie pytanie o zapas jest włączone'
+        page.evaluate("() => openSheet({type:'settings'})")
+        expect(page.locator('#sheet')).to_contain_text('Dźwięk nie zadziała')
+        expect(page.locator('#sheet #st-rir')).to_be_checked()
+        r.klik('#sheet #st-rir')
+        assert page.evaluate('() => S.settings.askRir') is False
+        page.reload(wait_until='load')
+        assert page.evaluate('() => S.settings.askRir') is False, 'ustawienie ma przetrwać przeładowanie'
+        page.evaluate("() => { S.plans = [{id:'PT', name:'Plan B1', items:[{id:'it0', exId:EX[0].id, mode:'reps', rest:60, restAfter:90, note:'', sets:[{reps:10, kg:20}, {reps:10, kg:20}]}]}]; render(); startWorkoutFrom(S.plans[0]); }")
+        r.klik('#workout .chk[data-act="toggleSet"][data-j="0"]')
+        page.wait_for_function('() => ACTIVE.ex[0].sets[0].done === true')
+        assert page.evaluate('() => ACTIVE.rirAsk') is None, 'przy wyłączonym pytaniu rirAsk nie powstaje'
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(0)
+        # włączenie z powrotem
+        page.evaluate("() => { S.settings.askRir = true; }")
+        r.klik('#workout .chk[data-act="toggleSet"][data-j="1"]')
+        expect(page.locator('#tb-rirbox .tb-rir')).to_have_count(1)
+    r.krok('Ustawienia: wyłącznik „Pytaj o zapas powtórzeń” wyłącza pytanie i zapisuje się po przeładowaniu (P5)', b3_wylacznik_zapasu, 'ustawienia-zapas')
 
     def b2_start_innego_planu():
         # E2-12: start innego planu przy treningu w toku z odhaczonymi seriami: trzy wyjścia
