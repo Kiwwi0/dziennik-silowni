@@ -1153,6 +1153,127 @@ def scenariusz(r):
         page.evaluate("() => { ACTIVE = null; saveActive(); ui.showWorkout = false; render(); renderWorkout(); }")   # kolejne kroki zaczynają bez treningu w toku
     r.krok('start innego planu przy treningu w toku: „Zapisz tamten i zacznij nowy” (E2-12)', b2_start_innego_planu, 'trening-e2-12')
 
+    # ---- B6 (E2-05): superserie przy przestawianiu, usuwaniu własnego ćwiczenia i „Ułóż w tej kolejności” ----
+    def b6_plan(n=3, ss=((0, 1),)):
+        nowy_trening([{'sets': [(10, 20), (10, 20)]} for _ in range(n)], start=False)
+        page.evaluate("(ss) => { ss.forEach(([a]) => { S.plans[0].items[a].ssNext = true; }); commit(); }", [list(x) for x in ss])
+    def b6_flagi():
+        return page.evaluate('() => S.plans[0].items.map(i => [i.id, !!i.ssNext])')
+    def b6_idy():
+        return page.evaluate('() => S.plans[0].items.map(i => i.id)')
+    def b6_klik_plan(akcja, item, kierunek=None):
+        page.evaluate("(id) => { ui.openItem = id; render(); }", item)
+        sel = f'#view [data-act="{akcja}"][data-item="{item}"]' + (f'[data-dir="{kierunek}"]' if kierunek else '')
+        r.klik(sel)
+
+    def b6_plan_przesuwanie():
+        # A+B w superserii, C osobno; C w górę: przeskakuje całą parę, A i B zostają parą, C nie łączy się z A
+        b6_plan(3, ((0, 1),))
+        zakladka('plany'); r.klik('[data-act="editPlan"]')
+        b6_klik_plan('itemMove', 'it2', -1)
+        assert b6_idy() == ['it2', 'it0', 'it1'] and b6_flagi() == [['it2', False], ['it0', True], ['it1', False]], f'C w górę: para A+B zostaje, C bez połączenia: {b6_flagi()}'
+        # C z powrotem w dół: też przeskakuje całą parę
+        b6_klik_plan('itemMove', 'it2', 1)
+        assert b6_idy() == ['it0', 'it1', 'it2'] and b6_flagi() == [['it0', True], ['it1', False], ['it2', False]], f'C w dół: {b6_flagi()}'
+        # członek pary (B) przesuwa się razem z całą superserią; przycisk „Niżej” wyłączony, gdy blok jest na końcu listy
+        b6_klik_plan('itemMove', 'it1', 1)
+        assert b6_idy() == ['it2', 'it0', 'it1'] and b6_flagi() == [['it2', False], ['it0', True], ['it1', False]], f'B w dół przesuwa całą superserię: {b6_flagi()}'
+        page.evaluate("() => { ui.openItem = 'it1'; render(); }")
+        assert page.locator('#view [data-act="itemMove"][data-item="it1"][data-dir="1"]').is_disabled(), 'blok na końcu: „Niżej” wyłączone'
+        # dwie superserie obok siebie nie zlewają się: druga (przez swojego członka) przeskakuje pierwszą jako całość
+        b6_plan(4, ((0, 1), (2, 3)))
+        zakladka('plany'); r.klik('[data-act="editPlan"]')
+        b6_klik_plan('itemMove', 'it3', -1)
+        assert b6_idy() == ['it2', 'it3', 'it0', 'it1'] and [f for _, f in b6_flagi()] == [True, False, True, False], f'dwie pary zamieniły się miejscami: {b6_flagi()}'
+    r.krok('plan: przesunięcie ćwiczenia nad połączoną parę nie łączy go z nią, superseria idzie jako całość (E2-05)', b6_plan_przesuwanie, 'plan-e2-05-przesuwanie')
+
+    def b6_wlasne_usuniecie():
+        # własne ćwiczenie jako drugie w superserii: po usunięciu z biblioteki następne dodane nie jest superserią
+        b6_plan(1, ())
+        page.evaluate("""() => { S.custom.push({id:'c_b6', name:'Własne B6', group:'Plecy', equipment:'Hantle', mode:'reps', steps:[], tips:[], primary:[], secondary:[], custom:true, level:''});
+          S.plans[0].items[0].ssNext = true; S.plans[0].items.push(newItem('c_b6')); commit(); }""")
+        assert b6_flagi()[0][1] is True and len(b6_idy()) == 2, 'przygotowanie: superseria z własnym ćwiczeniem'
+        page.evaluate("() => { ACT.customDel({dataset:{id:'c_b6'}}); }")
+        r.klik('[data-act="confirmOk"]')
+        page.wait_for_function('() => S.plans[0].items.length === 1')
+        assert b6_flagi() == [['it0', False]], f'po usunięciu własnego ćwiczenia poprzednik nie ma wiszącego połączenia: {b6_flagi()}'
+        page.evaluate("() => { ACT.covAdd({dataset:{plan:'PT', id:EX[5].id}}); }")
+        assert b6_flagi()[0][1] is False and len(b6_idy()) == 2 and page.evaluate('() => !S.plans[0].items[1].ssNext'), 'nowe ćwiczenie po usunięciu własnego nie jest superserią'
+        # środek trójki: usunięcie środkowego własnego zostawia połączenie poprzednika z następnym (łańcuch bez dziury)
+        b6_plan(3, ((0, 1), (1, 2)))
+        page.evaluate("""() => { S.custom.push({id:'c_b6', name:'Własne B6', group:'Plecy', equipment:'Hantle', mode:'reps', steps:[], tips:[], primary:[], secondary:[], custom:true, level:''});
+          S.plans[0].items[1].exId = 'c_b6'; commit(); ACT.customDel({dataset:{id:'c_b6'}}); }""")
+        r.klik('[data-act="confirmOk"]')
+        page.wait_for_function('() => S.plans[0].items.length === 2')
+        assert b6_flagi() == [['it0', True], ['it2', False]], f'środek superserii usunięty: pozostałe dwa nadal para: {b6_flagi()}'
+    r.krok('własne ćwiczenie: usunięcie nie zostawia wiszącej superserii u poprzednika (E2-05)', b6_wlasne_usuniecie, 'plan-e2-05-usuniecie')
+
+    def b6_wiszace_stare():
+        # stary plan z wiszącym połączeniem na ostatnim ćwiczeniu: dopisane ćwiczenie nie staje się superserią (trzy drogi dodawania)
+        for akcja in ("ACT.covAdd({dataset:{plan:'PT', id:EX[5].id}})", "ACT.addToPlanGo({dataset:{plan:'PT', id:EX[6].id}})"):
+            b6_plan(2, ())
+            page.evaluate("() => { S.plans[0].items[1].ssNext = true; commit(); }")
+            page.evaluate("() => { %s; }" % akcja)
+            assert b6_flagi() == [['it0', False], ['it1', False], [b6_idy()[2], False]], f'{akcja}: wiszące połączenie wyczyszczone, nowe nie w superserii: {b6_flagi()}'
+        b6_plan(2, ())
+        page.evaluate("() => { S.plans[0].items[1].ssNext = true; commit(); openSheet({type:'pick', target:{kind:'plan', plan:'PT'}, q:'', group:'', sel:[EX[7].id, EX[8].id]}); }")
+        r.klik('#sheet [data-act="pickAdd"]')
+        page.wait_for_function('() => S.plans[0].items.length === 4')
+        assert [f for _, f in b6_flagi()] == [False] * 4, f'wybór kilku ćwiczeń: żadne nie jest superserią: {b6_flagi()}'
+    r.krok('stary plan z wiszącym połączeniem: dopisane ćwiczenie nie staje się superserią (E2-05)', b6_wiszace_stare, 'plan-e2-05-wiszace')
+
+    def b6_uloz():
+        # „Ułóż w tej kolejności”: ostrzeżenie przed rozłączeniem; superseria, której kolejność się nie zmienia, zostaje
+        nowy_trening([{'sets': [(10, 20)]} for _ in range(4)], start=False)
+        # a) odwrócona kolejność sugerowanej, para na początku: kolejność pary się zmieni → ostrzeżenie, po zatwierdzeniu brak superserii
+        page.evaluate("""() => { const p = S.plans[0], s = suggestOrder(p).sorted.map(x => x.it); p.items = s.slice().reverse(); p.items.forEach(x => x.ssNext = false);
+          p.items[0].ssNext = true; delete p.orderOk; commit(); }""")
+        page.evaluate("() => ACT.orderApply({dataset:{plan:'PT'}})")
+        expect(page.locator('#sheet [data-act="confirmOk"]')).to_be_visible()
+        assert page.evaluate('() => S.plans[0].items.some(i => i.ssNext)'), 'przed potwierdzeniem nic się nie zmienia'
+        page.evaluate('() => closeSheet()')
+        assert page.evaluate('() => S.plans[0].items.some(i => i.ssNext)'), 'anulowanie zostawia superserię'
+        page.evaluate("() => ACT.orderApply({dataset:{plan:'PT'}})")
+        r.klik('[data-act="confirmOk"]')
+        assert not page.evaluate('() => S.plans[0].items.some(i => i.ssNext)'), 'po potwierdzeniu superserie rozłączone'
+        # b) para, która po ułożeniu nadal stoi obok siebie w tej samej kolejności: zostaje, bez ostrzeżenia
+        page.evaluate("""() => { const p = S.plans[0], s = suggestOrder(p).sorted.map(x => x.it); p.items = [s[3], s[0], s[1], s[2]]; p.items.forEach(x => x.ssNext = false);
+          p.items[1].ssNext = true; delete p.orderOk; commit(); window.__ids = [p.items[1].id, p.items[2].id]; }""")
+        page.evaluate("() => ACT.orderApply({dataset:{plan:'PT'}})")
+        assert page.locator('#sheet [data-act="confirmOk"]').count() == 0, 'nic nie rozłączamy, więc bez ostrzeżenia'
+        assert page.evaluate("() => { const it = S.plans[0].items; const a = it.findIndex(x => x.id === window.__ids[0]); return !!it[a].ssNext && it[a + 1].id === window.__ids[1]; }"), 'para o niezmienionej kolejności została superserią'
+        assert page.evaluate('() => S.plans[0].items.filter(i => i.ssNext).length') == 1, 'jedna superseria'
+    r.krok('„Ułóż w tej kolejności”: ostrzeżenie przed rozłączeniem, niezmienione superserie zostają (E2-05)', b6_uloz, 'plan-e2-05-uloz')
+
+    def b6_trening_przesuwanie():
+        # trening: to samo przestawianie, z trwającą przerwą timer zostaje przy swoim ćwiczeniu
+        nowy_trening([{'sets': [(10, 60), (10, 60)]} for _ in range(3)])
+        page.evaluate("() => { ACTIVE.ex[0].ssNext = true; saveActive(); renderWorkout(); }")
+        keys = page.evaluate('() => ACTIVE.ex.map(x => x.key)')
+        r.klik('#workout .chk[data-j="0"][data-act="toggleSet"]')   # superseria: po pierwszym ćwiczeniu przerwy nie ma, dopiero po rundzie
+        r.klik(f'#workout .chk[data-wk="{keys[1]}"][data-j="0"][data-act="toggleSet"]')
+        page.wait_for_function('() => ACTIVE.timer')
+        key_t = page.evaluate('() => { const T = ACTIVE.timer; return T.kind === "work" ? ACTIVE.ex[T.i].key : T.focus != null ? ACTIVE.ex[T.focus].key : null; }')
+        def menu_move(klucz, d):
+            # karta może być zwinięta, więc rozwijamy ją i menu przez stan interfejsu (przyciski wMove i tak klikamy naprawdę)
+            page.evaluate("(k) => { ui.wOpen = ui.wOpen || {}; ui.wOpen[k] = true; ui.wMenu = k; renderWorkout(); }", klucz)
+            r.klik(f'#workout [data-act="wMove"][data-wk="{klucz}"][data-dir="{d}"]')
+        menu_move(keys[2], -1)
+        assert page.evaluate('() => ACTIVE.ex.map(x => x.key)') == [keys[2], keys[0], keys[1]], 'trening: C przeskakuje całą parę'
+        assert page.evaluate('() => ACTIVE.ex.map(x => !!x.ssNext)') == [False, True, False], 'trening: A+B nadal para, C bez połączenia'
+        nowy = page.evaluate('() => { const T = ACTIVE.timer; return T.kind === "work" ? ACTIVE.ex[T.i].key : T.focus != null ? ACTIVE.ex[T.focus].key : null; }')
+        assert nowy == key_t, 'timer zostaje przy swoim ćwiczeniu po przestawieniu'
+        # członek pary w dół: cała superseria przechodzi pod C
+        page.evaluate("(k) => { ui.wOpen = ui.wOpen || {}; ui.wOpen[k] = true; ui.wMenu = k; renderWorkout(); }", keys[1])
+        assert page.locator(f'#workout [data-act="wMove"][data-wk="{keys[1]}"][data-dir="1"]').first.is_disabled(), 'trening: superseria na końcu listy, „Niżej” wyłączone także dla jej członka'
+        menu_move(keys[0], -1)
+        assert page.evaluate('() => ACTIVE.ex.map(x => x.key)') == [keys[0], keys[1], keys[2]] and page.evaluate('() => ACTIVE.ex.map(x => !!x.ssNext)') == [True, False, False], 'trening: para w górę jako całość'
+        nowy = page.evaluate('() => { const T = ACTIVE.timer; return T.kind === "work" ? ACTIVE.ex[T.i].key : T.focus != null ? ACTIVE.ex[T.focus].key : null; }')
+        assert nowy == key_t, 'timer zostaje przy swoim ćwiczeniu także po przesunięciu pary'
+        page.evaluate("() => { ACTIVE = null; saveActive(); ui.showWorkout = false; render(); renderWorkout(); }")   # kolejne kroki zaczynają bez treningu w toku
+    r.krok('trening: przestawianie nie łączy ćwiczeń, superseria idzie jako całość, timer zostaje przy swoim ćwiczeniu (E2-05)', b6_trening_przesuwanie, 'trening-e2-05')
+
+
     def kopia_przed_i_po():
         page.goto(BASE + '/', wait_until='load')
         page.evaluate('() => localStorage.clear()')

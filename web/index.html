@@ -2612,6 +2612,23 @@ function ssUnlink(list, i){ if (i > 0 && list[i - 1]) list[i - 1].ssNext = false
 function itemRef(el){ const p = planById(el.dataset.plan); const it = p && p.items.find(i => i.id === el.dataset.item); return {p, it}; }
 const refAttr = (p, it) => `data-plan="${esc(p.id)}"` + (it ? ` data-item="${esc(it.id)}"` : '');
 const nextPlanName = () => { const used = new Set(S.plans.map(p => p.name)); for (let k = 0; k < 26; k++){ const n = 'Plan ' + String.fromCharCode(65 + k); if (!used.has(n)) return n; } return 'Plan ' + (S.plans.length + 1); };
+// B6: superseria przesuwa się jako całość; ćwiczenie spoza niej przeskakuje całą sąsiednią superserię (nic nie wsuwa się w środek).
+// Zwraca true, gdy coś przesunięto. Ostatnie ćwiczenie każdego bloku ma ssNext=false (czyści też wiszące połączenie na końcu listy).
+function moveBlock(list, i, dir){
+  const [a, b] = ssRange(list, i); let na, nb;
+  if (dir < 0){ if (a <= 0) return false; [na, nb] = ssRange(list, a - 1); }
+  else { if (b >= list.length - 1) return false; [na, nb] = ssRange(list, b + 1); }
+  const lo = Math.min(a, na), hi = Math.max(b, nb);
+  const first = dir < 0 ? list.slice(a, b + 1) : list.slice(na, nb + 1), second = dir < 0 ? list.slice(na, nb + 1) : list.slice(a, b + 1);
+  first[first.length - 1].ssNext = false; second[second.length - 1].ssNext = false;
+  list.splice(lo, hi - lo + 1, ...first, ...second);
+  return true;
+}
+// czy ćwiczenie (a razem z nim cała jego superseria) może iść w górę / w dół
+// dopisanie ćwiczenia na koniec planu: ostatnie ćwiczenie nie może mieć „wiszącego” połączenia ze starszych wersji (przycisk superserii jest tylko
+// przy ćwiczeniu, które ma następne), inaczej nowe ćwiczenie samo stałoby się superserią
+function planAppend(p, item){ const L = p.items[p.items.length - 1]; if (L && L.ssNext) L.ssNext = false; p.items.push(item); }
+function canMoveBlock(list, i, dir){ const [a, b] = ssRange(list, i); return dir < 0 ? a > 0 : b < list.length - 1; }
 function move(arr, i, dir){ const j = i + dir; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; }
 const hasData = s => s.plans.length || s.custom.length;
 
@@ -3401,7 +3418,7 @@ function vItem(p, it, ii){
       </div>
       <div class="field"><label class="lbl" for="nt-${esc(it.id)}">Notatka</label><input class="input" id="nt-${esc(it.id)}" maxlength="200" data-bind="note" ${R} value="${esc(it.note || '')}" placeholder="np. ustawienie siedziska 4, guma czerwona"></div>
       ${ii < p.items.length - 1 ? `<div class="row"><button class="btn sm" data-act="itemSS" ${R}>${it.ssNext ? 'Rozłącz z następnym' : 'Superseria z następnym'}</button><span class="muted small">${it.ssNext ? 'Robisz je na zmianę, przerwa po obu.' : 'Łączy z ćwiczeniem poniżej: robisz je na zmianę.'}</span></div>` : ''}
-      <div class="row"><button class="btn sm" data-act="itemMove" data-dir="-1" ${R} ${ii === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="itemMove" data-dir="1" ${R} ${ii === p.items.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><span class="spacer"></span><button class="btn sm danger" data-act="itemDel" ${R}>${svg('trash','i s')}Usuń</button></div>
+      <div class="row"><button class="btn sm" data-act="itemMove" data-dir="-1" ${R} ${!canMoveBlock(p.items, ii, -1) ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="itemMove" data-dir="1" ${R} ${!canMoveBlock(p.items, ii, 1) ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><span class="spacer"></span><button class="btn sm danger" data-act="itemDel" ${R}>${svg('trash','i s')}Usuń</button></div>
     </div>`;
   }
   return h + `</div>`;
@@ -4756,7 +4773,7 @@ function wCard(x, i, cur, curR){
     <div class="wex-h"><button class="iconbtn plain" style="width:auto;height:auto;padding:0" data-act="exInfo" data-id="${esc(x.exId)}" aria-label="Technika: ${esc(ex.name)}">${thumb(x.exId)}</button>
       <div><button class="nm" data-act="exInfo" data-id="${esc(x.exId)}">${esc(ex.name)}</button><div class="meta">${doneN} z ${x.sets.length} serii${x.note ? ' · ' + esc(x.note) : ''}</div></div>
       ${manual && !isCur ? `<button class="btn sm" data-act="wOpenCard" data-i="${i}" data-wk="${x.key}">Zwiń</button>` : ''}<button class="iconbtn sm plain" data-act="wMenu" data-i="${i}" data-wk="${x.key}" aria-label="Opcje ćwiczenia" aria-expanded="${ui.wMenu === x.key}">${svg('more','i s')}</button></div>`;
-  if (ui.wMenu === x.key) h += `<div class="row"><button class="btn sm" data-act="wMove" data-i="${i}" data-wk="${x.key}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="wMove" data-i="${i}" data-wk="${x.key}" data-dir="1" ${i === ACTIVE.ex.length - 1 ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><button class="btn sm" data-act="wSwap" data-i="${i}" data-wk="${x.key}">Zamień</button><button class="btn sm" data-act="wNoteOpen" data-i="${i}" data-wk="${x.key}">Notatka</button>${!all ? `<button class="btn sm" data-act="wSkip" data-i="${i}" data-wk="${x.key}">Pomiń</button>` : ''}${i < ACTIVE.ex.length - 1 ? `<button class="btn sm" data-act="wSS" data-i="${i}" data-wk="${x.key}">${x.ssNext ? 'Rozłącz superserię' : 'Superseria z następnym'}</button>` : ''}<span class="spacer"></span><button class="btn sm danger" data-act="wDelEx" data-i="${i}" data-wk="${x.key}">${svg('trash','i s')}Usuń</button></div>`;
+  if (ui.wMenu === x.key) h += `<div class="row"><button class="btn sm" data-act="wMove" data-i="${i}" data-wk="${x.key}" data-dir="-1" ${!canMoveBlock(ACTIVE.ex, i, -1) ? 'disabled' : ''}>${svg('up','i s')}Wyżej</button><button class="btn sm" data-act="wMove" data-i="${i}" data-wk="${x.key}" data-dir="1" ${!canMoveBlock(ACTIVE.ex, i, 1) ? 'disabled' : ''}>${svg('down','i s')}Niżej</button><button class="btn sm" data-act="wSwap" data-i="${i}" data-wk="${x.key}">Zamień</button><button class="btn sm" data-act="wNoteOpen" data-i="${i}" data-wk="${x.key}">Notatka</button>${!all ? `<button class="btn sm" data-act="wSkip" data-i="${i}" data-wk="${x.key}">Pomiń</button>` : ''}${i < ACTIVE.ex.length - 1 ? `<button class="btn sm" data-act="wSS" data-i="${i}" data-wk="${x.key}">${x.ssNext ? 'Rozłącz superserię' : 'Superseria z następnym'}</button>` : ''}<span class="spacer"></span><button class="btn sm danger" data-act="wDelEx" data-i="${i}" data-wk="${x.key}">${svg('trash','i s')}Usuń</button></div>`;
   if (x.wnote != null && (ui.wNote === x.key || x.wnote)) h += `<textarea class="input wnote" maxlength="300" rows="2" data-bind="wnote" data-i="${i}" data-wk="${x.key}" placeholder="Notatka do tego ćwiczenia, np. ustawienie siedziska 4" aria-label="Notatka do ćwiczenia">${esc(x.wnote)}</textarea>`;
   const rec = last ? recordFor(x.exId, x.mode) : null;
   if (last) h += `<div class="last">Ostatni trening: ${fmtDate(last.date)}${rec ? ` · rekord: <b>${esc(recText(rec, x.mode))}</b>` : ''}${last.note ? ` · <i>„${esc(last.note)}”</i>` : ''}</div>`;
@@ -5204,12 +5221,19 @@ const ACT = {
   psetAdd(el){ const {it} = itemRef(el); if (it.sets.length >= MAX_SETS){ toast(`Maksymalnie ${MAX_SETS} serii w ćwiczeniu.`); return; } const l = it.sets[it.sets.length - 1]; it.sets.push(l ? {...l} : it.mode === 'time' ? {sec:30, kg:null} : {reps:10, kg:null}); commit(); },
   psetDel(el){ const {it} = itemRef(el); if (it.sets.length <= 1){ toast('Ćwiczenie musi mieć co najmniej jedną serię.'); return; } it.sets.splice(+el.dataset.i, 1); commit(); },
   restStep(el){ const {it} = itemRef(el); const f = el.dataset.f; it[f] = Math.max(0, Math.min(600, (it[f] ?? 0) + +el.dataset.d)); commit(); },
-  itemMove(el){ const {p, it} = itemRef(el); const i = p.items.indexOf(it); ssUnlink(p.items, i); move(p.items, i, +el.dataset.dir); commit(); },
+  itemMove(el){ const {p, it} = itemRef(el); const i = p.items.indexOf(it); if (moveBlock(p.items, i, +el.dataset.dir)) commit(); },
   setFreq(el){ S.settings.perWeek = +el.dataset.v; persist(); render(); },
   setTheme(el){ const v = el.dataset.v; try { if (v === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', v); } catch (e) {} applyTheme(v); $$('.th-seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === v)); },
-  covAdd(el){ const p = planById(el.dataset.plan); if (!p) return; p.items.push(newItem(el.dataset.id)); commit(); toast('Dodano do planu: ' + getEx(el.dataset.id).name); },
+  covAdd(el){ const p = planById(el.dataset.plan); if (!p) return; planAppend(p, newItem(el.dataset.id)); commit(); toast('Dodano do planu: ' + getEx(el.dataset.id).name); },
   itemSS(el){ const {p, it} = itemRef(el); it.ssNext = !it.ssNext; commit(); },
-  orderApply(el){ const p = planById(el.dataset.plan); if (!p) return; p.items = suggestOrder(p).sorted.map(x => x.it); p.items.forEach(x => x.ssNext = false); delete p.orderOk; commit(); toast('Ułożono ćwiczenia w sugerowanej kolejności'); },
+  orderApply(el){ const p = planById(el.dataset.plan); if (!p) return;
+    // B6: superseria zostaje, gdy jej ćwiczenia po przestawieniu nadal stoją obok siebie w tej samej kolejności; reszta jest rozłączana (po ostrzeżeniu)
+    const sorted = suggestOrder(p).sorted.map(x => x.it), old = p.items;
+    const keep = sorted.map((x, k) => { const j = old.indexOf(x); return !!(x.ssNext && j >= 0 && old[j + 1] && sorted[k + 1] === old[j + 1]); });
+    const lost = old.filter(x => x.ssNext && !keep[sorted.indexOf(x)]).length;
+    const go = () => { const pl = planById(el.dataset.plan); if (!pl) return; pl.items = sorted; sorted.forEach((x, k) => { if (!keep[k]) x.ssNext = false; }); delete pl.orderOk; commit(); toast(lost ? 'Ułożono w sugerowanej kolejności. Superseria rozłączona.' : 'Ułożono ćwiczenia w sugerowanej kolejności'); };
+    if (lost) confirmBox('Rozłączyć superserię?', 'Sugerowana kolejność rozdzieli ćwiczenia połączone w superserię. Połączenia, które się nie zmieniają, zostaną.', 'Ułóż i rozłącz', go, false);
+    else go(); },
   orderKeep(el){ const p = planById(el.dataset.plan); if (!p) return; p.orderOk = orderSig(p); commit(); },
   orderShow(el){ const p = planById(el.dataset.plan); if (!p) return; delete p.orderOk; commit(); },
   orderWhy(){ ui.orderWhy = !ui.orderWhy; render(); },
@@ -5219,7 +5243,7 @@ const ACT = {
   pickGroup(el){ const s = topSheet(); s.group = el.dataset.g; $$('.chip', $('#sheet')).forEach(c => c.setAttribute('aria-pressed', c.dataset.g === s.group)); fillPickList(); },
   pickAdd(){
     const s = topSheet(); if (!s.sel.length) return;
-    if (s.target.kind === 'plan'){ const p = planById(s.target.plan); s.sel.forEach(id => p.items.push(newItem(id))); sheets.pop(); renderSheet(); commit(); toast(`Dodano ${s.sel.length} ${pl(s.sel.length,'ćwiczenie','ćwiczenia','ćwiczeń')}.`); }
+    if (s.target.kind === 'plan'){ const p = planById(s.target.plan); s.sel.forEach(id => planAppend(p, newItem(id))); sheets.pop(); renderSheet(); commit(); toast(`Dodano ${s.sel.length} ${pl(s.sel.length,'ćwiczenie','ćwiczenia','ćwiczeń')}.`); }
     else { s.sel.forEach(id => ACTIVE.ex.push(newWorkoutEx(id))); saveActive(); sheets.pop(); renderSheet(); renderWorkout(); }
   },
   /* ćwiczenia */
@@ -5241,7 +5265,7 @@ const ACT = {
   animSlow(el){ AP.slow = !AP.slow; el.setAttribute('aria-pressed', AP.slow); },
   mediaToggle(el){ const f = el.closest('.media'); if (reduced){ const on = f.classList.toggle('show-b'); el.textContent = on ? 'Pokaż początek ruchu' : 'Pokaż koniec ruchu'; } else { const p = f.classList.toggle('paused'); el.textContent = p ? 'Odtwórz' : 'Zatrzymaj'; } },
   exAddToPlan(el){ openSheet({type:'addToPlan', id:el.dataset.id}); },
-  addToPlanGo(el){ const p = planById(el.dataset.plan); p.items.push(newItem(el.dataset.id)); persist(); sheets.length = 0; renderSheet(); render(); toast(`Dodano do: ${p.name || 'Plan bez nazwy'}`); },
+  addToPlanGo(el){ const p = planById(el.dataset.plan); planAppend(p, newItem(el.dataset.id)); persist(); sheets.length = 0; renderSheet(); render(); toast(`Dodano do: ${p.name || 'Plan bez nazwy'}`); },
   newPlanWith(el){ const p = {id:uid(), name:nextPlanName(), items:[newItem(el.dataset.id)]}; S.plans.push(p); persist(); sheets.length = 0; renderSheet(); ui.planId = p.id; location.hash = 'plany'; render(); },
   customNew(){ openSheet({type:'custom', f:{name:'', group:ui.exGroup || GROUPS[0], equipment:'Maszyna', mode:'reps', steps:'', tips:''}}); },
   customEdit(el){ const e = getEx(el.dataset.id); sheets.pop(); openSheet({type:'custom', editId:e.id, f:{name:e.name, group:e.group, equipment:e.equipment, mode:e.mode, steps:(e.steps || []).join('\n'), tips:(e.tips || []).join('\n')}}); },
@@ -5254,7 +5278,7 @@ const ACT = {
     else S.custom.push({id:'c_' + uid(), ...data});
     sheets.pop(); renderSheet(); commit(); toast('Zapisano ćwiczenie.');
   },
-  customDel(el){ const id = el.dataset.id; confirmBox('Usunąć własne ćwiczenie?', 'Zniknie też ze wszystkich planów. Historia treningów zostanie.', 'Usuń', () => { S.custom = S.custom.filter(c => c.id !== id); S.plans.forEach(p => { p.items = p.items.filter(i => i.exId !== id); }); sheets.length = 0; commit(); }); },
+  customDel(el){ const id = el.dataset.id; confirmBox('Usunąć własne ćwiczenie?', 'Zniknie też ze wszystkich planów. Historia treningów zostanie.', 'Usuń', () => { S.custom = S.custom.filter(c => c.id !== id); S.plans.forEach(p => { for (let k = p.items.length - 1; k >= 0; k--){ if (p.items[k].exId !== id) continue; if (!p.items[k].ssNext && k > 0) p.items[k - 1].ssNext = false; p.items.splice(k, 1); } }); sheets.length = 0; commit(); }); },
   /* historia */
   hist(el){ ui.hist = el.dataset.v; render(); },
   wkMore(){ ui.hist = 'tydzien'; if (location.hash !== '#historia') location.hash = 'historia'; else render(); scrollTo(0, 0); },
@@ -5479,9 +5503,9 @@ const ACT = {
     }
     toast('Zamieniono na: ' + e.name);
   },
-  wMove(el){ const i = +el.dataset.i, T = ACTIVE.timer; ssUnlink(ACTIVE.ex, i);
+  wMove(el){ const i = +el.dataset.i, T = ACTIVE.timer;
     const fKey = T && T.focus != null ? ACTIVE.ex[T.focus]?.key : null, wKey = T && T.kind === 'work' ? ACTIVE.ex[T.i]?.key : null;
-    move(ACTIVE.ex, i, +el.dataset.dir);
+    if (!moveBlock(ACTIVE.ex, i, +el.dataset.dir)) return;
     if (fKey) T.focus = ACTIVE.ex.findIndex(x => x.key === fKey); if (wKey) T.i = ACTIVE.ex.findIndex(x => x.key === wKey);
     saveActive(); renderWorkout(); },
   wDelEx(el){
