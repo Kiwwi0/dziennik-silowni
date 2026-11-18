@@ -1208,6 +1208,20 @@ def scenariusz(r):
         assert b6_flagi() == [['it0', True], ['it2', False]], f'środek superserii usunięty: pozostałe dwa nadal para: {b6_flagi()}'
     r.krok('własne ćwiczenie: usunięcie nie zostawia wiszącej superserii u poprzednika (E2-05)', b6_wlasne_usuniecie, 'plan-e2-05-usuniecie')
 
+    def b6_wiszace_stare():
+        # stary plan z wiszącym połączeniem na ostatnim ćwiczeniu: dopisane ćwiczenie nie staje się superserią (trzy drogi dodawania)
+        for akcja in ("ACT.covAdd({dataset:{plan:'PT', id:EX[5].id}})", "ACT.addToPlanGo({dataset:{plan:'PT', id:EX[6].id}})"):
+            b6_plan(2, ())
+            page.evaluate("() => { S.plans[0].items[1].ssNext = true; commit(); }")
+            page.evaluate("() => { %s; }" % akcja)
+            assert b6_flagi() == [['it0', False], ['it1', False], [b6_idy()[2], False]], f'{akcja}: wiszące połączenie wyczyszczone, nowe nie w superserii: {b6_flagi()}'
+        b6_plan(2, ())
+        page.evaluate("() => { S.plans[0].items[1].ssNext = true; commit(); openSheet({type:'pick', target:{kind:'plan', plan:'PT'}, q:'', group:'', sel:[EX[7].id, EX[8].id]}); }")
+        r.klik('#sheet [data-act="pickAdd"]')
+        page.wait_for_function('() => S.plans[0].items.length === 4')
+        assert [f for _, f in b6_flagi()] == [False] * 4, f'wybór kilku ćwiczeń: żadne nie jest superserią: {b6_flagi()}'
+    r.krok('stary plan z wiszącym połączeniem: dopisane ćwiczenie nie staje się superserią (E2-05)', b6_wiszace_stare, 'plan-e2-05-wiszace')
+
     def b6_uloz():
         # „Ułóż w tej kolejności”: ostrzeżenie przed rozłączeniem; superseria, której kolejność się nie zmienia, zostaje
         nowy_trening([{'sets': [(10, 20)]} for _ in range(4)], start=False)

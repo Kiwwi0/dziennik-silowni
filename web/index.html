@@ -2625,6 +2625,9 @@ function moveBlock(list, i, dir){
   return true;
 }
 // czy ćwiczenie (a razem z nim cała jego superseria) może iść w górę / w dół
+// dopisanie ćwiczenia na koniec planu: ostatnie ćwiczenie nie może mieć „wiszącego” połączenia ze starszych wersji (przycisk superserii jest tylko
+// przy ćwiczeniu, które ma następne), inaczej nowe ćwiczenie samo stałoby się superserią
+function planAppend(p, item){ const L = p.items[p.items.length - 1]; if (L && L.ssNext) L.ssNext = false; p.items.push(item); }
 function canMoveBlock(list, i, dir){ const [a, b] = ssRange(list, i); return dir < 0 ? a > 0 : b < list.length - 1; }
 function move(arr, i, dir){ const j = i + dir; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; }
 const hasData = s => s.plans.length || s.custom.length;
@@ -5221,7 +5224,7 @@ const ACT = {
   itemMove(el){ const {p, it} = itemRef(el); const i = p.items.indexOf(it); if (moveBlock(p.items, i, +el.dataset.dir)) commit(); },
   setFreq(el){ S.settings.perWeek = +el.dataset.v; persist(); render(); },
   setTheme(el){ const v = el.dataset.v; try { if (v === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', v); } catch (e) {} applyTheme(v); $$('.th-seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === v)); },
-  covAdd(el){ const p = planById(el.dataset.plan); if (!p) return; p.items.push(newItem(el.dataset.id)); commit(); toast('Dodano do planu: ' + getEx(el.dataset.id).name); },
+  covAdd(el){ const p = planById(el.dataset.plan); if (!p) return; planAppend(p, newItem(el.dataset.id)); commit(); toast('Dodano do planu: ' + getEx(el.dataset.id).name); },
   itemSS(el){ const {p, it} = itemRef(el); it.ssNext = !it.ssNext; commit(); },
   orderApply(el){ const p = planById(el.dataset.plan); if (!p) return;
     // B6: superseria zostaje, gdy jej ćwiczenia po przestawieniu nadal stoją obok siebie w tej samej kolejności; reszta jest rozłączana (po ostrzeżeniu)
@@ -5240,7 +5243,7 @@ const ACT = {
   pickGroup(el){ const s = topSheet(); s.group = el.dataset.g; $$('.chip', $('#sheet')).forEach(c => c.setAttribute('aria-pressed', c.dataset.g === s.group)); fillPickList(); },
   pickAdd(){
     const s = topSheet(); if (!s.sel.length) return;
-    if (s.target.kind === 'plan'){ const p = planById(s.target.plan); s.sel.forEach(id => p.items.push(newItem(id))); sheets.pop(); renderSheet(); commit(); toast(`Dodano ${s.sel.length} ${pl(s.sel.length,'ćwiczenie','ćwiczenia','ćwiczeń')}.`); }
+    if (s.target.kind === 'plan'){ const p = planById(s.target.plan); s.sel.forEach(id => planAppend(p, newItem(id))); sheets.pop(); renderSheet(); commit(); toast(`Dodano ${s.sel.length} ${pl(s.sel.length,'ćwiczenie','ćwiczenia','ćwiczeń')}.`); }
     else { s.sel.forEach(id => ACTIVE.ex.push(newWorkoutEx(id))); saveActive(); sheets.pop(); renderSheet(); renderWorkout(); }
   },
   /* ćwiczenia */
@@ -5262,7 +5265,7 @@ const ACT = {
   animSlow(el){ AP.slow = !AP.slow; el.setAttribute('aria-pressed', AP.slow); },
   mediaToggle(el){ const f = el.closest('.media'); if (reduced){ const on = f.classList.toggle('show-b'); el.textContent = on ? 'Pokaż początek ruchu' : 'Pokaż koniec ruchu'; } else { const p = f.classList.toggle('paused'); el.textContent = p ? 'Odtwórz' : 'Zatrzymaj'; } },
   exAddToPlan(el){ openSheet({type:'addToPlan', id:el.dataset.id}); },
-  addToPlanGo(el){ const p = planById(el.dataset.plan); p.items.push(newItem(el.dataset.id)); persist(); sheets.length = 0; renderSheet(); render(); toast(`Dodano do: ${p.name || 'Plan bez nazwy'}`); },
+  addToPlanGo(el){ const p = planById(el.dataset.plan); planAppend(p, newItem(el.dataset.id)); persist(); sheets.length = 0; renderSheet(); render(); toast(`Dodano do: ${p.name || 'Plan bez nazwy'}`); },
   newPlanWith(el){ const p = {id:uid(), name:nextPlanName(), items:[newItem(el.dataset.id)]}; S.plans.push(p); persist(); sheets.length = 0; renderSheet(); ui.planId = p.id; location.hash = 'plany'; render(); },
   customNew(){ openSheet({type:'custom', f:{name:'', group:ui.exGroup || GROUPS[0], equipment:'Maszyna', mode:'reps', steps:'', tips:''}}); },
   customEdit(el){ const e = getEx(el.dataset.id); sheets.pop(); openSheet({type:'custom', editId:e.id, f:{name:e.name, group:e.group, equipment:e.equipment, mode:e.mode, steps:(e.steps || []).join('\n'), tips:(e.tips || []).join('\n')}}); },
