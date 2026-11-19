@@ -271,6 +271,12 @@ main{padding-block:2px 28px}
 .plan > .dayrow:first-child,.day > .item:first-child{border-top:0}
 .plan-link{width:100%;border:0;border-top:1px solid var(--line);background:none;text-align:left}
 .dayrow .dm{font-size:12.5px;color:var(--muted)}
+.today{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px;border:2px solid var(--accent)}
+.today-t{min-width:0}
+.today-k{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.today-n{font-family:var(--f-display);font-weight:800;font-size:22px;line-height:1.15;overflow-wrap:anywhere}
+.today .dm{font-size:12.5px;color:var(--muted);margin-top:2px}
+.today-go{min-width:96px;min-height:48px}
 /* przesuń w lewo, żeby usunąć plan */
 .sw{position:relative;overflow:hidden;border-top:1px solid var(--line)}
 .plan > .sw:first-child{border-top:0}
@@ -1546,6 +1552,18 @@ function lastFor(exId, excludeId){
   return null;
 }
 function lastDone(planId){ return SESS.find(s => s.planId === planId || s.dayId === planId); }
+// B5 (E5-12): plan „na dziś” = ten po planie z ostatniego zapisanego treningu (kolejność listy planów, po ostatnim wraca pierwszy).
+// Ostatni trening bez planu albo z usuniętym planem: plan trenowany najdawniej (nietrenowany = najdawniej, remis = kolejność listy). Bez historii: pierwszy.
+// Plany bez ćwiczeń nie mogą być „na dziś” (Start byłby wyłączony).
+function nextPlan(){
+  const ok = S.plans.filter(p => p.items.length); if (!ok.length) return null;
+  const s = SESS[0], id = s && (s.planId || s.dayId);
+  const i = id ? S.plans.findIndex(p => p.id === id) : -1;
+  if (i >= 0){ for (let k = 1; k <= S.plans.length; k++){ const p = S.plans[(i + k) % S.plans.length]; if (p.items.length) return p; } }
+  let best = null, bt = Infinity;
+  for (const p of ok){ const l = lastDone(p.id), t = l ? new Date(l.date).getTime() : -Infinity; if (best === null || t < bt){ best = p; bt = t; } }
+  return best;
+}
 function vHome(){
   let h = '';
   if (store.mode === 'cloud' && !store.ready && !S.plans.length){
@@ -1556,8 +1574,16 @@ function vHome(){
       <div class="row"><button class="btn primary" data-act="newPlanOpen">${svg('plus','i s')}Utwórz plan</button><button class="btn" data-act="openTemplates">Gotowe plany</button>${shareImpBtn()}</div></div>`;
   } else {
     if (SESS.length) h += weekCard();
-    h += `<h2 class="sec-h">Wybierz plan</h2><section class="plan">`;
+    const tp = S.plans.length > 1 && !ACTIVE ? nextPlan() : null;
+    if (tp){
+      const l = lastDone(tp.id);
+      h += `<section class="today card" aria-label="Plan na dziś"><div class="today-t"><div class="today-k">Dziś</div><div class="today-n">${esc(tp.name || 'Plan bez nazwy')}</div>
+        <div class="dm">${tp.items.length} ${pl(tp.items.length,'ćwiczenie','ćwiczenia','ćwiczeń')} · ${l ? 'ostatnio ' + relDay(l.date) : 'jeszcze nie trenowany'}</div></div>
+        <button class="btn primary today-go" data-act="startPlan" data-plan="${esc(tp.id)}">${svg('play','i s')}Start</button></section>`;
+    }
+    h += `<h2 class="sec-h">${tp ? 'Pozostałe plany' : 'Wybierz plan'}</h2><section class="plan">`;
     for (const p of S.plans){
+      if (tp && p === tp) continue;
       const last = lastDone(p.id);
       h += `<div class="dayrow"><div><div class="dn">${esc(p.name || 'Plan bez nazwy')}</div><div class="dm">${p.items.length} ${pl(p.items.length,'ćwiczenie','ćwiczenia','ćwiczeń')}${last ? ' · ostatnio ' + relDay(last.date) : ''}</div></div>
         <button class="btn primary sm" data-act="startPlan" data-plan="${esc(p.id)}" ${p.items.length ? '' : 'disabled'}>${svg('play','i s')}Start</button></div>`;
