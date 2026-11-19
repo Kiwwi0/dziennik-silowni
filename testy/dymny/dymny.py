@@ -1437,6 +1437,70 @@ def scenariusz(r):
         assert wynik['ust'] == przed['state']['settings'] and wynik['tab'] and wynik['bezU'], f'import kopii (ustawienia/tablica): {wynik}'
     r.krok('kopia zapasowa: eksport i import jak przed zmianą (porównanie z main)', kopia_przed_i_po, 'kopia-po-imporcie')
 
+    # ---- B5 (E5-12): ekran główny pokazuje plan na dziś ----
+    def b5_ustaw(nazwy, sesje, aktywny=False):
+        """Czysta strona, plany o podanych nazwach (id = P0, P1, …), SESS z listy planId (od najnowszego); None = trening bez planu."""
+        page.goto(BASE + '/', wait_until='load')
+        page.evaluate('() => localStorage.clear()')
+        page.reload(wait_until='load')
+        page.evaluate("""([nazwy, sesje, aktywny]) => {
+          S.plans = nazwy.map((n, k) => ({id:'P' + k, name:n, items:[{id:'i' + k, exId:EX[k].id, mode:'reps', rest:60, restAfter:90, note:'', sets:[{reps:10, kg:20}]}]}));
+          SESS = sesje.map((pid, k) => ({id:'s' + k, date:new Date(Date.now() - (k + 1) * 864e5).toISOString(), dur:1800, planId:pid, planName:pid || '', dayId:pid, dayName:pid ? 'Plan' : 'Trening', ex:[{exId:EX[0].id, name:'x', mode:'reps', sets:[{reps:10, kg:20}]}]}));
+          if (aktywny) startWorkoutFrom(S.plans[0]);
+          render();
+        }""", [nazwy, sesje, aktywny])
+    def b5_dzis():
+        k = page.locator('.today')
+        return k.locator('.today-n').inner_text() if k.count() else None
+    def b5_dzis_a_b_c():
+        b5_ustaw(['A', 'B', 'C'], ['P0'])
+        assert b5_dzis() == 'B', f'po treningu A ma być „Dziś: B”, jest {b5_dzis()}'
+        expect(page.locator('.today')).to_contain_text('Dziś')
+        expect(page.locator('.today')).to_contain_text('jeszcze nie trenowany')
+        assert page.locator('.today [data-act="startPlan"]').get_attribute('data-plan') == 'P1'
+        w = page.locator('.today [data-act="startPlan"]').bounding_box()
+        assert w['height'] >= 44 and w['width'] >= 44, f'pole dotyku Start: {w}'
+        assert page.locator('.plan [data-act="startPlan"]').count() == 2 and page.locator('.plan [data-plan="P1"]').count() == 0, 'pozostałe plany bez planu z karty'
+        expect(page.locator('.sec-h', has_text='Pozostałe plany')).to_be_visible()
+        r.klik('.today [data-act="startPlan"]')
+        page.wait_for_function('() => ACTIVE && ACTIVE.planId === "P1"')
+    r.krok('plan na dziś: A, B, C i ostatni trening z A daje „Dziś: B” (E5-12)', b5_dzis_a_b_c, 'dzis-b')
+    def b5_po_ostatnim():
+        b5_ustaw(['A', 'B', 'C'], ['P2', 'P0'])
+        assert b5_dzis() == 'A', f'po treningu C wraca A, jest {b5_dzis()}'
+        expect(page.locator('.today')).to_contain_text('ostatnio ')   # A była 2 dni temu
+    r.krok('plan na dziś: po treningu C wraca A', b5_po_ostatnim, 'dzis-a')
+    def b5_usuniety():
+        b5_ustaw(['A', 'B', 'C'], ['P1', 'P0', 'P2'])
+        page.evaluate("() => { S.plans = S.plans.filter(p => p.id !== 'P1'); commit(); }")   # ostatni trening z usuniętego planu: najdawniej trenowany = C
+        assert b5_dzis() == 'C', f'po usunięciu planu z ostatniego treningu ma być najdawniej trenowany (C), jest {b5_dzis()}'
+        page.evaluate("() => { SESS[0].planId = null; SESS[0].dayId = null; render(); }")   # ostatni trening bez planu
+        assert b5_dzis() == 'C', f'trening bez planu: {b5_dzis()}'
+        page.evaluate("() => { S.plans = S.plans.filter(p => p.id === 'P0'); commit(); }")   # został jeden plan: bez karty, jak dotąd
+        assert b5_dzis() is None and page.locator('.plan [data-act="startPlan"]').count() == 1, 'jeden plan: ekran jak dotąd'
+        expect(page.locator('.sec-h', has_text='Wybierz plan')).to_be_visible()
+    r.krok('plan na dziś: usunięty plan z ostatniego treningu, trening bez planu, jeden plan', b5_usuniety, 'dzis-usuniety')
+    def b5_bez_historii():
+        b5_ustaw(['A', 'B', 'C'], [])
+        assert b5_dzis() == 'A', f'bez historii pierwszy plan, jest {b5_dzis()}'
+        expect(page.locator('.today')).to_contain_text('jeszcze nie trenowany')
+    r.krok('plan na dziś: bez historii pierwszy plan', b5_bez_historii, 'dzis-bez-historii')
+    def b5_dlugie_nazwy():
+        d = 'Bardzo_długa_nazwa_planu_bez_spacji_' * 4
+        b5_ustaw([d, 'B', 'C'], ['P2'])
+        assert b5_dzis() == d, 'długa nazwa na karcie'
+        assert page.evaluate('() => document.documentElement.scrollWidth <= window.innerWidth'), 'przewijanie w bok przy długiej nazwie planu'
+        w = page.locator('.today [data-act="startPlan"]').bounding_box()
+        assert w['x'] + w['width'] <= page.viewport_size['width'], 'przycisk Start poza ekranem'
+    r.krok('plan na dziś: długa nazwa planu, brak przewijania w bok', b5_dlugie_nazwy, 'dzis-dluga-nazwa')
+    def b5_trwajacy():
+        b5_ustaw(['A', 'B', 'C'], ['P0'], aktywny=True)
+        page.evaluate('() => { ui.showWorkout = false; renderWorkout(); render(); }')
+        assert b5_dzis() is None, 'przy trwającym treningu bez karty „Dziś”'
+        expect(page.locator('.live')).to_be_visible()
+        page.evaluate('() => { ACTIVE = null; saveActive(); ui.showWorkout = false; render(); renderWorkout(); }')
+    r.krok('plan na dziś: trwający trening, ekran jak dotąd', b5_trwajacy, 'dzis-trwajacy')
+
     # ---- na koniec: krótkie odczekanie i jeszcze raz strażnicy (późny pageerror) ----
     def pozno():
         page.wait_for_timeout(1500)
