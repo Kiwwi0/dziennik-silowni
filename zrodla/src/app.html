@@ -335,12 +335,13 @@ main{padding-block:2px 28px}
 .qstep{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;font-size:13px;color:var(--muted)}
 .qstep .qn{flex-basis:100%;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
 .qstep .stepper b{min-width:44px;color:var(--ink)}
-.rir{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);padding-left:28px}
-.rir span{flex:1;min-width:0}
-.rir button{flex:none;min-width:42px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
-.rir button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+/* B3 (E5-02): w nakładce treningu każdy przycisk ma pole dotyku co najmniej 44 × 44 px (poza nią rozmiary poprawia osobne zlecenie) */
+#workout .iconbtn.sm{width:44px;height:44px}
+#workout .btn.sm{min-height:44px}
+#workout .wex-h .nm{min-height:44px;display:inline-flex;align-items:center}
+#workout .wex-h > .iconbtn.plain{min-width:44px;min-height:44px}
 .wo-list{padding-block:14px 12px}
-.wo-end{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+.wo-end{padding-bottom:calc(215px + env(safe-area-inset-bottom,0px))}
 .wex{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:grid;gap:10px}
 .wex{scroll-margin-top:calc(76px + env(safe-area-inset-top,0px))}
 .wex.ss:not(.ss-link){scroll-margin-top:calc(76px + env(safe-area-inset-top,0px))}
@@ -507,6 +508,17 @@ main{padding-block:2px 28px}
 .tbtn.main{background:var(--tb-ink);color:var(--tb-bg);border-color:var(--tb-ink)}
 .tbar.over .tbtn{border-color:var(--tb-over-ink)}
 .tbar.over .tbtn.main{background:var(--tb-over-ink);color:var(--tb-over)}
+.tbar .tb-rir .wrap{display:flex;align-items:center;gap:6px;padding-block:8px 0}
+.tb-rir span{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--tb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-rir button{flex:none;min-width:48px;min-height:44px;border-radius:10px;border:1px solid var(--tb-line);background:transparent;color:inherit;font-weight:700;font-variant-numeric:tabular-nums}
+.tb-rir button[aria-pressed="true"]{background:var(--tb-ink);color:var(--tb-bg);border-color:var(--tb-ink)}
+.tbar.over .tb-rir span{color:var(--tb-over-ink)}
+.tbar.over .tb-rir button{border-color:var(--tb-over-ink)}
+.tbar.over .tb-rir button[aria-pressed="true"]{background:var(--tb-over-ink);color:var(--tb-over)}
+.tbar.over .tb-lbl{font-size:21px;font-weight:800;line-height:1.1}
+.tbar.flash{animation:tbflash .6s ease-in-out 5}
+@keyframes tbflash{0%,100%{filter:none}50%{filter:brightness(1.45) saturate(1.3)}}
+@media (prefers-reduced-motion: reduce){.tbar.flash{animation:none}}
 .tb-prog{grid-column:1/-1;height:4px;border-radius:2px;background:var(--tb-line);overflow:hidden}
 .tb-prog i{display:block;height:100%;width:0;background:currentColor}
 
@@ -654,7 +666,7 @@ const EX = JSON.parse(document.getElementById('exdata').textContent);
 const EXMAP = new Map(EX.map(e => [e.id, e]));
 const GROUPS = ['Klatka piersiowa','Plecy','Barki','Biceps','Triceps','Czworogłowe uda','Dwugłowe uda','Pośladki i biodra','Łydki','Brzuch','Całe ciało','Cardio'];
 const EQUIPS = ['Sztanga','Sztanga łamana','Hantle','Kettlebell','Wyciąg','Maszyna','Masa ciała','Guma','Inne'];
-const DEF_SETTINGS = {restSet:90, restEx:120, autoRest:true, sound:true, bar:20, perWeek:3};
+const DEF_SETTINGS = {restSet:90, restEx:120, autoRest:true, sound:true, askRir:true, bar:20, perWeek:3};
 const TABS = [
   {id:'trening', label:'Trening', title:'Trening', icon:'<path d="M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11"/>'},
   {id:'plany', label:'Plany', title:'Plany', icon:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2H9zM9 10h6M9 14h6M9 18h3.5"/>'},
@@ -769,7 +781,7 @@ function importSanitize(rawState, rawSessions){
   const st = isObj(src.settings) ? src.settings : {};
   const settings = {...DEF_SETTINGS, ...extras(st, Object.keys(DEF_SETTINGS)),
     restSet:num(st.restSet, 0, LIM.sec, DEF_SETTINGS.restSet), restEx:num(st.restEx, 0, LIM.sec, DEF_SETTINGS.restEx),
-    autoRest:typeof st.autoRest === 'boolean' ? st.autoRest : DEF_SETTINGS.autoRest, sound:typeof st.sound === 'boolean' ? st.sound : DEF_SETTINGS.sound,
+    autoRest:typeof st.autoRest === 'boolean' ? st.autoRest : DEF_SETTINGS.autoRest, sound:typeof st.sound === 'boolean' ? st.sound : DEF_SETTINGS.sound, askRir:typeof st.askRir === 'boolean' ? st.askRir : DEF_SETTINGS.askRir,
     bar:num(st.bar, 1, 50, DEF_SETTINGS.bar), perWeek:Math.round(num(st.perWeek, 1, 6, DEF_SETTINGS.perWeek))};
   const planIds = new Set(), plans = [];
   for (const p of flattenPlans(src.plans)){
@@ -2787,6 +2799,8 @@ const SHEETS = {
       <h3 class="h3">Przerwy (dla nowych ćwiczeń)</h3>${stp('restSet', 'Między seriami')}${stp('restEx', 'Po ćwiczeniu')}
       <label class="toggle"><input type="checkbox" id="st-auto" data-bind="setting" data-f="autoRest" ${st.autoRest ? 'checked' : ''}>Uruchamiaj przerwę automatycznie po odhaczeniu serii</label>
       <label class="toggle"><input type="checkbox" id="st-sound" data-bind="setting" data-f="sound" ${st.sound ? 'checked' : ''}>Sygnał dźwiękowy na koniec przerwy</label>
+      <p class="note" style="margin:-6px 0 0">Dźwięk nie zadziała, gdy telefon jest wyciszony przełącznikiem z boku albo ekran jest zablokowany, a iPhone nie wibruje ze strony, więc wtedy koniec przerwy pokaże tylko ekran.</p>
+      <label class="toggle"><input type="checkbox" id="st-rir" data-bind="setting" data-f="askRir" ${st.askRir !== false ? 'checked' : ''}>Pytaj o zapas powtórzeń</label>
       <div class="field"><label class="lbl" for="st-pw">Treningów w tygodniu (cel serii na mapie mięśni)</label><select class="input" id="st-pw" data-bind="setting" data-f="perWeek">${[1, 2, 3, 4, 5, 6].map(v => `<option value="${v}" ${perWeek() === v ? 'selected' : ''}>${v} · cel ${WK_TARGET[v]} serii na partię</option>`).join('')}</select></div>
       <div class="field"><label class="lbl" for="st-bar">Gryf do kalkulatora talerzy</label><select class="input" id="st-bar" data-bind="setting" data-f="bar">${[20, 15, 10].map(v => `<option value="${v}" ${+st.bar === v ? 'selected' : ''}>${v} kg</option>`).join('')}</select></div>
       <h3 class="h3">Zapis danych</h3>
@@ -2897,7 +2911,7 @@ function syncWorkout(){
 const exOpen = x => !!x && !x.skip && x.sets.some(s => !s.done);
 const exFin = x => !!x && (x.skip || (x.sets.length > 0 && x.sets.every(s => s.done)));
 // czeka pytanie o zapas po ostatniej serii: karta zostaje na swoim miejscu na liście (zwinięta od B1b), aż padnie odpowiedź albo następna seria
-const rirPending = x => !x.skip && ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key && x.sets[ACTIVE.rirAsk.j] && x.sets[ACTIVE.rirAsk.j].done && x.sets[ACTIVE.rirAsk.j].rir == null;
+const rirPending = x => !x.skip && S.settings.askRir !== false && ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key && x.sets[ACTIVE.rirAsk.j] && x.sets[ACTIVE.rirAsk.j].done && x.sets[ACTIVE.rirAsk.j].rir == null;
 // zakończone ćwiczenia (całe superserie razem) na górę listy, reszta w dotychczasowej kolejności.
 // Zmienia kolejność w ACTIVE.ex, więc indeksy minutnika przeliczamy po kluczach. Zwraca true, gdy coś się przesunęło.
 function floatDone(){
@@ -2974,6 +2988,15 @@ function woProgress(){
   const T = ACTIVE.timer; if (T && T.kind === 'rest') sec += Math.max(0, (T.endsAt - Date.now()) / 1000);
   return {tot, done, min:Math.max(1, Math.round(sec / 60))};
 }
+// pytanie o zapas (E5-01, B3): w pasku na dole, nad paskiem przerwy, więc nie przesuwa żadnej serii; przez RIR_GUARD_MS po pojawieniu ignoruje stuknięcia
+// (drugie stuknięcie w ✓ następnej serii nie może zapisać zapasu). Wyłącznik: S.settings.askRir (Ustawienia: „Pytaj o zapas powtórzeń”).
+const RIR_GUARD_MS = 400;
+function rirBarHTML(){
+  const A = ACTIVE && ACTIVE.rirAsk; if (!A || S.settings.askRir === false) return '';
+  const i = ACTIVE.ex.findIndex(x => x.key === A.key), x = ACTIVE.ex[i], s = x && x.sets[A.j];
+  if (!s || !s.done || x.skip || x.mode === 'time') return '';
+  return `<div class="tb-rir" role="group" aria-label="Powtórzenia w zapasie po serii ${A.j + 1}"><div class="wrap"><span>Zapas · seria ${A.j + 1}</span>${[0, 1, 2, 3].map(v => `<button data-act="wRir" data-i="${i}" data-wk="${x.key}" data-j="${A.j}" data-v="${v}" aria-pressed="${s.rir === v}" aria-label="${v === 0 ? 'Zero, do upadku' : rirTxt(v) + ' w zapasie'}">${rirTxt(v)}</button>`).join('')}</div></div>`;
+}
 function wCard(x, i, cur, curR){
   const ex = getEx(x.exId); const doneN = x.sets.filter(s => s.done).length; const all = x.sets.length && doneN === x.sets.length;
   const last = lastFor(x.exId); const t = x.mode === 'time';
@@ -3013,9 +3036,6 @@ function wCard(x, i, cur, curR){
       <input id="w-${x.key}-${j}-kg" inputmode="decimal" data-bind="wset" data-i="${i}" data-wk="${x.key}" data-j="${j}" data-f="kg" value="${esc(fmtN(s.kg))}" placeholder="–" aria-label="Seria ${j + 1}: ciężar w kg">
       <input id="w-${x.key}-${j}-${f}" inputmode="numeric" data-bind="wset" data-i="${i}" data-wk="${x.key}" data-j="${j}" data-f="${f}" value="${esc(s[f] ?? '')}" placeholder="${t ? 's' : 'powt.'}" aria-label="Seria ${j + 1}: ${t ? 'czas w sekundach' : 'powtórzenia'}">
       ${btn}</div>`;
-    // po odhaczeniu: ile powtórzeń zostało w zapasie (opcjonalnie, do następnej serii)
-    if (s.done && !t && ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key && ACTIVE.rirAsk.j === j)
-      h += `<div class="rir"><span>Powt. w zapasie:</span>${[0, 1, 2, 3].map(v => `<button data-act="wRir" data-i="${i}" data-wk="${x.key}" data-j="${j}" data-v="${v}" aria-pressed="${s.rir === v}" aria-label="${v === 0 ? 'Zero, do upadku' : rirTxt(v) + ' w zapasie'}">${rirTxt(v)}</button>`).join('')}</div>`;
   });
   h += `</div>`;
   // szybka zmiana najbliższej niezrobionej serii (przechodzi na kolejne)
@@ -3036,11 +3056,11 @@ function renderWorkout(){
   const P = woProgress();
   el.innerHTML = `<div class="wo-h"><div class="wrap"><button class="iconbtn" data-act="minWorkout" aria-label="Zwiń trening">${svg('min')}</button>
       <div class="wo-t"><b>${esc(ACTIVE.dayName)}</b><span>${esc(ACTIVE.planName)} · <span data-elapsed>${fmtClock(woElapsed())}</span></span>
-        <span class="wo-p">${P.tot ? (P.done >= P.tot ? `Wszystkie ${P.tot} ${pl(P.tot, 'seria', 'serie', 'serii')} zrobione` : `${P.done} z ${P.tot} serii · ok. ${fmtMin(P.min)} do końca`) : ''}</span></div>
+        <span class="wo-p">${P.tot ? (P.done >= P.tot ? `Wszystkie ${P.tot} ${pl(P.tot, 'seria', 'serie', 'serii')} zrobione` : `${P.done}/${P.tot} serii · ~${fmtMin(P.min)}`) : ''}</span></div>
       <button class="btn primary sm" data-act="finishOpen">Zakończ</button></div><i class="wo-bar" style="width:${P.tot ? Math.round(P.done / P.tot * 100) : 0}%" aria-hidden="true"></i></div>
     <div class="wrap wo-list stack">${ACTIVE.ex.map((x, i) => wCard(x, i, cur, cur >= 0 ? ssRange(ACTIVE.ex, cur) : null)).join('') || '<p class="muted">Brak ćwiczeń. Dodaj pierwsze poniżej.</p>'}</div>
     <div class="wrap wo-end"><button class="btn block" data-act="wAddEx">${svg('plus','i s')}Dodaj ćwiczenie</button></div>
-    <div class="tbar idle" id="tbar"><div class="wrap"><div><div class="tb-lbl" id="tb-lbl"></div><div class="tb-time" id="tb-time">0:00</div></div><div class="tb-btns" id="tb-btns"></div><div class="tb-prog"><i id="tb-fill"></i></div></div></div>`;
+    <div class="tbar idle" id="tbar"><div id="tb-rirbox">${rirBarHTML()}</div><div class="wrap"><div><div class="tb-lbl" id="tb-lbl"></div><div class="tb-time" id="tb-time">0:00</div></div><div class="tb-btns" id="tb-btns"></div><div class="tb-prog"><i id="tb-fill"></i></div></div></div>`;
   el.scrollTop = top; tbState = ''; updateTimer(); lockBody();
   if (ui.ssJump){ const c = $('#wex-' + ui.ssJump); ui.ssJump = null; if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); }
   else if (moved && cur >= 0){ const c = $('#wex-' + ACTIVE.ex[cur].key); if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); }   // zrobione poszły na górę: pokaż bieżące
@@ -3050,14 +3070,15 @@ function updateTimer(){
   const bar = $('#tbar'); if (!bar || !ACTIVE) return;
   const T = ACTIVE.timer; const now = Date.now();
   let state, label, time, frac = 0;
-  if (!T){ state = 'idle'; label = 'Przerwa ruszy po odhaczeniu serii'; time = '0:00'; if (!S.settings.autoRest) label = 'Przerwa: uruchom ręcznie'; }
+  if (!T){ state = 'idle'; label = 'Przerwa ruszy po serii'; time = '0:00'; if (!S.settings.autoRest) label = 'Przerwa: uruchom ręcznie'; }
   else {
     const rem = (T.endsAt - now) / 1000;
-    if (T.kind === 'work'){ state = 'work'; label = 'Seria w toku · ' + getEx(ACTIVE.ex[T.i]?.exId).name; time = fmtClock(Math.ceil(rem)); frac = 1 - rem / T.total; }
-    else if (rem > 0){ state = rem <= 10 ? 'soon' : 'rest'; label = T.label; time = fmtClock(Math.ceil(rem)); frac = 1 - rem / T.total; }
-    else { state = 'over'; label = 'Koniec przerwy. Czas na serię!'; time = '+' + fmtClock(-rem); frac = 1; }
+    // praca: bez nazwy ćwiczenia w napisie, bo długa nazwa ucinała pasek (E5-03)
+    if (T.kind === 'work'){ state = 'work'; label = 'Seria w toku'; time = fmtClock(Math.ceil(rem)); frac = 1 - rem / T.total; }
+    else if (rem > 0){ state = rem <= 10 ? 'soon' : 'rest'; label = T.late ? 'Przerwa · minęło ' + fmtClock(T.total - rem) : T.label; time = fmtClock(Math.ceil(rem)); frac = 1 - rem / T.total; }
+    else { state = 'over'; label = 'Koniec przerwy!'; time = '+' + fmtClock(-rem); frac = 1; }
   }
-  bar.className = 'tbar ' + state;
+  bar.className = 'tbar ' + state + (state === 'over' && Date.now() - (ui.flashAt || 0) < 3000 ? ' flash' : '');
   $('#tb-lbl').textContent = label; $('#tb-time').textContent = time; $('#tb-fill').style.width = Math.min(100, Math.max(0, frac * 100)) + '%';
   const cat = state === 'soon' ? 'rest' : state;
   if (cat !== tbState){
@@ -3068,13 +3089,17 @@ function updateTimer(){
       : `<button class="tbtn main" data-act="tbSkip">OK</button>`;
   }
 }
-function startTimer(kind, sec, label, focus, extra={}){
+// `from` = od kiedy liczyć (E5-05): przerwa po serii na czas liczy się od planowanego końca serii, nie od chwili, gdy telefon znów działa;
+// późniejszy start (>3 s wstecz) = `late`: pasek pokazuje, ile przerwy już minęło, a skończona przerwa od razu jest w stanie „koniec” (bez drugiego sygnału)
+function startTimer(kind, sec, label, focus, extra={}, from=Date.now()){
   if (!(sec > 0)){ ACTIVE.timer = null; return; }
-  ACTIVE.timer = {kind, total:sec, endsAt:Date.now() + sec * 1000, label, focus, fired:false, ...extra};
+  const now = Date.now(), endsAt = from + sec * 1000;
+  ACTIVE.timer = {kind, total:sec, endsAt, label, focus, fired:endsAt <= now && from < now - 3000, ...(from < now - 3000 ? {late:true} : {}), ...extra};
 }
 function nextUndone(after){ let k = ACTIVE.ex.findIndex((x, n) => n > after && exOpen(x)); if (k < 0) k = ACTIVE.ex.findIndex(x => exOpen(x)); return k; }
-function afterSetDone(i){
-  const x = ACTIVE.ex[i], now = Date.now(); ACTIVE.focusKey = null;
+function afterSetDone(i, at){
+  const x = ACTIVE.ex[i], now = at || Date.now(); ACTIVE.focusKey = null;
+  const rest = (sec, label, focus) => startTimer('rest', sec, label, focus, {}, now);   // od `at` (planowany koniec serii na czas), nie od teraz
   ACTIVE.rirAsk = null;   // następna seria (także na czas) zamyka pytanie o zapas; po serii z powtórzeniami toggleSet ustawia je od nowa
   if (x.firstAt == null) x.firstAt = now;   // kolejność ćwiczeń w zapisie = kolejność pierwszej odhaczonej serii
   const gap = now - activeLast(); if (gap > STALE_MS) ACTIVE.idle = (ACTIVE.idle || 0) + gap;   // przerwy dłuższe niż 2 h nie wliczają się do czasu treningu
@@ -3088,16 +3113,16 @@ function afterSetDone(i){
       if (y.sets.filter(s => s.done).length < round && exOpen(y)){ ACTIVE.timer = null; ACTIVE.focusKey = y.key; ui.ssJump = y.key; toast('Superseria · teraz: ' + getEx(y.exId).name); return; }
     }
     const first = [...Array(sp.n).keys()].map(d => sp.a + d).find(k => exOpen(ACTIVE.ex[k]));
-    if (first != null){ if (S.settings.autoRest) startTimer('rest', x.rest, 'Przerwa po rundzie superserii', first); else { ACTIVE.timer = null; ACTIVE.focusKey = ACTIVE.ex[first].key; } return; }
+    if (first != null){ if (S.settings.autoRest) rest(x.rest, 'Przerwa', first); else { ACTIVE.timer = null; ACTIVE.focusKey = ACTIVE.ex[first].key; } return; }
     const k = nextUndone(sp.b);
     if (k < 0 || (k >= sp.a && k <= sp.b)){ ACTIVE.timer = null; allDoneAsk(); return; }
-    if (S.settings.autoRest) startTimer('rest', x.restAfter, 'Przerwa · następne: ' + getEx(ACTIVE.ex[k].exId).name, k); else ACTIVE.timer = null;
+    if (S.settings.autoRest) rest(x.restAfter, 'Przerwa', k); else ACTIVE.timer = null;
     return;
   }
-  if (x.sets.some(s => !s.done)){ if (S.settings.autoRest) startTimer('rest', x.rest, 'Przerwa między seriami', i); else ACTIVE.timer = null; return; }
+  if (x.sets.some(s => !s.done)){ if (S.settings.autoRest) rest(x.rest, 'Przerwa', i); else ACTIVE.timer = null; return; }
   const k = nextUndone(i);
   if (k < 0){ ACTIVE.timer = null; allDoneAsk(); return; }
-  if (S.settings.autoRest) startTimer('rest', x.restAfter, 'Przerwa · następne: ' + getEx(ACTIVE.ex[k].exId).name, k); else ACTIVE.timer = null;
+  if (S.settings.autoRest) rest(x.restAfter, 'Przerwa', k); else ACTIVE.timer = null;
 }
 // wszystkie serie odhaczone: od razu pytamy o zakończenie (arkusz „Zakończ trening”; zamknięcie go = trenujesz dalej)
 function allDoneAsk(){
@@ -3105,11 +3130,15 @@ function allDoneAsk(){
   setTimeout(() => { if (ACTIVE && ui.showWorkout && !topSheet()) openSheet({type:'finish', upd:false, auto:true}); }, 0);
 }
 let AC = null;
-function audioUnlock(){ try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); } catch {} }
+// iOS: kontekst audio startuje w stanie „suspended” i po zablokowaniu ekranu / zmianie karty bywa „interrupted”; wznawiamy go przy każdym stuknięciu
+// i po powrocie do karty (E1-13). Dźwięk i tak milknie przy wyciszonym telefonie i zablokowanym ekranie (patrz zdanie w Ustawieniach).
+function audioUnlock(){ try { if (AC && AC.state === 'closed') AC = null; AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state !== 'running') AC.resume(); } catch {} }
+document.addEventListener('pointerdown', audioUnlock, {capture:true, passive:true});
 function alarm(){
   try { navigator.vibrate && navigator.vibrate([250, 120, 250]); } catch {}
   if (!S.settings.sound || !AC) return;
   try {
+    if (AC.state !== 'running') AC.resume();
     const t0 = AC.currentTime;
     for (let k = 0; k < 3; k++){
       const o = AC.createOscillator(), g = AC.createGain(), at = t0 + k * 0.3;
@@ -3120,12 +3149,12 @@ function alarm(){
   } catch {}
 }
 function onTimerEnd(T){
-  alarm();
+  alarm(); ui.flashAt = Date.now();   // błysk paska i duży napis (E1-13)
   if (T.kind === 'work'){
     const s = ACTIVE.ex[T.i]?.sets[T.j];
     if (!s){ ACTIVE.timer = null; saveActive(); renderWorkout(); return; }
     s.sec = T.total; s.done = true;
-    afterSetDone(T.i); saveActive(); renderWorkout(); return;
+    afterSetDone(T.i, T.endsAt); saveActive(); renderWorkout(); return;
   }
   saveActive();
   const typing = document.activeElement && document.activeElement.tagName === 'INPUT';
@@ -3168,7 +3197,7 @@ setInterval(tick, 250);
 let wake = null;
 async function requestWake(){ try { if ('wakeLock' in navigator && !wake){ wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch {} }
 function releaseWake(){ try { wake && wake.release(); } catch {} wake = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushActive(); if (document.visibilityState === 'visible'){ if (ACTIVE && ui.showWorkout) requestWake(); tick(); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushActive(); if (document.visibilityState === 'visible'){ if (ACTIVE && ui.showWorkout){ requestWake(); audioUnlock(); } tick(); } });
 
 function startWorkoutFrom(p){
   const name = p.name || 'Trening';
@@ -3646,7 +3675,7 @@ const ACT = {
     s.done = !s.done;
     if (s.done){
       afterSetDone(i);
-      if (x.mode !== 'time' && ACTIVE) ACTIVE.rirAsk = {key:x.key, j};
+      if (x.mode !== 'time' && ACTIVE && S.settings.askRir !== false){ ACTIVE.rirAsk = {key:x.key, j}; ui.rirAt = Date.now(); }
     } else {
       delete s.rir; if (ACTIVE.timer && ACTIVE.timer.kind === 'rest' && ACTIVE.timer.focus === i) ACTIVE.timer = null;
       if (ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key) ACTIVE.rirAsk = null;   // cofnięte odhaczenie: pytanie o zapas znika
@@ -3654,7 +3683,8 @@ const ACT = {
     }
     if (ACTIVE){ saveActive(); renderWorkout(); }
   },
-  wRir(el){ const s = ACTIVE.ex[+el.dataset.i].sets[+el.dataset.j], v = +el.dataset.v; if (s.rir === v) delete s.rir; else s.rir = v; saveActive(); renderWorkout(); },
+  wRir(el){ if (Date.now() - (ui.rirAt || 0) < RIR_GUARD_MS) return;   // tuż po pojawieniu się pytania stuknięcia są ignorowane (E5-01)
+    const x = ACTIVE.ex[+el.dataset.i], s = x && x.sets[+el.dataset.j], v = +el.dataset.v; if (!s || !s.done) return; if (s.rir === v) delete s.rir; else s.rir = v; saveActive(); renderWorkout(); },
   wStep(el){
     const i = +el.dataset.i, f = el.dataset.f, d = +el.dataset.d, x = ACTIVE.ex[i], j = x.sets.findIndex(s => !s.done); if (j < 0) return;
     const s = x.sets[j], base = +(s[f] ?? (f === 'reps' ? s.tReps : f === 'sec' ? s.tSec : null) ?? 0);
@@ -3751,7 +3781,7 @@ const ACT = {
       ui.wMenu = null; if (ui.wOpen) delete ui.wOpen[x.key]; if (ACTIVE.rirAsk && ACTIVE.rirAsk.key === x.key) ACTIVE.rirAsk = null; if (ACTIVE.focusKey === x.key) ACTIVE.focusKey = null;
       saveActive(); renderWorkout(); toast(name + ': usunięte z treningu.'); }); },
   wAddEx(){ openSheet({type:'pick', target:{kind:'workout'}, q:'', group:'', sel:[]}); },
-  tbStart(){ audioUnlock(); const i = Math.max(0, curIndex()); const x = ACTIVE.ex[i]; startTimer('rest', x ? x.rest : S.settings.restSet, 'Przerwa między seriami', i); saveActive(); updateTimer(); },
+  tbStart(){ audioUnlock(); const i = Math.max(0, curIndex()); const x = ACTIVE.ex[i]; startTimer('rest', x ? x.rest : S.settings.restSet, 'Przerwa', i); saveActive(); updateTimer(); },
   tbAdj(el){ const T = ACTIVE.timer; if (!T) return; T.endsAt += +el.dataset.d * 1000; T.total = Math.max(1, T.total + +el.dataset.d); if (T.endsAt <= Date.now()){ T.fired = true; ACTIVE.timer = null; } saveActive(); updateTimer(); },
   tbSkip(){ const T = ACTIVE.timer; ACTIVE.timer = null; saveActive(); renderWorkout(); if (T){ const x = ACTIVE.ex[T.focus]; const c = x && $('#wex-' + x.key); if (c) c.scrollIntoView({behavior:reduced ? 'auto' : 'smooth', block:'start'}); } },
 };
@@ -3765,7 +3795,9 @@ function fillDown(n, j, f, v, put, inp, can){
 }
 function limitInput(t){
   const f = t.dataset.f, v = num(t.value); let c = clampV(f, v);
-  if (v != null && c !== v){ t.value = fmtN(c); toast(f === 'kg' ? `Maksymalnie ${LIM.kg} kg.` : f === 'sec' ? `Maksymalnie ${LIM.sec} s.` : `Maksymalnie ${LIM.reps} powtórzeń.`); }
+  if (v != null && c !== v){ t.value = fmtN(c);
+    if (v < 0) toast(f === 'kg' ? 'Ciężar nie może być ujemny.' : f === 'sec' ? 'Czas nie może być ujemny.' : 'Liczba powtórzeń nie może być ujemna.');   // E5-14: osobny komunikat poniżej zera
+    else toast(f === 'kg' ? `Maksymalnie ${LIM.kg} kg.` : f === 'sec' ? `Maksymalnie ${LIM.sec} s.` : `Maksymalnie ${LIM.reps} powtórzeń.`); }
   if (c != null && f !== 'kg'){ const r = Math.round(c); if (r !== c){ c = r; t.value = String(r); } }   // powtórzenia i sekundy tylko całkowite (8,5 → 9)
   if (f === 'kg' && c === 0) c = null;   // 0 kg = puste pole (masa ciała)
   return c;
