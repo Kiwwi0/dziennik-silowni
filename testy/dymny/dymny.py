@@ -449,6 +449,33 @@ def scenariusz(r):
         expect(page.locator('.sess')).to_have_count(2)
     r.krok('trwałość: po odświeżeniu lista Diety i Historia', dieta_trwalosc, 'dieta-po-odswiezeniu')
 
+    def dieta_do_przodu():
+        # posiłki można planować do 30 dni do przodu: wpis na jutro, kopia dnia na jutro, granica 30 dni; przyszły dzień bez wody i suplementów
+        zakladka('dieta')
+        r.klik('[data-act="dietDay"][data-d="1"]')
+        expect(page.locator('.dt-date b')).to_have_text('Jutro')
+        expect(page.locator('.dt-water')).to_have_count(0)
+        r.klik('[data-act="dietAdd"]'); r.klik('#sheet [data-act="dietQuick"]'); r.klik('#dk-n')
+        page.fill('#dk-n', 'Plan na jutro'); page.fill('#dk-k', '200'); page.fill('#dk-b', '10')
+        r.klik('#sheet [data-act="dkSave"]'); ukryte('#sheet-wrap')
+        expect(page.locator('.dt-meal').first).to_contain_text('Plan na jutro')
+        jutro = page.evaluate('() => shiftKey(dietToday(), 1)')
+        assert page.evaluate('(k) => Object.values(dayOf(k).meals).flat().length', jutro) == 1, 'wpis zapisany na jutro'
+        # kopia dzisiejszego dnia na jutro
+        r.klik('[data-act="dietToday"]'); expect(page.locator('.dt-date b')).to_have_text('Dziś')
+        r.klik('[data-act="dietCopyDay"]'); r.klik('#sheet [data-act="dcDay"][data-d="1"]'); r.klik('#sheet [data-act="dcGo"]')
+        ukryte('#sheet-wrap')
+        assert page.evaluate('(k) => Object.values(dayOf(k).meals).flat().length', jutro) == 2, 'kopia dnia na jutro'
+        # granica: 30 dni do przodu
+        page.evaluate('() => { ui.dietDay = shiftKey(dietToday(), 29); render(); }')
+        r.klik('[data-act="dietDay"][data-d="1"]')
+        expect(page.locator('[data-act="dietDay"][data-d="1"]')).to_be_disabled()
+        assert page.evaluate('() => dietKey() === shiftKey(dietToday(), 30)'), 'można przejść dokładnie 30 dni do przodu'
+        # sprzątanie: przyszły dzień usunięty, widok wraca do dziś (kolejne kroki liczą wpisy)
+        page.evaluate('(k) => { delete DAYS[k]; LS.set(lsKey("dietDays"), DAYS); ui.dietDay = null; render(); }', jutro)
+        expect(page.locator('.dt-sum .big')).to_have_text(re.compile(r'^\s*350\s*$'))
+    r.krok('Dieta: posiłki do 30 dni do przodu (wpis, kopia na jutro, granica)', dieta_do_przodu, 'dieta-do-przodu')
+
     def dieta_cele():
         zakladka('dieta')
         r.klik('.dt-sum [data-act="dietGoals"]')
