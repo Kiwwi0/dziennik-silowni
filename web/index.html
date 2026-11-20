@@ -5748,7 +5748,10 @@ const dayKeyOk = k => /^\d{4}-\d{2}-\d{2}$/.test(k);
 const keyToDate = k => new Date(k + 'T12:00:00');
 const shiftKey = (k, n) => { const d = keyToDate(k); d.setDate(d.getDate() + n); return dayKey(d); };
 const dietToday = () => dayKey(new Date());
-const dietKey = () => { const t = dietToday(); return ui.dietDay && ui.dietDay < t ? ui.dietDay : t; };
+// posiłki można planować do DIET_AHEAD dni do przodu (przyszły dzień = plan: nie liczy się w podsumowaniu tygodnia, bez wody i suplementów)
+const DIET_AHEAD = 30;
+const dietMaxKey = () => shiftKey(dietToday(), DIET_AHEAD);
+const dietKey = () => { const t = dietToday(); return ui.dietDay && ui.dietDay <= dietMaxKey() ? ui.dietDay : t; };
 const dietMinKey = () => FIRE ? shiftKey(dietToday(), -(DIET_WINDOW - 1)) : '0000-01-01';
 const blankDay = () => ({meals:Object.fromEntries(MEALS.map(([m]) => [m, []]))});
 
@@ -6126,8 +6129,8 @@ function dietWeekCard(sel){
   if (open){
     const nm = {ok:'w celu', bad:'poza celem', nog:'bez celu kalorii', empty:'bez wpisów'};
     h += `<div class="dt-wk-b"><div class="dt-wk-d" role="group" aria-label="Dni tygodnia">${W.days.map(d => {
-      const dd = keyToDate(d.key), lab = `${WK_DAYS[d.i]} ${dd.getDate()}.${dd.getMonth() + 1}: ${d.future ? 'jeszcze nie było' : d.old ? 'dzień nie wczytany' : nm[d.st]}${d.tr ? ', trening' : ''}`;
-      return `<button data-act="dietWkDay" data-d="${d.key}" ${d.future || d.old ? 'disabled' : ''} class="${d.key === sel ? 'sel' : ''}" aria-label="${esc(lab)}"><span>${WK_DAYS[d.i]}</span><i class="dot ${d.n ? d.st : ''}"></i><i class="tr${d.tr ? '' : ' off'}"></i></button>`;
+      const dd = keyToDate(d.key), lab = `${WK_DAYS[d.i]} ${dd.getDate()}.${dd.getMonth() + 1}: ${d.future ? (d.key > dietMaxKey() ? 'jeszcze nie było' : 'plan') : d.old ? 'dzień nie wczytany' : nm[d.st]}${d.tr ? ', trening' : ''}`;
+      return `<button data-act="dietWkDay" data-d="${d.key}" ${d.key > dietMaxKey() || d.old ? 'disabled' : ''} class="${d.key === sel ? 'sel' : ''}" aria-label="${esc(lab)}"><span>${WK_DAYS[d.i]}</span><i class="dot ${d.n ? d.st : ''}"></i><i class="tr${d.tr ? '' : ' off'}"></i></button>`;
     }).join('')}</div>`;
     if (W.cnt){
       h += `<div class="dt-wk-m">${[['b', 'Białko'], ['w', 'Węgle'], ['t', 'Tłuszcz']].map(([f, n]) => `<div class="dt-m"><div class="t"><span>${n} śr.</span><b class="num">${fmtN(r1(W[f]))}${W['g' + f] ? ' / ' + fmtG(W['g' + f]) : ''} g</b></div></div>`).join('')}</div>`;
@@ -6140,19 +6143,21 @@ function dietWeekCard(sel){
 
 function vDiet(){
   const key = dietKey(), today = dietToday(), tot = dayTotals(key), G = goalsFor(key), hasGoal = !!(G.k || G.b || G.w || G.t);
-  const lbl = key === today ? 'Dziś' : key === shiftKey(today, -1) ? 'Wczoraj' : fmtDate(keyToDate(key).toISOString(), {weekday:'long'});
+  const fut = key > today;
+  const lbl = key === today ? 'Dziś' : key === shiftKey(today, -1) ? 'Wczoraj' : key === shiftKey(today, 1) ? 'Jutro' : fmtDate(keyToDate(key).toISOString(), {weekday:'long'});
   let h = `<div class="wrap stack">
     <div class="dt-bar"><button class="iconbtn" data-act="dietDay" data-d="-1" aria-label="Dzień wcześniej" ${key <= dietMinKey() ? 'disabled' : ''}>${svg('back')}</button>
       <div class="dt-mid"><button class="dt-date" data-act="dietToday" aria-label="${esc(lbl)}, ${esc(fmtDate(keyToDate(key).toISOString(), {day:'numeric', month:'long', year:'numeric'}))}. Wróć do dziś"><b>${esc(lbl)}</b><span>${esc(fmtDate(keyToDate(key).toISOString(), {day:'numeric', month:'long'}))}</span></button>
       ${(() => { const man = DAYS[key] && typeof DAYS[key].tr === 'boolean', tr = isTrainDay(key); return `<button class="dt-tr${man ? ' man' : ''}" data-act="dietTr" aria-label="${tr ? 'Dzień treningowy' : 'Dzień odpoczynku'}, ${man ? 'ustawiony ręcznie' : 'wykryty automatycznie'}. Stuknij, aby zmienić">${tr ? 'Trening' : 'Odpoczynek'}</button>`; })()}</div>
-      <button class="iconbtn" data-act="dietDay" data-d="1" aria-label="Dzień później" ${key >= today ? 'disabled' : ''}>${svg('chev')}</button></div>`;
+      <button class="iconbtn" data-act="dietDay" data-d="1" aria-label="Dzień później" ${key >= dietMaxKey() ? 'disabled' : ''}>${svg('chev')}</button></div>`;
   const over = G.k && tot.k > G.k;
   h += `<section class="card dt-sum" aria-label="Podsumowanie dnia"><div class="dt-kc"><div><span class="big num">${fmtG(tot.k)}</span> <span class="of num">${G.k ? '/ ' + fmtG(G.k) + ' ' : ''}kcal</span></div>
       ${G.k ? `<span class="small ${over ? 'dt-warn' : 'muted'} num">${over ? 'ponad celem o ' + fmtG(tot.k - G.k) : 'zostało ' + fmtG(G.k - tot.k)}</span>` : ''}</div>
     ${G.k ? dietBar(tot.k, G.k) : ''}
     <div class="dt-macros">${[['b', 'Białko'], ['w', 'Węgle'], ['t', 'Tłuszcz']].map(([f, nm]) => `<div class="dt-m"><div class="t"><span>${nm}</span><b class="num${G[f] && tot[f] > G[f] ? ' dt-warn' : ''}">${fmtG(tot[f])}${G[f] ? ' / ' + fmtG(G[f]) : ''} g</b></div>${G[f] ? dietBar(tot[f], G[f], true) : ''}${f === 'b' && G.b && tot.b < G.b ? `<span class="muted small num dt-left">zostało ${fmtG(Math.round(G.b - tot.b))} g</span>` : ''}</div>`).join('')}</div>
     ${hasGoal ? '' : `<div class="row"><span class="muted small" style="flex:1;min-width:0">Ustaw dzienne cele, żeby widzieć postęp.</span><button class="btn sm" data-act="dietGoals">Ustaw cel</button></div>`}</section>`;
-  h += dietWeekCard(key) + dietWaterCard(key) + dietSupCard(key);
+  if (fut) h += `<p class="note" style="margin:0">Dzień w przyszłości: wpisy to plan. Do podsumowania tygodnia wejdą, gdy ten dzień nadejdzie.</p>`;
+  h += dietWeekCard(key) + (fut ? '' : dietWaterCard(key) + dietSupCard(key));
   const dm = dayOf(key).meals, orphan = Object.keys(dm).filter(m => dm[m].length && !MEALS.some(x => x[0] === m)).map(m => [m, 'Inny posiłek']);
   for (const [m, nm] of [...MEALS, ...orphan]){
     const list = dm[m] || [], s = sumOf(list), known = MEALS.some(x => x[0] === m);
@@ -6673,10 +6678,10 @@ function openDietQty(o){
 }
 const sDay = s => (s && s.day) || dietKey();   // dzień, na którym otwarto arkusz
 Object.assign(ACT, {
-  dietDay(el){ const k = shiftKey(dietKey(), +el.dataset.d); if (k > dietToday() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
+  dietDay(el){ const k = shiftKey(dietKey(), +el.dataset.d); if (k > dietMaxKey() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
   dietToday(){ if (ui.dietDay){ ui.dietDay = null; render(); } },
   dietWk(){ LS.set(DWK_KEY, !(LS.get(DWK_KEY, false) === true)); render(); },
-  dietWkDay(el){ const k = el.dataset.d; if (!k || k > dietToday() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
+  dietWkDay(el){ const k = el.dataset.d; if (!k || k > dietMaxKey() || k < dietMinKey()) return; ui.dietDay = k === dietToday() ? null : k; render(); },
   dietAdd(el){ openSheet({type:'dietAdd', meal:el.dataset.meal, q:'', day:dietKey()}); },
   dietScan(el){ openSheet({type:'dietScan', meal:el.dataset.meal, day:sDay(topSheet()), ean:'', busy:false}); },
   scanGo(){ const i = $('#scan-ean'); scanLookup(i ? i.value : '', true); },
@@ -7096,8 +7101,8 @@ SHEETS.dietCopy = s => {
   return sheetHead(s.scope === 'day' ? 'Kopiuj dzień' : 'Kopiuj: ' + mealName(s.meal)) + `
     <p class="muted small num" style="margin:0">${cntTxt(src.length)} · ${fmtG(tot.k)} kcal · z dnia ${esc(fmtDate(keyToDate(s.src).toISOString(), {day:'numeric', month:'long'}))}</p>
     <div class="field"><label class="lbl" for="dc-date">Skopiuj na dzień</label>
-      <input class="input" id="dc-date" type="date" data-bind="dcDate" value="${esc(s.date)}" max="${dietToday()}"${FIRE ? ` min="${dietMinKey()}"` : ''} aria-label="Data docelowa">
-      <div class="chips" style="margin-top:8px"><button class="chip" data-act="dcDay" data-d="0">Na dziś</button><button class="chip" data-act="dcDay" data-d="-1">Na wczoraj</button></div></div>
+      <input class="input" id="dc-date" type="date" data-bind="dcDate" value="${esc(s.date)}" max="${dietMaxKey()}"${FIRE ? ` min="${dietMinKey()}"` : ''} aria-label="Data docelowa">
+      <div class="chips" style="margin-top:8px"><button class="chip" data-act="dcDay" data-d="0">Na dziś</button><button class="chip" data-act="dcDay" data-d="-1">Na wczoraj</button><button class="chip" data-act="dcDay" data-d="1">Na jutro</button></div></div>
     ${s.scope === 'meal' ? `<div class="field"><span class="lbl">Do posiłku</span><div class="chips" role="group" aria-label="Posiłek docelowy">${MEALS.map(([m, nm]) => `<button class="chip" data-act="dcMeal" data-meal="${m}" aria-pressed="${m === s.tmeal}">${esc(nm)}</button>`).join('')}</div></div>`
       : '<p class="note">Wpisy dopiszą się do tego, co już jest w dniu docelowym. Wpisy z usuniętych posiłków trafią do pierwszego posiłku z listy.</p>'}
     ${errLine(s)}
@@ -7153,7 +7158,7 @@ Object.assign(ACT, {
   dcGo(){
     const s = topSheet(), today = dietToday(), d = s.date, fail = m => { s.err = m; renderSheet(); };
     if (!dayKeyOk(d)) return fail('Wybierz datę docelową.');
-    if (d > today) return fail('Nie można kopiować na przyszłe dni.');
+    if (d > dietMaxKey()) return fail(`Można kopiować najwyżej ${DIET_AHEAD} dni do przodu.`);
     if (d < dietMinKey()) return fail(`Można kopiować tylko na ostatnie ${DIET_WINDOW} dni.`);
     if (s.scope === 'day' && d === s.src) return fail('Wybierz inny dzień niż źródłowy – kopia na ten sam dzień podwoiłaby wpisy.');
     if (s.scope === 'meal' && d === s.src && s.tmeal === s.meal) return fail('Wybierz inny posiłek albo inny dzień.');
